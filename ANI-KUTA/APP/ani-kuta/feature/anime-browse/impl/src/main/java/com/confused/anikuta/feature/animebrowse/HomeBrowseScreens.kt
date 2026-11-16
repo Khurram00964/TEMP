@@ -73,7 +73,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 import java.util.Locale
-import kotlin.math.roundToInt
 
 /**
  * ROUND 152 — the home's browse destinations (the handoff §4 screens):
@@ -747,7 +746,7 @@ private fun HomeCategoryPosterCard(
                     modifier = Modifier.size(9.dp),
                 )
                 Text(
-                    text = "${score.roundToInt()}%",
+                    text = "$score%",
                     fontFamily = RobotoFamily,
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
