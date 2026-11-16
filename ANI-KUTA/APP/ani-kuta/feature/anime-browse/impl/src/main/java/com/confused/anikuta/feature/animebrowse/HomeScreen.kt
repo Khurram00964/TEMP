@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -1536,7 +1537,7 @@ private fun countdownLabel(untilMillis: Long, nowMillis: Long): String {
     val hh = (total % 86_400_000) / 3_600_000
     val mm = (total % 3_600_000) / 60_000
     val ss = (total % 60_000) / 1000
-    val pad: (Int) -> String = { v -> if (v < 10) "0$v" else "$v" }
+    val pad: (Long) -> String = { v -> if (v < 10L) "0$v" else "$v" }
     return when {
         days > 0 -> "${days}d ${hh}h"
         hh > 0 -> "${hh}h ${pad(mm)}m"

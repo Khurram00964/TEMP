@@ -905,7 +905,7 @@ private fun FieldTileBox(
                 compositingStrategy = if (overflows) {
                     CompositingStrategy.Offscreen
                 } else {
-                    CompositingStrategy.Automatic
+                    CompositingStrategy.Auto
                 }
             }
             .clip(RoundedCornerShape(metrics.tileRadius))
