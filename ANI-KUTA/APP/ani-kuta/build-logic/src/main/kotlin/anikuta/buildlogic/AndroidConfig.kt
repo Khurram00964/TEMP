@@ -544,8 +544,19 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10191
+    const val versionName = "1.1.91"
+    // ROUND 151 (v1.1.91): release/1.1.91 — cut from the home-redo head 84d75fca
+    // (CI 43971531153 GREEN on the TEMP mirror): THE HOME REDO per the design
+    // handoff — the hero carousel (the infinite wrap + the auto-advance + the
+    // dot countdown), the continue watching (the autoplay tap + the history
+    // see-all + the user's rules), the airs-today timeline (the library/global
+    // source toggle + the exactly-6 composition), the ranked trending rail, the
+    // SUGGESTION FIELD (the honeycomb physics port + the center-vs-open), the
+    // mood chips (the surprise shuffle), the genres/tags/catalog screens (the
+    // live AniList queries + the infinite pagination), the profile entry.
+    // Carries rounds 147-151 on top of v1.1.89. Released on the TEMP mirror
+    // while testplay-byte is flagged.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
