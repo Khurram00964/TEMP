@@ -845,6 +845,35 @@ fun DetailsScreen(
                         }
                         val subtitleTracksStr = subtitleTracks
                             .joinToString("\n") { "${it.uri}${delim}${it.label}" }
+                        // ROUND 150: the downloaded AUDIO resolution — the
+                        // audio mirror of the D-407 subtitle chain above
+                        // (DefaultDownloadManager.resolveAudioTracks: the
+                        // .data.json audioUris → the audio/ folder walk).
+                        // This was the round-150 report's "no audio tracks"
+                        // gap: the hand-off serialized "" and the player
+                        // never attached the downloaded audio versions. The
+                        // resolver lives on the CONCRETE manager (the
+                        // DownloadManager interface stays schema-unchanged);
+                        // the Koin binding guarantees the runtime type.
+                        val audioTracks = kotlinx.coroutines.withContext(
+                            kotlinx.coroutines.Dispatchers.IO,
+                        ) {
+                            runCatching {
+                                (downloadManager as?
+                                    com.confused.anikuta.core.download.DefaultDownloadManager)
+                                    ?.resolveAudioTracks(
+                                        mainId = mainId,
+                                        episodeNumber = episode.episode_number.toInt(),
+                                    )
+                            }.getOrNull()
+                        }.orEmpty()
+                        Logger.i("Anikuta:Feature:Details") {
+                            "onEpisodeClick — resolved ${audioTracks.size} downloaded " +
+                                "audio track(s) for E${episode.episode_number.toInt()} " +
+                                "[labels=${audioTracks.map { it.label }}]"
+                        }
+                        val audioTracksStr = audioTracks
+                            .joinToString("\n") { "${it.uri}${delim}${it.label}" }
                         onNavigateToWatch(
                             mainId ?: "",
                             localUri,
@@ -858,7 +887,7 @@ fun DetailsScreen(
                             "", // no resolvedVideosKey
                             effectiveLinkedSource?.sourceId ?: 0L,
                             subtitleTracksStr, // D-407: the downloaded subs, serialized
-                            "", // no audio tracks
+                            audioTracksStr, // ROUND 150: the downloaded audio versions, serialized
                             epMetaStr,
                             // ROUND 101 (WS-D): the details accent rides the nav.
                             coverAccent?.toLong() ?: 0L,

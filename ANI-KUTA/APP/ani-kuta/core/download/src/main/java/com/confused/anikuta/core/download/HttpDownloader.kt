@@ -520,6 +520,27 @@ class HttpDownloader(
             }
             val results = mutableListOf<File>()
             for ((index, track) in variants.withIndex()) {
+                // ── ROUND 150: the HLS-manifest SKIP — an .m3u8/.m3u
+                // AUDIO_VARIANT URL flat-GETs as a few-KB TEXT playlist (the
+                // "glitched file" the device round played manually: no
+                // VideoTypeDetector ran on this path, so the playlist bytes
+                // were published + audio-add'ed as a "media file"). A REAL
+                // HLS audio download needs segment fetching (the HlsDownloader
+                // pipeline owns that for videos; the DASH pipeline handles its
+                // own audio groups) — out of scope for this flat progressive
+                // path. The skip is an HONEST GAP: the version is logged +
+                // left unpublished rather than shipping garbage that "plays"
+                // as noise.
+                val urlPath = track.url.substringBefore('?')
+                    .substringAfterLast('/', "").lowercase()
+                if (urlPath.endsWith(".m3u8") || urlPath.endsWith(".m3u")) {
+                    DownloadLogger.w {
+                        "Audio version $index (${track.lang}) is an HLS playlist " +
+                            "(${track.url.take(80)}) — a flat audio download cannot " +
+                            "fetch segment streams; SKIPPED (no .audio file published)"
+                    }
+                    continue
+                }
                 val tempFile = tempCache.getTempFile(task.id, "audio-$index.${audioExtension(track.url)}")
                 try {
                     val requestBuilder = Request.Builder().url(track.url)
@@ -543,6 +564,20 @@ class HttpDownloader(
                         }
                         tempFile.outputStream().use { out ->
                             response.body?.byteStream()?.use { it.copyTo(out) }
+                        }
+                        // ── ROUND 150: the minimal publish gate — a fetch
+                        // that wrote nothing (a null body) or an implausibly
+                        // small payload (an error page, a truncated transfer)
+                        // must never publish as an .audio file — the device
+                        // round's glitched playback was exactly such garbage.
+                        if (tempFile.length() < MIN_PUBLISHABLE_AUDIO_BYTES) {
+                            DownloadLogger.w {
+                                "Audio version $index (${track.lang}) fetched only " +
+                                    "${tempFile.length()} bytes (< $MIN_PUBLISHABLE_AUDIO_BYTES) " +
+                                    "— not a plausible audio file; skipping"
+                            }
+                            tempFile.delete()
+                            return@use
                         }
                         results.add(tempFile)
                     }
@@ -710,5 +745,14 @@ class HttpDownloader(
 
         /** Round 120 (D-748): the pre-flight floor when the task size is unknown. */
         private const val MIN_FREE_BYTES_FALLBACK = 200L * 1024 * 1024
+
+        /**
+         * ROUND 150: the minimal publish gate for a fetched AUDIO_VARIANT —
+         * a real audio file (even a low-bitrate HE-AAC episode track) is
+         * orders of magnitude above this floor, while the failure shapes
+         * (an empty body, an error page, a truncated fetch) land far below.
+         * Anything under the floor never publishes as an `.audio<N>` file.
+         */
+        private const val MIN_PUBLISHABLE_AUDIO_BYTES = 65_536L
     }
 }

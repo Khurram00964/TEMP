@@ -3069,6 +3069,35 @@ private suspend fun buildWatchKeyForDownloadedEpisode(
             "subtitleTracksStr.length=${subtitleTracksStr.length}"
     }
 
+    // ROUND 150: the SHARED audio resolution — the audio mirror of the D-407
+    // subtitle chain above. The audio version files download WITH the episode
+    // (the round-149 publish writes them into audio/ + the .data.json
+    // audioUris record) but this hand-off serialized "" into
+    // WatchKey.audioTracksSerialized — the "the files download but nothing
+    // plays/attaches them" device report. resolveAudioTracks lives on the
+    // CONCRETE manager (the DownloadManager interface stays schema-
+    // unchanged); the Koin binding `single<DownloadManager> {
+    // get<DefaultDownloadManager>() }` guarantees the runtime type.
+    val resolvedAudios = kotlinx.coroutines.withContext(
+        kotlinx.coroutines.Dispatchers.IO,
+    ) {
+        runCatching {
+            (downloadManager as? com.confused.anikuta.core.download.DefaultDownloadManager)
+                ?.resolveAudioTracks(
+                    mainId = mainId,
+                    episodeNumber = downloaded?.episode?.episodeNumber?.toInt() ?: 0,
+                )
+        }.getOrNull()
+    }.orEmpty()
+    val audioTracksStr = resolvedAudios.joinToString("\n") {
+        "${it.uri}$delim${it.label}"
+    }
+    Logger.i("Anikuta:MainActivity") {
+        "Downloads→Watch: resolver returned ${resolvedAudios.size} audio track(s) " +
+            "[labels=${resolvedAudios.map { it.label }}], " +
+            "audioTracksStr.length=${audioTracksStr.length}"
+    }
+
     // Look up the sourceId so the watch screen can re-resolve non-downloaded episodes.
     val sourceId = contentRepository.getContentDetails(mainId)?.sourceId ?: 0L
     Logger.i("Anikuta:MainActivity") { "Downloads→Watch: sourceId=$sourceId (for episode switching)" }
@@ -3086,7 +3115,9 @@ private suspend fun buildWatchKeyForDownloadedEpisode(
         sourceId = sourceId,
         mainId = mainId,
         subtitleTracksSerialized = subtitleTracksStr,
-        audioTracksSerialized = "",
+        // ROUND 150: the downloaded audio versions, serialized ("uri<US>label"
+        // — the same format the subtitles carry).
+        audioTracksSerialized = audioTracksStr,
         episodeMetadataSerialized = epMetaStr,
         // SA2-F4 (round-108 audit): the cover rides the Downloads-origin
         // hand-off too — the player's thumbnail fallback chain

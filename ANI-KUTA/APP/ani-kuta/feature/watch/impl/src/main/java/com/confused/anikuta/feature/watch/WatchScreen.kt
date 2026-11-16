@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,7 +113,9 @@ import com.confused.anikuta.core.watchprogress.WatchSessionRecorder
 import `is`.xyz.mpv.MPVLib
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 
 private const val TAG = "Anikuta:Feature:Watch"
@@ -235,6 +238,14 @@ fun WatchScreen(
     // D.FIX: ParcelFileDescriptor for offline playback (content:// → fd:// conversion).
     // Kept open while MPV plays from it. Closed on dispose.
     var mpvParcelFileDescriptor by remember { mutableStateOf<android.os.ParcelFileDescriptor?>(null) }
+    // ROUND 150: the offline AUDIO descriptors — the video pfd's exact
+    // discipline, one per audio version: content:// → openFileDescriptor →
+    // `fd://N` handed to mpv's audio-add (mpv can't open SAF content:// URIs
+    // — the same reason the video converts; the SUBTITLE precedent's route
+    // (a SubtitleEngine cache copy) is impractical for whole audio files).
+    // mpv reads from the descriptor, so they stay open until dispose / the
+    // next offline switch closes + reopens them.
+    val mpvAudioPfds = remember { mutableListOf<android.os.ParcelFileDescriptor>() }
 
     // ── D-407 (round 31): the MANUAL SUBTITLE IMPORT ──────────────────────────
     // The subtitle sheet's permanent "Add subtitle file" action → the device's
@@ -359,6 +370,10 @@ fun WatchScreen(
     }
 
     val playerMode by stateHolder.playerMode.collectAsState()
+    // ROUND 150: the fullscreen ROTATION FREE/LOCK toggle — the bottom-right
+    // cluster's new button flips this, and the orientation effect below keys
+    // on it. Saveable across process death like the rest of the UI flags.
+    var rotationLocked by rememberSaveable { mutableStateOf(false) }
     val isPlaying by stateHolder.isPlaying.collectAsState()
     val position by stateHolder.position.collectAsState()
     val duration by stateHolder.duration.collectAsState()
@@ -393,7 +408,7 @@ fun WatchScreen(
     // Fix (aligned with old project's pattern):
     // - Only set `false` in fullscreen (never `true` in minimized).
     // - `onDispose` restores the app-wide edge-to-edge defaults.
-    DisposableEffect(playerMode) {
+    DisposableEffect(playerMode, rotationLocked) {
         val window = (context as? Activity)?.window
         if (window != null) {
             val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
@@ -401,7 +416,23 @@ fun WatchScreen(
                 androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
                 controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                // ROUND 150: the ROTATION FREE/LOCK toggle. FREE (default) →
+                // SCREEN_ORIENTATION_FULL_SENSOR — all four orientations, so a
+                // PORTRAIT-fullscreen is allowed (the device report's layout
+                // tolerance; the sheet drawers widen for it, see
+                // PlayerSheets). LOCK → SCREEN_ORIENTATION_LOCKED pins the
+                // CURRENT orientation (API 27+; minSdk 24 → older devices
+                // re-assert the fullscreen sensor-landscape instead).
+                (context as? Activity)?.requestedOrientation =
+                    if (rotationLocked) {
+                        if (android.os.Build.VERSION.SDK_INT >= 27) {
+                            ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                        } else {
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                        }
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                    }
             } else {
                 // MINIMIZED: only show the bars. Do NOT flip setDecorFitsSystemWindows
                 // to true — that conflicts with enableEdgeToEdge() in MainActivity
@@ -1205,29 +1236,86 @@ fun WatchScreen(
             }
         }
 
-    // ── ROUND 149: the REMEMBERED-AUDIO PRE-APPLY — the exact mirror of the
-    // remembered-subtitle rhythm above (the per-series audio-version memory):
-    // the AudioSheet's selections persist the track's label/lang, and this
-    // pre-applies the match (by name OR lang) on every track-list reload —
-    // file load, episode switch, and once a just-audio-add'ed external
-    // version finishes registering. No "off" case — MPV always has an active
-    // audio track for videos with audio. Idempotent (only sets aid when the
-    // selection differs).
+    // ── ROUND 150: the DEFAULT-AUDIO LADDER — the extension of the round-149
+    // remembered-audio pre-apply (the remembered match is rung 2; the rungs
+    // around it add the never-silent guarantee). The round-150 device report:
+    // an Aniyomi episode with external audio versions played SILENT by
+    // default — mpv's `audio-add <url> auto` (PlayerObserver.loadExternalTracks)
+    // sets no_default, so NOTHING ever selects the initial aid when the video
+    // file carries no embedded audio (or one mpv's alang default didn't
+    // match): the externals register, the track list populates, and aid stays
+    // empty. This runs after EVERY track-list reload (the observer's
+    // onTracksLoaded hook — loadTracksFromMpv pushes the fresh list into
+    // stateHolder.audioTracks BEFORE invoking it) and guarantees an ACTIVE
+    // audio track whenever mpv reports any:
+    //
+    //  a. The user's pick already active (currentAudioTrack is a live track
+    //     id) → respect it, done. mpv's own default selection and the user's
+    //     sheet taps land here.
+    //  b. The remembered label (the per-series memory — name OR lang,
+    //     case-insensitive; the round-149 behavior unchanged).
+    //  c. The VARIANT-BASED match — parseAudioAvailability over the CURRENT
+    //     episode's scanlator + title (the metadata map + the LIVE holder, so
+    //     it follows in-player episode switches): DUB prefers an eng/english
+    //     track, SUB/HSUB prefer jpn/japanese ("english (original)" /
+    //     "japanese (original)" carry the plain token too).
+    //  d. The FIRST audio track — the terminal fallback. A silent player is
+    //     never acceptable.
+    //
+    // The ladder is a DEFAULT, not a choice: it NEVER writes
+    // setPreferredAudioTrack (only real user taps persist — onAudioSelected /
+    // onExternalAudioPicked). Idempotent: it only sets aid when the current
+    // selection differs, and it rides the same MPVLib.setPropertyInt("aid", …)
+    // path the sheet handlers use.
     val applyRememberedAudio: (List<com.confused.anikuta.core.player.VideoTrack>) -> Unit =
         { audios ->
-            val mainId = watchKey.mainId
-            val remembered = if (mainId.isNotBlank()) {
-                playerPreferences.getPreferredAudioTrack(mainId)
-            } else ""
-            if (remembered.isNotBlank()) {
-                val match = audios.firstOrNull {
-                    it.name == remembered ||
-                        it.lang?.equals(remembered, ignoreCase = true) == true
-                }
-                if (match != null && stateHolder.currentAudioTrack.value != match.id) {
-                    runCatching { MPVLib.setPropertyInt("aid", match.id) }
-                    Logger.i(TAG) {
-                        "Remembered audio: '$remembered' → track id ${match.id} (pre-applied)"
+            if (audios.isNotEmpty()) {
+                val current = stateHolder.currentAudioTrack.value
+                val currentActive = audios.any { it.id == current }
+                if (currentActive) {
+                    // (a) A live aid — mpv (or the user) already owns the pick.
+                } else {
+                    // (b) The remembered label match (the round-149 rung).
+                    val mainId = watchKey.mainId
+                    val remembered = if (mainId.isNotBlank()) {
+                        playerPreferences.getPreferredAudioTrack(mainId)
+                    } else ""
+                    val rememberedMatch = if (remembered.isNotBlank()) {
+                        audios.firstOrNull {
+                            it.name == remembered ||
+                                it.lang?.equals(remembered, ignoreCase = true) == true
+                        }
+                    } else null
+                    // (c) The variant-based match (DUB → eng, SUB/HSUB → jpn).
+                    val variantMatch = if (rememberedMatch == null) {
+                        val currentEpNum = stateHolder.currentEpisodeNumber.value.toInt()
+                        val variant = parseAudioAvailability(
+                            episodeMetadata[currentEpNum]?.scanlator,
+                            stateHolder.currentEpisodeTitle.value,
+                        )
+                        val langTokens = if (variant.hasDub) {
+                            listOf("eng", "english")
+                        } else {
+                            listOf("jpn", "japanese")
+                        }
+                        audios.firstOrNull { track ->
+                            val haystack = ((track.lang ?: "") + " " + track.name).lowercase()
+                            langTokens.any { haystack.contains(it) }
+                        }
+                    } else null
+                    // (d) The terminal fallback — the FIRST audio track.
+                    val target = rememberedMatch ?: variantMatch ?: audios.first()
+                    if (target.id != current) {
+                        runCatching { MPVLib.setPropertyInt("aid", target.id) }
+                        val source = when {
+                            rememberedMatch != null -> "remembered '$remembered'"
+                            variantMatch != null ->
+                                "variant match ('${target.lang ?: target.name}')"
+                            else -> "first-track fallback (never silent)"
+                        }
+                        Logger.i(TAG) {
+                            "Default-audio ladder → track id ${target.id} ($source)"
+                        }
                     }
                 }
             }
@@ -1335,7 +1423,41 @@ fun WatchScreen(
                 val keyAudios = watchKey.parseAudioTracks()
                 if (keySubs.isNotEmpty() || keyAudios.isNotEmpty()) {
                     obs.pendingSubtitleTracks = keySubs
-                    obs.pendingAudioTracks = keyAudios
+                    // ROUND 150: the offline AUDIO fd conversion — for a
+                    // downloaded episode the WatchKey's audio entries are
+                    // content:// URIs, and mpv cannot open SAF content://
+                    // (the exact reason the video converts to fd:// below).
+                    // The subtitle precedent routes around this with a
+                    // SubtitleEngine cache COPY — impractical for whole audio
+                    // files — so the audio mirrors the VIDEO instead:
+                    // openFileDescriptor → `fd://N`, descriptors kept open in
+                    // mpvAudioPfds (closed on dispose / the next offline
+                    // switch). Network audio entries pass through unchanged.
+                    obs.pendingAudioTracks = keyAudios.mapNotNull { (url, lang) ->
+                        if (url.startsWith("content://")) {
+                            runCatching {
+                                val pfd = context.contentResolver.openFileDescriptor(
+                                    android.net.Uri.parse(url),
+                                    "r",
+                                )
+                                if (pfd != null) {
+                                    mpvAudioPfds.add(pfd)
+                                    "fd://${pfd.fd}" to lang
+                                } else {
+                                    Logger.w(TAG) {
+                                        "Offline audio — openFileDescriptor returned null for ${url.take(60)}"
+                                    }
+                                    null
+                                }
+                            }.onFailure {
+                                Logger.w(TAG) {
+                                    "Offline audio — fd conversion failed for ${url.take(60)}: ${it.message}"
+                                }
+                            }.getOrNull()
+                        } else {
+                            url to lang
+                        }
+                    }
                     obs.trackHeaders = currentVideoHeaders
                     Logger.i(TAG) { "Pending external tracks (from WatchKey): ${keySubs.size} subs, ${keyAudios.size} audio" }
                 } else {
@@ -1560,6 +1682,10 @@ fun WatchScreen(
             // D.FIX: Close the ParcelFileDescriptor for offline playback.
             runCatching { mpvParcelFileDescriptor?.close() }
             mpvParcelFileDescriptor = null
+            // ROUND 150: close the offline AUDIO descriptors too (the same
+            // lifetime — mpv stopped + destroyed above, nothing reads them).
+            mpvAudioPfds.forEach { runCatching { it.close() } }
+            mpvAudioPfds.clear()
             Logger.i(TAG) { "MPV destroyed + observers removed + subtitles cleaned + fd closed" }
         }
     }
@@ -1584,6 +1710,44 @@ fun WatchScreen(
     }
     var showSubtitleSettingsSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+
+    // ── ROUND 150: the AUDIO-SWITCH WAIT — the pause-until-playing QoL ──────
+    // Picking an audio version that is NOT yet a registered mpv track sends
+    // `audio-add <url> select` — mpv must FETCH + demux the external stream
+    // before it can sound. During that window playback continues on the
+    // (audio-less or wrong-language) video track — the dead air the device
+    // round called out. So the pick PAUSES first, arms this wait, and the
+    // effect below unpauses the moment the live aid moves (the new track
+    // landed) — with a ~12s timeout resume so a dead URL never leaves the
+    // player stuck. Registered-track picks (onAudioSelected → aid) stay
+    // INSTANT — no pause. The sheet stays OPEN during the wait: the live aid
+    // highlight shows the landing.
+    var audioSwitchWaiting by remember { mutableStateOf(false) }
+    var audioSwitchBaselineAid by remember { mutableStateOf(-1) }
+    var audioSwitchWasPlaying by remember { mutableStateOf(false) }
+    LaunchedEffect(audioSwitchWaiting) {
+        if (!audioSwitchWaiting) return@LaunchedEffect
+        // ANY aid change from the pre-pick value resolves the wait — mpv's
+        // audio-add "select" sets aid itself once the stream registers, and
+        // the round-150 default-audio ladder may race it to the same track.
+        withTimeoutOrNull(12_000L) {
+            stateHolder.currentAudioTrack.first { it != audioSwitchBaselineAid }
+        }
+        if (audioSwitchWaiting) {
+            audioSwitchWaiting = false
+            // A deliberately-paused user (already paused when picking) keeps
+            // their pause — "pause-UNTIL-PLAYING" only applies to playback
+            // that was actually running when the switch started.
+            if (audioSwitchWasPlaying) {
+                runCatching { MPVLib.setPropertyBoolean("pause", false) }
+                stateHolder.updateUserPaused(false)
+            }
+            Logger.i(TAG) {
+                "Audio-switch wait resolved — aid moved from $audioSwitchBaselineAid, " +
+                    "playback resumed"
+            }
+        }
+    }
 
     // ── D-408 (round 32): the episode's ON-DISK subtitle files for the sheet's
     // "Available in storage" section ──
@@ -1881,6 +2045,9 @@ val onAudioSelected: (Int) -> Unit = { trackId ->
 // way. Headers: none needed — the loadfile-time `http-header-fields` OPTION
 // is process-wide, so mpv's audio-add fetch inherits the video's headers
 // (the same reason PlayerObserver.loadExternalTracks sends bare audio-adds).
+// ROUND 150: path 2 now PAUSES until the stream lands (the pause-until-
+// playing wait — see the state block by the sheet flags); path 1 stays
+// instant.
 val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack) -> Unit =
     { version ->
         try {
@@ -1900,9 +2067,31 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
                     "Audio version '${version.lang}' → registered track id ${registered.id} (aid)"
                 }
             } else {
+                // ROUND 150: the pause-until-playing wait — mpv must FETCH +
+                // demux the external stream before it can sound; pause FIRST
+                // (masking the deliberate-pause watchdog so the 15s stuck
+                // check never fires mid-wait), then audio-add "select", then
+                // let the wait effect above resume on the aid landing (12s
+                // timeout otherwise).
+                audioSwitchBaselineAid = stateHolder.currentAudioTrack.value
+                // A consecutive pick during an ongoing wait keeps the ORIGINAL
+                // was-playing snapshot — the first pick already paused the
+                // player, so re-reading isPlaying here would record false and
+                // the resolve would never resume.
+                if (!audioSwitchWaiting) {
+                    audioSwitchWasPlaying = stateHolder.isPlaying.value
+                }
+                if (audioSwitchWasPlaying) {
+                    stateHolder.updateUserPaused(true)
+                    runCatching { MPVLib.setPropertyBoolean("pause", true) }
+                    Logger.i(TAG) {
+                        "Audio version '${version.lang}' not registered — paused until the stream lands"
+                    }
+                }
                 MPVLib.command(
                     arrayOf("audio-add", version.url, "select", version.lang, version.lang),
                 )
+                audioSwitchWaiting = true
                 if (watchKey.mainId.isNotBlank()) {
                     playerPreferences.setPreferredAudioTrack(watchKey.mainId, version.lang)
                 }
@@ -2106,6 +2295,73 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
                             }
                         } else {
                             Logger.w(TAG) { "Episode switch — no subtitles resolved for downloaded episode (mainId=$currentMainId, epUrl=${ep.url})" }
+                        }
+
+                        // ── ROUND 150: the downloaded AUDIO mirror — the exact
+                        // hand-off the subtitles got (D-407) and the initial
+                        // offline open got above: resolveAudioTracks (the
+                        // .data.json audioUris → the audio/ folder walk) feeds
+                        // obs.pendingAudioTracks, with the content:// → fd://
+                        // conversion (the video's own discipline — mpv cannot
+                        // open SAF content://; the descriptor stays open in
+                        // mpvAudioPfds). Without this the switch path only
+                        // ever set pendingSubtitleTracks — the audio versions
+                        // downloaded with the episode never re-attached.
+                        val resolvedAudios = kotlinx.coroutines.withContext(
+                            kotlinx.coroutines.Dispatchers.IO,
+                        ) {
+                            runCatching {
+                                (downloadManager as?
+                                    com.confused.anikuta.core.download.DefaultDownloadManager)
+                                    ?.resolveAudioTracks(
+                                        mainId = downloadedMainId,
+                                        episodeNumber = ep.episodeNumber.toInt(),
+                                    )
+                            }.getOrNull()
+                        }.orEmpty()
+                        if (resolvedAudios.isNotEmpty()) {
+                            // Fresh episode → fresh descriptors: close the old
+                            // audio pfds before opening the new set (the video
+                            // pfd's discipline above).
+                            mpvAudioPfds.forEach { runCatching { it.close() } }
+                            mpvAudioPfds.clear()
+                            val convertedAudios = resolvedAudios.mapNotNull { track ->
+                                if (!track.uri.startsWith("content://")) {
+                                    track.uri to track.label
+                                } else {
+                                    runCatching {
+                                        val pfd = context.contentResolver.openFileDescriptor(
+                                            android.net.Uri.parse(track.uri),
+                                            "r",
+                                        )
+                                        if (pfd != null) {
+                                            mpvAudioPfds.add(pfd)
+                                            "fd://${pfd.fd}" to track.label
+                                        } else {
+                                            Logger.w(TAG) {
+                                                "Episode switch — audio openFileDescriptor null for ${track.uri.take(60)}"
+                                            }
+                                            null
+                                        }
+                                    }.onFailure {
+                                        Logger.w(TAG) {
+                                            "Episode switch — audio fd conversion failed for ${track.uri.take(60)}: ${it.message}"
+                                        }
+                                    }.getOrNull()
+                                }
+                            }
+                            observer?.let { obs ->
+                                obs.pendingAudioTracks = convertedAudios
+                            }
+                            Logger.i(TAG) {
+                                "Episode switch — set ${convertedAudios.size} pending audio " +
+                                    "track(s) for offline episode " +
+                                    "[labels=${resolvedAudios.map { it.label }}]"
+                            }
+                        } else {
+                            Logger.i(TAG) {
+                                "Episode switch — no audio versions resolved for downloaded episode (mainId=$currentMainId)"
+                            }
                         }
 
                         // D-749: for fd:// URLs, wait 500ms for surface readiness
@@ -2511,6 +2767,10 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             onSubtitleClick = { showSubtitleSheet = true },
             // ROUND 149: the wired Audio button (right of Quality).
             onAudioClick = { showAudioSheet = true },
+            // ROUND 150: the rotation FREE/LOCK toggle (the bottom-right
+            // cluster's new button — the lock state survives the mode switch).
+            rotationLocked = rotationLocked,
+            onToggleRotationClick = { rotationLocked = !rotationLocked },
             onSpeedClick = { showSpeedSheet = true },
             onSkipForward = onSkipForward,
             onRetry = onRetry,

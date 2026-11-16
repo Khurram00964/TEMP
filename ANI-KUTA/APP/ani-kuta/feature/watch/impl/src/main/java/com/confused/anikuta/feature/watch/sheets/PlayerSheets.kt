@@ -90,6 +90,23 @@ import com.confused.anikuta.core.videoresolver.ResolverVideo
 import org.koin.compose.koinInject
 
 /**
+ * ROUND 150: the player drawers' ORIENTATION-AWARE width fraction — 0.45f of
+ * the screen in landscape (the round-125 geometry, unchanged) widened to
+ * ~0.85f in portrait. The rotation toggle (round 150) now permits a
+ * PORTRAIT-fullscreen, where 0.45f of a narrow width rendered the audio/
+ * subtitle/quality drawers as a cramped ribbon (the device report's
+ * portrait-fullscreen layout tolerance). Read from [LocalConfiguration] so a
+ * rotation while a drawer is open recomposes the width live.
+ */
+@Composable
+private fun rememberPlayerDrawerWidthFraction(): Float {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    return if (isLandscape) 0.45f else 0.85f
+}
+
+/**
  * Subtitle tracks bottom sheet — shows available subtitle tracks + "Off" option
  * + a "Subtitle Settings" navigation row.
  *
@@ -162,7 +179,10 @@ fun SubtitleTracksSheet(
             { content ->
                 PlayerSideDrawerShell(
                     onDismiss = onDismiss,
-                    widthFraction = 0.45f,
+                    // ROUND 150: orientation-aware width (see
+                    // [rememberPlayerDrawerWidthFraction]) — landscape keeps
+                    // the round-125 geometry; portrait-fullscreen widens.
+                    widthFraction = rememberPlayerDrawerWidthFraction(),
                     maxWidthDp = 400,
                     content = content,
                 )
@@ -515,22 +535,30 @@ private fun TrackRow(
  * [SubtitleTracksSheet]'s panel language + row anatomy (same host split, same
  * header/divider, the same [TrackRow] highlight), fed by BOTH audio worlds:
  *
+ *  - "Audio versions" — the extension's external audio versions for the
+ *    CURRENT video (Aniyomi multi-audio: VF/VFQ/VOSTFR, English/Japanese
+ *    dubs as separate streams). Picking one first looks for a registered MPV
+ *    track with the matching lang/title and selects it; when none matches
+ *    yet the host pauses + re-registers it via `audio-add "select"` (the
+ *    round-150 pause-until-playing wait) and the observer's track reload +
+ *    aid feedback land the row here (the sheet stays open so the new track
+ *    can light up). ROUND 150: this is the sheet's PRIMARY — the FIRST
+ *    section, always visible when the stream carries versions.
  *  - "Audio tracks" — MPV's LIVE track-list (the embedded audio + every
  *    audio-add'ed external version). Selecting a row sets `aid` directly —
  *    an instant switch, no reload. The list is stateless here: the host
  *    passes `stateHolder.audioTracks` collected each recomposition, so a
  *    just-registered external track (audio-add → track-list/count change →
  *    updateTracks) lights up without reopening the sheet.
- *  - "Audio versions" — the extension's external audio versions for the
- *    CURRENT video (Aniyomi multi-audio: VF/VFQ/VOSTFR, English/Japanese
- *    dubs as separate streams). Picking one first looks for a registered MPV
- *    track with the matching lang/title and selects it; when none matches
- *    yet the host re-registers it via `audio-add "select"` and the observer's
- *    track reload + aid feedback land the row here (the sheet stays open so
- *    the new track can light up).
+ *    ROUND 150: DEBUG-ONLY — the device report wanted the sheet to show
+ *    ONLY the "Audio versions"; the raw mpv tracks are a debugging surface,
+ *    gated by Settings → Debug options (the [QualitySheet] live-collect
+ *    pattern — toggling applies while the sheet is open, default OFF).
  *
  * NO "Off"/"Default" row — MPV always has an active audio track for videos
- * with audio (the CS sheet's "Auto" semantics would be a no-op here).
+ * with audio (the CS sheet's "Auto" semantics would be a no-op here), and the
+ * round-150 default-audio ladder guarantees an active track even for
+ * audio-less video files with external versions.
  *
  * @param audioTracks MPV's audio tracks (from [AnikutaMPVView.loadTracks] —
  *   embedded + audio-add'ed externals, LIVE via the host's StateFlow).
@@ -540,6 +568,8 @@ private fun TrackRow(
  *   (url + lang) from the resolver. Empty when the stream has none.
  * @param onPickExternal Called when the user taps an audio version row.
  * @param onDismiss Close the sheet.
+ * @param debugPreferences The shared debug gates (koinInject default — the
+ *   host passes nothing new; mirrors the QualitySheet's parameter).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -553,7 +583,14 @@ fun AudioSheet(
     // ROUND 149: the same presentation split as SubtitleTracksSheet — the
     // fullscreen drawer only in landscape; portrait keeps the bottom-up sheet.
     asDrawer: Boolean = false,
+    // ROUND 150: the raw mpv track-list's DEBUG gate (see the KDoc).
+    debugPreferences: DebugPreferences = koinInject(),
 ) {
+    // ROUND 150: the debug gate — LIVE-collected so toggling Settings →
+    // Debug options while this sheet is open applies without reopening.
+    // Default OFF (the sheet shows the versions only).
+    val debugShowMpvTracks by debugPreferences.showResolveSourcesFlow()
+        .collectAsState(initial = false)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.70f
     val host: @Composable (content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) -> Unit =
@@ -561,7 +598,10 @@ fun AudioSheet(
             { content ->
                 PlayerSideDrawerShell(
                     onDismiss = onDismiss,
-                    widthFraction = 0.45f,
+                    // ROUND 150: orientation-aware width (see
+                    // [rememberPlayerDrawerWidthFraction]) — landscape keeps
+                    // the round-125 geometry; portrait-fullscreen widens.
+                    widthFraction = rememberPlayerDrawerWidthFraction(),
                     maxWidthDp = 400,
                     content = content,
                 )
@@ -636,50 +676,12 @@ fun AudioSheet(
                 ),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // ── "Audio tracks" — MPV's live track-list (embedded + the
-                // audio-add'ed external versions). The selected row highlights
-                // through the shared TrackRow anatomy. No "Off" row (see the
-                // KDoc — mpv always has an active audio track for videos with
-                // audio).
-                item(key = "sec-audio-tracks") {
-                    Text(
-                        text = "AUDIO TRACKS",
-                        fontFamily = RobotoFamily,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.2.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp),
-                    )
-                }
-                if (audioTracks.isEmpty()) {
-                    item(key = "empty-audio-msg") {
-                        Text(
-                            text = "No audio tracks found in this stream.",
-                            fontFamily = RobotoFamily,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(20.dp),
-                        )
-                    }
-                } else {
-                    items(audioTracks.size) { index ->
-                        val track = audioTracks[index]
-                        TrackRow(
-                            label = track.name.ifBlank { "Audio ${index + 1}" },
-                            isSelected = track.id == currentAudioTrackId,
-                            onClick = {
-                                onSelectTrack(track.id)
-                                onDismiss()
-                            },
-                        )
-                    }
-                }
-                // ── "Audio versions" — the extension's external multi-audio
-                // streams for the current video (the Aniyomi VF/VFQ/VOSTFR /
-                // English-dub world). Same action-row anatomy as the subtitle
-                // sheet's "Available in storage" rows (an ACTION, not a
-                // selectable state). Hidden when the stream has none.
+                // ── ROUND 150: "Audio versions" FIRST — the sheet's primary
+                // surface (the extension's external multi-audio streams for
+                // the current video: the Aniyomi VF/VFQ/VOSTFR / English-dub
+                // world). Same action-row anatomy as the subtitle sheet's
+                // "Available in storage" rows (an ACTION, not a selectable
+                // state). Hidden when the stream has none.
                 if (externalVersions.isNotEmpty()) {
                     item(key = "sec-audio-versions") {
                         Text(
@@ -754,6 +756,66 @@ fun AudioSheet(
                         }
                     }
                 }
+                // ── "Audio tracks" — MPV's live track-list (embedded + the
+                // audio-add'ed external versions). The selected row highlights
+                // through the shared TrackRow anatomy. No "Off" row (see the
+                // KDoc — mpv always has an active audio track for videos with
+                // audio). ROUND 150: DEBUG-ONLY — the device report wanted
+                // this sheet to show ONLY the "Audio versions"; the raw mpv
+                // tracks are a debugging surface, gated by Settings → Debug
+                // options (the QualitySheet's live-collect pattern).
+                if (debugShowMpvTracks) {
+                    item(key = "sec-audio-tracks") {
+                        Text(
+                            text = "AUDIO TRACKS",
+                            fontFamily = RobotoFamily,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.2.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp),
+                        )
+                    }
+                    if (audioTracks.isEmpty()) {
+                        item(key = "empty-audio-tracks-msg") {
+                            Text(
+                                text = "No audio tracks found in this stream.",
+                                fontFamily = RobotoFamily,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(20.dp),
+                            )
+                        }
+                    } else {
+                        items(audioTracks.size) { index ->
+                            val track = audioTracks[index]
+                            TrackRow(
+                                label = track.name.ifBlank { "Audio ${index + 1}" },
+                                isSelected = track.id == currentAudioTrackId,
+                                onClick = {
+                                    onSelectTrack(track.id)
+                                    onDismiss()
+                                },
+                            )
+                        }
+                    }
+                }
+                // ── ROUND 150: the honest empty state — the versions section
+                // is empty AND the debug tracks surface is hidden (when the
+                // debug surface is on, its own "no tracks" message speaks
+                // above). Nothing fabricated — the stream genuinely has no
+                // audio versions.
+                if (externalVersions.isEmpty() && !debugShowMpvTracks) {
+                    item(key = "empty-audio-msg") {
+                        Text(
+                            text = "No audio versions available for this stream.",
+                            fontFamily = RobotoFamily,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(20.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -819,7 +881,10 @@ fun QualitySheet(
             { content ->
                 PlayerSideDrawerShell(
                     onDismiss = onDismiss,
-                    widthFraction = 0.45f,
+                    // ROUND 150: orientation-aware width (see
+                    // [rememberPlayerDrawerWidthFraction]) — landscape keeps
+                    // the round-125 geometry; portrait-fullscreen widens.
+                    widthFraction = rememberPlayerDrawerWidthFraction(),
                     maxWidthDp = 400,
                     content = content,
                 )

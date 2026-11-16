@@ -18,6 +18,24 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
+ * ROUND 150: a resolved AUDIO track for a downloaded episode — the audio
+ * mirror of [ResolvedSubtitleTrack]. ONE shape for every offline hand-off
+ * (the details page, the downloads page, the in-player episode switch), so
+ * they can never disagree about which audio files belong to the episode.
+ *
+ * @param uri The audio file's `content://` URI (SAF) — the `.data.json`
+ *   `audioUris` record or an `audio/`-folder sibling. The player converts it
+ *   to `fd://` (the video's own discipline) before mpv's `audio-add`.
+ * @param label The human-readable label for the player's track selector
+ *   ("Audio 1", "Audio 2", … — positional; the download-time lang lives in
+ *   the resolve context, not in the published file names).
+ */
+data class DownloadedAudioTrack(
+    val uri: String,
+    val label: String,
+)
+
+/**
  * The default [DownloadManager] implementation.
  *
  * D.1.9 + 12-di-wiring.md §11.1: wires [DownloadQueue] + [HttpDownloader] +
@@ -1099,6 +1117,161 @@ class DefaultDownloadManager(
             ResolvedSubtitleTrack(
                 uri = uri,
                 label = DownloadedSubtitleLabels.labelForUri(uri, index),
+            )
+        }
+    }
+
+    /**
+     * ROUND 150: the AUDIO mirror of [resolveSubtitleTracks] — ONE answer for
+     * "which audio files belong to this downloaded episode?", used by EVERY
+     * offline playback path (the details-page hand-off, the downloads-page
+     * hand-off, the in-player episode switch) so they can never disagree.
+     * The round-150 device report: the audio version files download WITH the
+     * episode (the round-149 progressive publish writes them into `audio/`
+     * + the `.data.json` `audioUris` record) but nothing plays or attaches
+     * them — the three hand-offs serialized "" into
+     * `WatchKey.audioTracksSerialized`.
+     *
+     * The chain (the subtitle resolver's 4 layers, adapted to where the
+     * audio truth lives — the DB row carries NO audio column, the schema is
+     * deliberately unchanged):
+     *
+     * 0. **Stale-cache reload** — a missing row triggers ONE cache reload
+     *    from the DB, then a retry (kills the download → open race).
+     * 1. **The `.data.json` `audioUris`** — the durable record the
+     *    round-149 publish wrote (read through [DownloadStorageProvider]
+     *    exactly like the manifest walks below).
+     * 2. **The disk walk** — the episode's `audio/` folder (+ the legacy
+     *    `episodes/` copies), matched by the video file's base name — the
+     *    `DownloadScanner.audioSiblingFiles` sibling rule mirrored without
+     *    the scanner's index maps: `<videoBase>.audio<N>.mp4`, ordered by N,
+     *    `audio/` winning over a duplicate legacy copy.
+     * 3. **Empty** — honest: an episode without audio versions resolves to
+     *    an empty list (a plain progressive download), and the caller sends
+     *    no audio.
+     *
+     * Labels are positional ("Audio 1", "Audio 2", …) — the published file
+     * names carry no lang segment (the download-time langs live in the
+     * task's resolve context, not in the SAF names); if the `.data.json`
+     * ever carries langs, they belong here.
+     *
+     * NOTE: declared on the CONCRETE manager (the [DownloadManager] interface
+     * stays schema-unchanged) — the Koin binding
+     * `single<DownloadManager> { get<DefaultDownloadManager>() }` guarantees
+     * the runtime instance, so the callers' `as?` cast is total.
+     */
+    suspend fun resolveAudioTracks(
+        mainId: String,
+        episodeNumber: Int,
+    ): List<DownloadedAudioTrack> = withContext(Dispatchers.IO) {
+        if (mainId.isBlank() || episodeNumber <= 0) return@withContext emptyList()
+
+        fun findRow() = _downloadedEpisodes.value.firstOrNull {
+            it.content.mainId == mainId && it.episode.episodeNumber.toInt() == episodeNumber
+        }
+
+        // 0. The row — ONE stale-cache reload (the resolveSubtitleTracks
+        //    pattern; the row also feeds the disk walk's video base name).
+        var row = findRow()
+        if (row == null) {
+            refreshDownloadedEpisodes()
+            row = findRow()
+            if (row != null) {
+                DownloadLogger.i {
+                    "resolveAudioTracks — cache reloaded from DB for mainId=$mainId " +
+                        "E$episodeNumber"
+                }
+            }
+        }
+
+        val uris = mutableListOf<String>()
+
+        // 1. The `.data.json` `audioUris` — the durable publish record.
+        runCatching {
+            val folder = storage.findContentFolder(mainId)
+            if (folder != null) {
+                val data = storage.readDataJson(folder)
+                val entry = data?.episodes?.firstOrNull {
+                    it.episodeNumber.toInt() == episodeNumber
+                }
+                val recorded = entry?.audioUris.orEmpty().filter { it.isNotBlank() }
+                if (recorded.isNotEmpty()) {
+                    DownloadLogger.i {
+                        "resolveAudioTracks — data.json has ${recorded.size} audio uri(s) " +
+                            "for mainId=$mainId E$episodeNumber"
+                    }
+                    uris += recorded
+                }
+            }
+        }.onFailure {
+            DownloadLogger.w {
+                "resolveAudioTracks — data.json read failed (continuing to the disk walk): " +
+                    "${it.message}"
+            }
+        }
+
+        // 2. The disk walk — the video base name locates the audio siblings
+        //    (`<base>.audio<N>.mp4`) across `audio/` (canonical) + `episodes/`
+        //    (the v1.1.23 legacy layout). Skipped when the video uri can't
+        //    yield a file name (the DASH `csdash:` marker — its audio lives
+        //    in layer 1's record anyway).
+        if (uris.isEmpty()) {
+            val videoName = row?.videoUri?.let { DownloadedSubtitleLabels.fileNameOf(it) }
+            if (!videoName.isNullOrBlank()) {
+                // The sibling rule verbatim: base = the video name minus its
+                // ".mp4" tail (the scanner + the publisher both build the
+                // audio names from THIS base, whatever the video's extension).
+                val base = videoName.removeSuffix(".mp4")
+                runCatching {
+                    val folder = storage.findContentFolder(mainId)
+                    if (folder != null) {
+                        val found = mutableListOf<Pair<Int, String>>() // (N, uri)
+                        for (dirName in listOf("audio", "episodes")) {
+                            val dir = folder.findFile(dirName)?.takeIf { it.isDirectory }
+                                ?: continue
+                            for (file in dir.listFiles()) {
+                                if (!file.isFile) continue
+                                val name = file.name ?: continue
+                                if (!name.startsWith("$base.audio") || !name.endsWith(".mp4")) {
+                                    continue
+                                }
+                                val n = name.removePrefix("$base.audio")
+                                    .removeSuffix(".mp4").toIntOrNull() ?: continue
+                                found += n to file.uri.toString()
+                            }
+                        }
+                        // Ordered by N (audio1, audio2, …); a variant N seen
+                        // twice keeps its FIRST hit — `audio/` is walked
+                        // before the legacy `episodes/` copy, so the
+                        // canonical file wins.
+                        val walked = found.sortedBy { (n, _) -> n }
+                            .distinctBy { (n, _) -> n }
+                            .map { (_, uri) -> uri }
+                        if (walked.isNotEmpty()) {
+                            DownloadLogger.i {
+                                "resolveAudioTracks — disk walk found ${walked.size} " +
+                                    "audio file(s) for mainId=$mainId E$episodeNumber"
+                            }
+                            uris += walked
+                        }
+                    }
+                }.onFailure {
+                    DownloadLogger.w {
+                        "resolveAudioTracks — disk walk failed (resolving empty): ${it.message}"
+                    }
+                }
+            } else {
+                DownloadLogger.i {
+                    "resolveAudioTracks — no audio uris + no usable video file name " +
+                        "(mainId=$mainId E$episodeNumber) — resolving empty"
+                }
+            }
+        }
+
+        uris.distinct().mapIndexed { index, uri ->
+            DownloadedAudioTrack(
+                uri = uri,
+                label = "Audio ${index + 1}",
             )
         }
     }

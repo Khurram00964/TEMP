@@ -31,6 +31,11 @@ import androidx.compose.material.icons.filled.Lock
 // ROUND 121-fix: SkipForward is NOT in the pinned material-icons-extended
 // 1.7.8 artifact (run 40023420647: Unresolved) — SkipNext is (and was already
 // imported). Same glyph meaning for a next-episode button.
+// ROUND 150: ScreenRotation + ScreenLockRotation VERIFIED present in the same
+// pinned 1.7.8 extended artifact (filled/ScreenRotationKt +
+// filled/ScreenLockRotationKt) — the rotation toggle's FREE/LOCK glyphs.
+import androidx.compose.material.icons.filled.ScreenLockRotation
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -116,6 +121,13 @@ fun FullscreenControls(
     onPiPClick: () -> Unit = {},
     // ROUND 145 (P-M3): the DEAD Rotate button removed (same rationale — the
     // MPV stack never wired a rotation handler).
+    // ROUND 150: it is BACK and WIRED — the bottom-right cluster's rotation
+    // FREE/LOCK toggle (the state + the requestedOrientation writes live in
+    // WatchScreen's fullscreen orientation effect; this button only flips it).
+    // The icon reads the state: ScreenLockRotation while locked,
+    // ScreenRotation while free.
+    onToggleRotationClick: () -> Unit = {},
+    rotationLocked: Boolean = false,
     onRetry: () -> Unit = {},
     onDismissError: () -> Unit = {},
     // Round 120 (D-748): opens the intro/outro marking sheet.
@@ -490,6 +502,28 @@ fun FullscreenControls(
                                         )
                                         FSSpeedButton(speed = currentSpeed, onClick = onSpeedClick)
                                         FSSkipIconButton(onClick = onSkipForward)
+                                        // ROUND 150: the ROTATION FREE/LOCK toggle —
+                                        // LAST in the tray (resize → speed → next →
+                                        // rotate), LEFT of the standalone exit chip.
+                                        // FREE (ScreenRotation): every orientation is
+                                        // allowed (portrait-fullscreen included);
+                                        // LOCK (ScreenLockRotation): the current one
+                                        // is pinned. The orientation writes happen in
+                                        // WatchScreen's fullscreen effect — this is
+                                        // only the flip.
+                                        FSSmallButton(
+                                            icon = if (rotationLocked) {
+                                                Icons.Default.ScreenLockRotation
+                                            } else {
+                                                Icons.Default.ScreenRotation
+                                            },
+                                            contentDescription = if (rotationLocked) {
+                                                "Rotation locked (tap to free)"
+                                            } else {
+                                                "Rotation free (tap to lock)"
+                                            },
+                                            onClick = onToggleRotationClick,
+                                        )
                                     }
                                 }
                                 // D-467: standalone again (NOT inside the

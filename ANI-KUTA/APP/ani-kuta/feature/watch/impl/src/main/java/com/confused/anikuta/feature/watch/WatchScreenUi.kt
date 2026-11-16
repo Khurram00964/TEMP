@@ -138,6 +138,11 @@ internal fun FullscreenMode(
     onSubtitleClick: () -> Unit = {},
     // ROUND 149: the Audio button (right of Quality) — opens the AudioSheet.
     onAudioClick: () -> Unit = {},
+    // ROUND 150: the bottom-right cluster's rotation FREE/LOCK toggle (the
+    // state lives in WatchScreen — saveable; the orientation effect keys on
+    // it). Pass-through to FullscreenControls' new button.
+    rotationLocked: Boolean = false,
+    onToggleRotationClick: () -> Unit = {},
     onSpeedClick: () -> Unit = {},
     onSkipForward: () -> Unit = {},
     onRetry: () -> Unit = {},
@@ -203,6 +208,10 @@ internal fun FullscreenMode(
             onSubtitleClick = onSubtitleClick,
             // ROUND 149: the wired Audio button (right of Quality).
             onAudioClick = onAudioClick,
+            // ROUND 150: the rotation FREE/LOCK toggle (the bottom-right
+            // cluster, left of the exit chip).
+            onToggleRotationClick = onToggleRotationClick,
+            rotationLocked = rotationLocked,
             onSpeedClick = onSpeedClick,
             // ROUND 121: the episodes browser (the previously dead More button).
             onMoreClick = onOpenEpisodesSheet,
