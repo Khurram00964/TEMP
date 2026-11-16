@@ -26,19 +26,22 @@ import kotlinx.coroutines.withContext
  * properly loaded and managed."
  *
  * ## How it works
- *  1. **DATA** — the three home discovery sections (home_trending /
- *     home_popular / home_top_rated) load EXACTLY the way
- *     [com.confused.anikuta.feature.animebrowse.HomeViewModel.loadSection]
- *     will load them on first composition: cache-first
+ *  1. **DATA** — ROUND 151 (the design-handoff home rebuild): the home's ONE
+ *     discovery section (home_trending) loads
+ *     EXACTLY the way
+ *     [com.confused.anikuta.feature.animebrowse.HomeViewModel] loads it on
+ *     first composition: cache-first
  *     (`DataCacheRepository.getBrowseCache` + `BrowseCacheCodec.decode`),
  *     and only when the cache is missing/expired a network fetch
  *     + `upsertBrowseCache` — so the cache the Home screen reads on entry
- *     is already warm (or gets warmed here first).
- *  2. **IMAGES** — every cover URL of all three sections is enqueued into
+ *     is already warm (or gets warmed here first). The round-148
+ *     home_popular / home_top_rated sections are retired with their warmups:
+ *     the single trending payload feeds the hero AND the ranked
+ *     rail AND the mood-chip filters.
+ *  2. **IMAGES** — every cover URL of the payload is enqueued into
  *     the Coil pipeline at the EXACT render sizes the Home screen uses
- *     (`SectionPreloader`'s memory-cache contract: 128×192dp for the rails'
- *     covers (the home rails render the SAME 128dp cards Browse did —
- *     visual continuity), 84×126dp for the hero posters — same size + no
+ *     (`SectionPreloader`'s memory-cache contract: 104×156dp for the ranked
+ *     poster rail, 340×454dp for the hero carousel cards — same size + no
  *     transformations = memory-cache HITS on first compose, so the page
  *     renders with covers instantly visible).
  *
@@ -52,13 +55,13 @@ object BrowsePreloader {
 
     private const val TAG = "Anikuta:BrowsePreloader"
 
-    /** The carousel cover render size (BrowseCards / SectionPreloader). */
-    private const val CARD_COVER_WIDTH_DP = 128
-    private const val CARD_COVER_HEIGHT_DP = 192
+    /** The ranked poster rail's render size (HomeScreen / SectionPreloader). */
+    private const val CARD_COVER_WIDTH_DP = 104
+    private const val CARD_COVER_HEIGHT_DP = 156
 
-    /** The hero poster render size (BrowseHero / SectionPreloader). */
-    private const val HERO_COVER_WIDTH_DP = 84
-    private const val HERO_COVER_HEIGHT_DP = 126
+    /** The hero carousel card's render size (HomeScreen / SectionPreloader). */
+    private const val HERO_COVER_WIDTH_DP = 340
+    private const val HERO_COVER_HEIGHT_DP = 454
 
     /**
      * Warms the browse data + cover images. Safe to call multiple times
@@ -70,13 +73,12 @@ object BrowsePreloader {
         dataCacheRepository: DataCacheRepository,
     ) = withContext(Dispatchers.IO) {
         Logger.i(TAG) { "preload — START (wizard is running; warming Browse)" }
-        // Round 148: the tab serves the HOME screen now — warm the home_*
-        // sections (HomeViewModel's own cache keys; the old trending/popular/
-        // top_rated keys stay untouched for Search's offline fallback, D-278).
+        // ROUND 151: the home has ONE discovery section now — home_trending
+        // (the old trending/popular/top_rated keys stay untouched for Search's
+        // offline fallback, D-278; home_popular / home_top_rated are retired
+        // with the round-148 sections).
         val sections = listOf(
             BrowseCacheCodec.SECTION_HOME_TRENDING to "TRENDING_DESC",
-            BrowseCacheCodec.SECTION_HOME_POPULAR to "POPULARITY_DESC",
-            BrowseCacheCodec.SECTION_HOME_TOP_RATED to "SCORE_DESC",
         )
         val all = mutableListOf<AniListAnime>()
         sections.forEach { (sectionKey, sort) ->
@@ -123,16 +125,16 @@ object BrowsePreloader {
             )
         }
         Logger.i(TAG) {
-            "preload — DONE: 3 sections (${all.size} anime), " +
+            "preload — DONE: 1 section (${all.size} anime), " +
                 "${coverUrls.size} covers enqueued " +
                 "at ${CARD_COVER_WIDTH_DP}×${CARD_COVER_HEIGHT_DP}dp " +
-                "+ ${heroUrls.size} hero posters at ${HERO_COVER_WIDTH_DP}×${HERO_COVER_HEIGHT_DP}dp"
+                "+ ${heroUrls.size} hero cards at ${HERO_COVER_WIDTH_DP}×${HERO_COVER_HEIGHT_DP}dp"
         }
     }
 
     /**
-     * One section, cache-first — mirrors HomeViewModel.loadSection's
-     * cache semantics: a fresh cache row is used as-is; a missing/expired
+     * One section, cache-first — mirrors the HomeViewModel's cache
+     * semantics: a fresh cache row is used as-is; a missing/expired
      * row triggers the network fetch + the cache upsert (so the Home
      * screen's cache-first read hits instantly later).
      */

@@ -73,6 +73,12 @@ import com.confused.anikuta.core.designsystem.theme.AnikutaTheme
 import com.confused.anikuta.core.designsystem.theme.RobotoFamily
 import com.confused.anikuta.core.navigation.NavKey
 import com.confused.anikuta.feature.animebrowse.AnimeBrowseKey
+import com.confused.anikuta.feature.animebrowse.HomeCatalogKey
+import com.confused.anikuta.feature.animebrowse.HomeCatalogScreen
+import com.confused.anikuta.feature.animebrowse.HomeGenreKey
+import com.confused.anikuta.feature.animebrowse.HomeGenreScreen
+import com.confused.anikuta.feature.animebrowse.HomeGenresKey
+import com.confused.anikuta.feature.animebrowse.HomeGenresScreen
 import com.confused.anikuta.feature.animebrowse.HomeScreen
 import com.confused.anikuta.feature.animedetails.AnimeDetailsKey
 import com.confused.anikuta.feature.animedetails.DetailsScreen
@@ -745,8 +751,17 @@ fun AppRoot() {
      * that gets the honest "Extension <name> not available" toast. When
      * [episodeNumber] is non-null the details page scrolls to and highlights
      * that episode (targetEpisode).
+     *
+     * ROUND 151 (the design-handoff home rebuild): the third arg is the
+     * AUTOPLAY intent — the home's Continue-watching card tap must land the
+     * user on that episode PLAYING, and the details key already carries the
+     * Phase-3 `autoPlayEpisode` (DetailsScreen auto-triggers the episode
+     * click → the Phase-2 auto-resolve flow → the player). History/Profile
+     * pass false (scroll + highlight only); the home's art tap passes true.
+     * The key sets BOTH autoPlayEpisode and targetEpisode so the episode
+     * stays highlighted while the resolve runs.
      */
-    val openDetailsByMainId: (String, Int?) -> Unit = { mainId, episodeNumber ->
+    val openDetailsByMainId: (String, Int?, Boolean) -> Unit = { mainId, episodeNumber, autoplay ->
         val content = contentRepository.getMainEntryByMainId(mainId)
         if (content == null) {
             com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
@@ -757,7 +772,11 @@ fun AppRoot() {
             val details = contentRepository.getContentDetails(mainId)
             val anilistId = details?.anilistId
             val targetKey: AnimeDetailsKey? = if (anilistId != null) {
-                AnimeDetailsKey.AniList(anilistId, targetEpisode = episodeNumber)
+                AnimeDetailsKey.AniList(
+                    anilistId,
+                    autoPlayEpisode = episodeNumber.takeIf { autoplay },
+                    targetEpisode = episodeNumber,
+                )
             } else {
                 // The D-849 defensive mapping (the Downloads variant): the details
                 // axis first, then the main_entry fallbacks. 0L is POISONOUS (it
@@ -785,6 +804,7 @@ fun AppRoot() {
                         animeUrl = url,
                         title = content.title,
                         thumbnailUrl = details?.extThumbnailUrl,
+                        autoPlayEpisode = episodeNumber.takeIf { autoplay },
                         targetEpisode = episodeNumber,
                     )
                 }
@@ -1183,21 +1203,46 @@ fun AppRoot() {
             is AnimeBrowseKey -> HomeScreen(
                 onNavigate = { navKey ->
                     // D-272: route Details navigations through the ad gate;
-                    // everything else (e.g. Watch from a Continue-Watching card,
-                    // which Browse no longer surfaces but the contract holds)
-                    // pushes directly onto the backstack.
+                    // everything else (History/Updates from the home rails, the
+                    // HomeCatalogKey "See all" page the catalog agent dispatches,
+                    // Profile from the TopBar) pushes directly onto the backstack.
                     when (navKey) {
                         is AnimeDetailsKey -> navigateToDetails(navKey)
                         else -> pushKey(navKey)
                     }
                 },
-                // Round 148: the home's personal rails (Continue watching /
-                // Next up / Releasing soon / Recently released) open details
-                // BY mainId — the openDetailsByMainId semantics (works even
-                // after the content left the library; opens at that episode).
-                onOpenDetailsByMainId = { mainId, episodeNumber ->
-                    openDetailsByMainId(mainId, episodeNumber)
+                // ROUND 151: the TopBar's profile button pushes the Profile page.
+                onProfileClick = { pushKey(ProfileKey) },
+                // ROUND 151: the Continue-watching cards + the Airs-today rows
+                // open details BY mainId — the openDetailsByMainId semantics
+                // (works even after the content left the library; opens at
+                // that episode). The home's third arg is the AUTOPLAY intent:
+                // the Continue card tap lands the user on that episode PLAYING
+                // (autoPlayEpisode on the details key); the title block and
+                // the timeline rows pass false.
+                onOpenDetailsByMainId = { mainId, episodeNumber, autoplay ->
+                    openDetailsByMainId(mainId, episodeNumber, autoplay)
                 },
+            )
+            // ROUND 152: the home's browse destinations — the "All genres"
+            // index, one genre/tag's title grid, and the catalog page behind
+            // the rails' "See all" (HomeCatalogKey carries the sort query).
+            // Sub-screen back = pop; the grids' details taps ride the ad gate.
+            is HomeGenresKey -> HomeGenresScreen(
+                onBack = pop,
+                onOpen = { kind, name -> pushKey(HomeGenreKey(kind = kind, name = name)) },
+            )
+            is HomeGenreKey -> HomeGenreScreen(
+                kind = currentKey.kind,
+                name = currentKey.name,
+                onBack = pop,
+                onOpenDetails = { detailsKey -> navigateToDetails(detailsKey) },
+            )
+            is HomeCatalogKey -> HomeCatalogScreen(
+                query = currentKey.query,
+                title = currentKey.title,
+                onBack = pop,
+                onOpenDetails = { detailsKey -> navigateToDetails(detailsKey) },
             )
             is AnimeDetailsKey -> {
                 // Handle both AniList and Extension variants of the sealed key.
@@ -2000,7 +2045,7 @@ fun AppRoot() {
             )
             is ProfileKey -> com.confused.anikuta.profile.ProfileScreen(
                 onOpenContent = { mainId, episodeNumber ->
-                    openDetailsByMainId(mainId, episodeNumber)
+                    openDetailsByMainId(mainId, episodeNumber, false)
                 },
                 onBack = pop,
             )
@@ -2063,7 +2108,7 @@ fun AppRoot() {
                         // (removed-from-library + extension-only content open;
                         // unresolvable extensions toast) + the target-episode
                         // scroll-to + highlight.
-                        openDetailsByMainId(mainId, episodeNumber)
+                        openDetailsByMainId(mainId, episodeNumber, false)
                     },
                 )
             }

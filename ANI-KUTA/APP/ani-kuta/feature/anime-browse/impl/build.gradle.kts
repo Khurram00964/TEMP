@@ -24,11 +24,18 @@ dependencies {
     // schedule + update stores directly (no new module).
     implementation(project(":core:schedule"))
     implementation(project(":core:updates"))
+    // Round 151 (the design-handoff home rebuild): the home's rails push the
+    // History ("See all") + Updates ("Schedule") keys directly.
+    implementation(project(":feature:anime-history:api"))
+    implementation(project(":feature:updates:api"))
 
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.foundation)
+    // D-322: explicit pin (icons deprecated after 1.7.8) — the home's
+    // Pause/Casino glyphs are extended-set icons.
+    implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

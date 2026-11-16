@@ -534,6 +534,9 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // D-432 (round 37 — the app-icon system): the App Icon page prefs
             // (the GitHub catalog cache + the in-app override path).
             single { com.confused.anikuta.core.preferences.AppIconPreferences(get()) }
+            // ROUND 151: the home feed's own prefs (the "Airs today" source
+            // toggle — library | global).
+            single { com.confused.anikuta.core.preferences.HomePreferences(get()) }
 
             // ViewModels (app-level)
             viewModelOf(::NotificationsSettingsViewModel)

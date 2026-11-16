@@ -8,53 +8,69 @@ import com.confused.anikuta.core.anilist.model.AniListAnime
 import com.confused.anikuta.core.common.Logger
 import com.confused.anikuta.core.content.ContentRepository
 import com.confused.anikuta.core.datacache.DataCacheRepository
+import com.confused.anikuta.core.preferences.HomeAirsSource
+import com.confused.anikuta.core.preferences.HomePreferences
 import com.confused.anikuta.core.schedule.ScheduleEntry
 import com.confused.anikuta.core.schedule.ScheduleStore
-import com.confused.anikuta.core.updates.EpisodeUpdate
-import com.confused.anikuta.core.updates.UpdateStore
 import com.confused.anikuta.core.watchprogress.WatchProgress
 import com.confused.anikuta.core.watchprogress.WatchProgressStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 /**
- * ViewModel for the HOME screen (round 148 — the "My screen" replacement of
- * the Browse tab; spec: DOCUMENTATION/PROJECT-MAP/11-HOME-MY-SCREEN-SPEC.md).
+ * ViewModel for the HOME screen — ROUND 151, the design-handoff rebuild
+ * (this round scrapes the round-148 "My screen" sections: Next up /
+ * Releasing soon / Recently released / Popular / Top rated are GONE).
  *
- * The section stack (top → bottom), each loaded independently (partial
- * success — a failing section never kills the home):
+ * The section stack now mirrors the handoff's page.tsx, top → bottom:
  *
- * | Section            | Source                                                            |
- * |--------------------|-------------------------------------------------------------------|
- * | Hero               | trending (banners) → popular fallback (the BrowseViewModel logic) |
- * | Continue watching  | [WatchProgressStore.observeContinueWatching] (the round-144 v4 query, finally surfaced) |
- * | What to watch next | DERIVED — highest-watched + 1 per recently-watched mainId, plus the RELEASING `anime_update_state.next_airing_episode` ("airing next") |
- * | Releasing soon     | [ScheduleStore.observeUpcoming] (library semi-join, `scheduled_at ASC`, 7-day window) |
- * | Recently released  | [UpdateStore.observeAllUpdates] deduped per mainId to the newest  |
- * | Trending / Popular / Top Rated | the EXACT BrowseViewModel cache-first pattern under the NEW `home_*` browse_cache keys |
+ * | Section (home)        | Source                                                            |
+ * |-----------------------|-------------------------------------------------------------------|
+ * | Hero                  | trending top-5 (the SAME home_trending payload the rail ranks)    |
+ * | Continue watching     | [WatchProgressStore.observeContinueWatching] + the user's rules   |
+ * | Airs today            | [HomePreferences.airsSource] toggle → [ScheduleStore.observeUpcoming] (see below) |
+ * | Trending rail         | the home_trending payload, ranked (the rail shows the rank badge) |
+ * | Suggested for you     | the library-genre affinity pool (top-3 genres) for the field agent |
+ * | Mood chips            | static genre list; taps filter the TRENDING pool locally (v1)     |
  *
- * The OLD "trending"/"popular"/"top_rated" keys stay untouched — the Search
- * tab's offline fallback co-owns them (the D-278 trap).
+ * ## The one discovery fetch
+ * Trending is loaded EXACTLY the round-148 cache-first way (cache read on IO →
+ * decode via [BrowseCacheCodec] → instant display; only when the cache is
+ * missing/expired ONE [AniListApi.fetchBrowseSection] fetch + upsert, 6h TTL)
+ * under the SAME `home_trending` browse_cache key. That single payload feeds
+ * the hero AND the rail AND the mood-chip rails — no duplicate fetches.
  *
- * Rate-limit discipline (spec §2): the three discovery fetches reuse the SAME
- * cache-first `loadSection` rhythm Browse uses (cache → expired → ONE fetch →
- * upsert, 6h TTL), run in parallel with partial-success fallback. No new
- * AniList queries — the hero + rails reuse `fetchBrowseSection`.
+ * ## The user's continue-watching rules
+ * drop `completed` rows; drop `position < 10s` (barely started); order by
+ * `lastWatchedAt` DESC; cap 20. Enriched in ONE pass with runCatching per item
+ * (the round-148 batch pattern): episode art from
+ * [DataCacheRepository.getEpisodeMetadata] with the cover fallback via
+ * [ContentRepository].
  *
- * Zero schema change: the personal rails are DERIVED at render time from the
- * tables that already own that truth (`watch_progress` v4, `episode_schedule`,
- * `episode_update`, `anime_update_state`) and enriched with title/cover via
- * [ContentRepository] (`main_entry` + `content_details`) — no new FKs.
+ * ## The "Airs today" source toggle
+ * [HomePreferences.airsSource] ("library" default | "global"). LIBRARY reads
+ * [ScheduleStore.observeUpcoming] (next 7 days). ROUND 152: GLOBAL fetches
+ * AniList's RELEASING feed through [AniListApi.fetchGlobalAiringSchedule] and
+ * composes the same 6-row shape from the shows' nextAiringEpisode clocks
+ * (released = aired within the last day). The composition rule is the user's
+ * must: EXACTLY 6 rows = 2 released (most recently aired, desc) + the next to
+ * air + the 3 after it (asc); shortfalls pad from the other side.
+ *
+ * ## The suggested pool
+ * The library's genre affinity: library mainIds × [ContentRepository.getAllContentDetailsMap],
+ * parse `data_genres` CSV, count, top-3. Empty library → empty pool (the field
+ * agent renders its demo fallback). Refresh = a token bump.
  *
  * CORE_RULES §20: logged with tag "Anikuta:Feature:Home". §23: reactive state.
  */
@@ -63,30 +79,47 @@ class HomeViewModel(
     private val dataCacheRepository: DataCacheRepository,
     private val watchProgressStore: WatchProgressStore,
     private val scheduleStore: ScheduleStore,
-    private val updateStore: UpdateStore,
     private val contentRepository: ContentRepository,
+    private val homePreferences: HomePreferences,
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "Anikuta:Feature:Home"
 
-        // The NEW home_* storage keys (BrowseCacheCodec owns them so no drift).
-        // The old "trending"/"popular"/"top_rated" keys are NOT touched —
-        // Search co-owns those (D-278).
+        // The home_trending storage key (BrowseCacheCodec owns the namespace —
+        // no drift). The old trending/popular/top_rated keys stay untouched —
+        // Search co-owns those (D-278); home_popular / home_top_rated are
+        // retired with the round-148 sections.
         private const val SECTION_TRENDING = BrowseCacheCodec.SECTION_HOME_TRENDING
-        private const val SECTION_POPULAR = BrowseCacheCodec.SECTION_HOME_POPULAR
-        private const val SECTION_TOP_RATED = BrowseCacheCodec.SECTION_HOME_TOP_RATED
 
-        private const val DISCOVERY_SECTION_COUNT = 3
+        private const val TRENDING_SORT = "TRENDING_DESC"
 
-        /** The personal rails' cap (spec: cap 20). */
-        private const val RAIL_CAP = 20
+        /** The hero carousel size (the handoff: 5 slides — the screen takes the payload's head). */
+        const val HERO_COUNT = 5
 
-        /** Releasing-soon window (spec §1: `getUpcomingSchedule(now, +7d)`). */
+        /** The continue rail's cap (the user's rule). */
+        private const val CONTINUE_CAP = 20
+
+        /** A "barely started" episode — position under 10s drops off the rail. */
+        private const val MIN_POSITION_SECONDS = 10L
+
+        /** The airs-today window + composition sizes (the user's must). */
         private const val SCHEDULE_WINDOW_MS = 7L * 24 * 60 * 60 * 1000
+        private const val AIRS_RELEASED_COUNT = 2
+        private const val AIRS_TOTAL = 6
 
-        /** Recent-watch pool the next-up derivation scans (a superset of the continue rail). */
-        private const val RECENT_POOL = 40
+        /**
+         * ROUND 152: the GLOBAL source's "released" window — a RELEASING
+         * episode counts as released when it aired within the last day.
+         */
+        private const val GLOBAL_AIRS_WINDOW_MS = 24L * 60 * 60 * 1000
+
+        /** The suggestion pool's genre depth (top-3). */
+        private const val SUGGESTED_GENRE_COUNT = 3
+
+        /** ROUND 152: the field's cover pool — per-genre pages merged to 50. */
+        private const val SUGGESTED_COVERS_PER_GENRE = 25
+        private const val SUGGESTED_COVER_POOL = 50
     }
 
     private val _state = MutableStateFlow<HomeState>(HomeState.Loading)
@@ -96,67 +129,54 @@ class HomeViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    // ── Discovery sections (the EXACT BrowseViewModel pattern, home_* keys) ──
+    // ── The ONE trending payload (hero + rail + mood rails share it) ─────────
 
     private val _trending = MutableStateFlow<List<AniListAnime>>(emptyList())
-    val trending: StateFlow<List<AniListAnime>> = _trending.asStateFlow()
-
-    private val _popular = MutableStateFlow<List<AniListAnime>>(emptyList())
-    val popular: StateFlow<List<AniListAnime>> = _popular.asStateFlow()
-
-    private val _topRated = MutableStateFlow<List<AniListAnime>>(emptyList())
-    val topRated: StateFlow<List<AniListAnime>> = _topRated.asStateFlow()
 
     /**
-     * The hero pager's items — up to 5 trending anime WITH banners, falling
-     * back to the first 3 of the source so a hero always renders; when
-     * trending is empty (cold start + trending cache miss) the hero falls
-     * back to popular so it still renders offline (the BrowseViewModel logic,
-     * reused verbatim over the two home discovery flows).
+     * The ONE trending payload — the hero takes its first [HERO_COUNT] for the
+     * carousel, the rail ranks the rest, the mood chips filter it locally.
      */
-    val heroItems: StateFlow<List<AniListAnime>> =
-        combine(_trending, _popular) { trending, popular ->
-            val heroSource = trending.ifEmpty { popular }
-            heroSource.filter { !it.bannerImage.isNullOrBlank() }.take(5)
-                .ifEmpty { heroSource.take(3) }
-        }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val trending: StateFlow<List<AniListAnime>> = _trending.asStateFlow()
 
-    // ── Personal rails (derived + enriched on Dispatchers.IO) ────────────────
+    // ── The personal sections ────────────────────────────────────────────────
 
     private val _continueWatching = MutableStateFlow<List<HomeContinueItem>>(emptyList())
     val continueWatching: StateFlow<List<HomeContinueItem>> = _continueWatching.asStateFlow()
 
-    private val _nextUp = MutableStateFlow<List<HomeNextUpItem>>(emptyList())
-    val nextUp: StateFlow<List<HomeNextUpItem>> = _nextUp.asStateFlow()
+    private val _airsToday = MutableStateFlow<List<HomeAirsItem>>(emptyList())
+    val airsToday: StateFlow<List<HomeAirsItem>> = _airsToday.asStateFlow()
 
-    private val _releasingSoon = MutableStateFlow<List<HomeScheduleItem>>(emptyList())
-    val releasingSoon: StateFlow<List<HomeScheduleItem>> = _releasingSoon.asStateFlow()
+    /** The suggestion field's pool + its refresh token (a bump reshuffles the field). */
+    private val _suggestedPool = MutableStateFlow(HomeSuggestionPool(emptyList()))
+    val suggestedPool: StateFlow<HomeSuggestionPool> = _suggestedPool.asStateFlow()
 
-    private val _recentlyReleased = MutableStateFlow<List<HomeReleaseItem>>(emptyList())
-    val recentlyReleased: StateFlow<List<HomeReleaseItem>> = _recentlyReleased.asStateFlow()
-
-    init {
-        loadDiscovery()
-        observePersonalRails()
-    }
-
-    /** Loads all three discovery sections (trending + popular + top-rated), cache-first. */
-    private fun loadDiscovery() {
-        loadSection(SECTION_TRENDING, "TRENDING_DESC") { _trending.value = it }
-        loadSection(SECTION_POPULAR, "POPULARITY_DESC") { _popular.value = it }
-        loadSection(SECTION_TOP_RATED, "SCORE_DESC") { _topRated.value = it }
-    }
+    private val _suggestedRefreshToken = MutableStateFlow(0)
+    val suggestedRefreshToken: StateFlow<Int> = _suggestedRefreshToken.asStateFlow()
 
     /**
-     * Cache-first section load — the BrowseViewModel.loadSection rhythm:
-     * cache read on IO → decode via the shared codec → instant display;
-     * only when the cache is missing/expired one network fetch + upsert.
+     * ROUND 152: the GLOBAL airs branch's reload trigger — pull-to-refresh
+     * bumps it so the one-shot global fetch re-runs (the library branch is
+     * reactive on its own and ignores this).
      */
-    private fun loadSection(sectionKey: String, sort: String, onResult: (List<AniListAnime>) -> Unit) {
+    private val _airsReloadToken = MutableStateFlow(0)
+
+    /** The airs source the timeline currently serves (mirrors the toggle). */
+    val airsSource: StateFlow<HomeAirsSource> = homePreferences.airsSource
+
+    init {
+        loadTrending()
+        observeContinueWatching()
+        observeAirsToday()
+        observeSuggestedPool()
+    }
+
+    // ── Trending (the EXACT round-148 cache-first loadSection, one section) ──
+
+    private fun loadTrending() {
         viewModelScope.launch {
             val cached = withContext(Dispatchers.IO) {
-                dataCacheRepository.getBrowseCache(sectionKey)
+                dataCacheRepository.getBrowseCache(SECTION_TRENDING)
             }
             var servedFromFreshCache = false
             if (cached != null) {
@@ -164,83 +184,67 @@ class HomeViewModel(
                     try {
                         BrowseCacheCodec.decode(cached.dataJson)
                     } catch (e: Exception) {
-                        Logger.w(TAG) { "Failed to parse $sectionKey cache: ${e.message}" }
+                        Logger.w(TAG) { "Failed to parse $SECTION_TRENDING cache: ${e.message}" }
                         emptyList()
                     }
                 }
                 if (cachedAnime.isNotEmpty()) {
-                    Logger.i(TAG) { "Loaded ${cachedAnime.size} $sectionKey from cache" }
-                    onResult(cachedAnime)
+                    Logger.i(TAG) { "Loaded ${cachedAnime.size} $SECTION_TRENDING from cache" }
+                    onTrending(cachedAnime)
                     servedFromFreshCache = true
                 }
             }
-            if (cached == null || dataCacheRepository.isBrowseCacheExpired(sectionKey)) {
-                fetchSection(sectionKey, sort, onResult)
+            if (cached == null || dataCacheRepository.isBrowseCacheExpired(SECTION_TRENDING)) {
+                fetchTrending()
             } else {
-                settleDiscovery(null, servedFromFreshCache)
+                settleHome(null, servedFromFreshCache)
             }
         }
     }
 
-    /**
-     * In-flight network fetch counter. viewModelScope launches on Main, so a
-     * plain Int is safe (single-threaded) — the same guard Browse uses so the
-     * first of 3 parallel fetches can't clear the spinner early.
-     */
-    private var inFlightFetches = 0
-
-    private suspend fun fetchSection(sectionKey: String, sort: String, onResult: (List<AniListAnime>) -> Unit) {
-        inFlightFetches++
+    private suspend fun fetchTrending() {
         _isRefreshing.value = true
         try {
-            val anime = anilistApi.fetchBrowseSection(sort)
-            Logger.i(TAG) { "Fetched ${anime.size} $sectionKey from network" }
-            onResult(anime)
+            val anime = anilistApi.fetchBrowseSection(TRENDING_SORT)
+            Logger.i(TAG) { "Fetched ${anime.size} $SECTION_TRENDING from network" }
+            onTrending(anime)
             val json = withContext(Dispatchers.IO) { BrowseCacheCodec.encode(anime) }
             withContext(Dispatchers.IO) {
-                dataCacheRepository.upsertBrowseCache(sectionKey, json)
+                dataCacheRepository.upsertBrowseCache(SECTION_TRENDING, json)
             }
-            Logger.i(TAG) { "Cached ${anime.size} $sectionKey anime" }
-            settleDiscovery(null, anime.isNotEmpty())
+            Logger.i(TAG) { "Cached ${anime.size} $SECTION_TRENDING anime" }
+            settleHome(null, anime.isNotEmpty())
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Failed to fetch $sectionKey: ${e.message}" }
-            settleDiscovery(e.message ?: "Unknown error", false)
+            Logger.e(TAG, e) { "Failed to fetch $SECTION_TRENDING: ${e.message}" }
+            settleHome(e.message ?: "Unknown error", false)
         } finally {
-            inFlightFetches--
-            if (inFlightFetches <= 0) {
-                inFlightFetches = 0
-                _isRefreshing.value = false
-            }
+            _isRefreshing.value = false
         }
     }
 
-    /**
-     * Partial-success Error policy: home falls to the hard Error state ONLY
-     * when ALL three discovery sections settled AND nothing at all loaded
-     * (no cached discovery payload AND every personal rail empty). Anything
-     * cached → Content; the empty sections simply don't render.
-     */
-    private var discoverySettled = 0
-    private var lastDiscoveryError: String? = null
+    private fun onTrending(anime: List<AniListAnime>) {
+        _trending.value = anime
+        if (_state.value is HomeState.Loading && anime.isNotEmpty()) _state.value = HomeState.Content
+        promoteOutOfError()
+    }
 
-    private fun settleDiscovery(error: String?, servedSomething: Boolean) {
-        if (error != null) lastDiscoveryError = error
+    /**
+     * Partial-success Error policy (the round-148 shape, one discovery fetch):
+     * home falls to the hard Error state ONLY when the trending fetch settled
+     * AND nothing at all loaded (no cached payload AND both personal rails
+     * empty). Anything cached → Content; the empty sections don't render.
+     */
+    private fun settleHome(error: String?, servedSomething: Boolean) {
         if (servedSomething) {
-            if (_state.value is HomeState.Loading) _state.value = HomeState.Content
             promoteOutOfError()
             return
         }
-        discoverySettled++
-        if (discoverySettled >= DISCOVERY_SECTION_COUNT) {
-            if (anyContentLoaded()) {
-                _state.value = HomeState.Content
-            } else if (_state.value !is HomeState.Error) {
-                _state.value = HomeState.Error(lastDiscoveryError ?: "Failed to load")
-            }
+        if (_state.value is HomeState.Loading && !anyContentLoaded()) {
+            _state.value = HomeState.Error(error ?: "Failed to load")
         }
     }
 
-    /** Every rail collection calls this — a rail with data lifts the home out of Error. */
+    /** A rail with data lifts the home out of Error. */
     private fun promoteOutOfError() {
         if (_state.value is HomeState.Error && anyContentLoaded()) {
             _state.value = HomeState.Content
@@ -249,251 +253,309 @@ class HomeViewModel(
 
     private fun anyContentLoaded(): Boolean =
         _trending.value.isNotEmpty() ||
-            _popular.value.isNotEmpty() ||
-            _topRated.value.isNotEmpty() ||
             _continueWatching.value.isNotEmpty() ||
-            _nextUp.value.isNotEmpty() ||
-            _releasingSoon.value.isNotEmpty() ||
-            _recentlyReleased.value.isNotEmpty()
+            _airsToday.value.isNotEmpty()
 
-    /**
-     * The four personal rails — each a reactive collection over the store that
-     * OWNS its truth, enriched (title + cover) on Dispatchers.IO and capped at
-     * [RAIL_CAP]. Every emission re-checks the Error state so offline homes
-     * with personal data still render (partial success).
-     */
-    private fun observePersonalRails() {
-        // Continue watching — the round-144 v4 query (in-progress, not
-        // suppressed, `last_watched_at DESC`), deduped per mainId to the most
-        // recent in-progress episode.
+    // ── Continue watching (the user's rules + the round-148 enrichment) ──────
+
+    private fun observeContinueWatching() {
         viewModelScope.launch {
-            watchProgressStore.observeContinueWatching(RAIL_CAP)
+            watchProgressStore.observeContinueWatching(CONTINUE_CAP)
                 .collect { rows ->
                     _continueWatching.value = withContext(Dispatchers.IO) { enrichContinue(rows) }
                     promoteOutOfError()
                 }
         }
-
-        // What to watch next — DERIVED (spec §1 #2): per recently-watched
-        // mainId the next unwatched episode (highest-watched + 1), plus the
-        // RELEASING next-airing card from anime_update_state.
-        viewModelScope.launch {
-            combine(
-                watchProgressStore.observeContinueWatching(RAIL_CAP),
-                watchProgressStore.observeRecent(RECENT_POOL),
-            ) { continueRows, recentRows ->
-                withContext(Dispatchers.IO) { deriveNextUp(continueRows, recentRows) }
-            }.collect { items ->
-                _nextUp.value = items
-                promoteOutOfError()
-            }
-        }
-
-        // Releasing soon — the schedule store's reactive feed (library
-        // semi-join, scheduled_at ASC, next 7 days), weekday + time subtitle.
-        viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            scheduleStore.observeUpcoming(from = now, to = now + SCHEDULE_WINDOW_MS)
-                .collect { entries ->
-                    _releasingSoon.value = withContext(Dispatchers.IO) { enrichSchedule(entries) }
-                    promoteOutOfError()
-                }
-        }
-
-        // Recently released — the detected-update feed (discovered_at DESC),
-        // deduped per mainId to the latest row, covers enriched locally.
-        viewModelScope.launch {
-            updateStore.observeAllUpdates(limit = 100L)
-                .collect { updates ->
-                    _recentlyReleased.value = withContext(Dispatchers.IO) { enrichReleases(updates) }
-                    promoteOutOfError()
-                }
-        }
     }
 
     /**
-     * Force-refresh the three discovery sections from network, in PARALLEL
-     * (pull-to-refresh + the error-state Retry). The personal rails are
-     * reactive store flows — they don't need a refresh trigger.
+     * The user's rules, enforced in the VM on top of the store's v4 query:
+     * drop completed; drop position < 10s; order lastWatchedAt DESC (the rows
+     * arrive ordered, but the rules hold regardless); cap 20; dedupe per
+     * mainId (the most recent row wins). Then the round-148 one-pass
+     * enrichment — runCatching per item, a failing item skips itself.
      */
-    fun refresh() {
-        viewModelScope.launch { fetchSection(SECTION_TRENDING, "TRENDING_DESC") { _trending.value = it } }
-        viewModelScope.launch { fetchSection(SECTION_POPULAR, "POPULARITY_DESC") { _popular.value = it } }
-        viewModelScope.launch { fetchSection(SECTION_TOP_RATED, "SCORE_DESC") { _topRated.value = it } }
-    }
-
-    // ── Enrichment (all run inside withContext(Dispatchers.IO)) ─────────────
-
-    /**
-     * Continue-watching rows → poster cards. Rows arrive `last_watched_at
-     * DESC`; the FIRST row per mainId is the most recent in-progress episode.
-     * Rows without a mainId (legacy pre-WP rows) are skipped honestly.
-     */
-    private fun enrichContinue(rows: List<WatchProgress>): List<HomeContinueItem> {
-        val items = mutableListOf<HomeContinueItem>()
-        for (row in rows.filter { it.mainId != null }.distinctBy { it.mainId }) {
-            if (items.size >= RAIL_CAP) break
-            val mainId = row.mainId!!
-            val content = contentRepository.getMainEntryByMainId(mainId) ?: continue
-            val details = contentRepository.getContentDetails(mainId)
-            items += HomeContinueItem(
-                mainId = mainId,
-                title = content.title,
-                coverUrl = details?.dataCoverUrl ?: details?.extThumbnailUrl,
-                episodeNumber = episodeNumberOf(row),
-                progressFraction = row.progressFraction,
-                totalEpisodes = details?.dataEpisodes?.toInt(),
-            )
-        }
-        return items
-    }
-
-    /**
-     * What to watch next — the deterministic round-148 derivation, kept
-     * honest and simple:
-     *
-     * 1. Scan the RECENT watch pool (a superset of the continue rail) — one
-     *    candidate per mainId (newest row wins).
-     * 2. next = highestWatched + 1 via the store's batched
-     *    [WatchProgressStore.getAllHighestWatchedNumbers] (one GROUP BY — no
-     *    per-anime queries).
-     * 3. Resume ownership: if the item's in-progress episode (what the
-     *    Continue rail already surfaces) IS the next episode, skip it here —
-     *    the Continue rail owns the resume case, this rail owns "start the
-     *    next one".
-     * 4. Airing next: `anime_update_state.status == RELEASING` with a
-     *    `next_airing_episode` AHEAD of what's watched → the target becomes
-     *    that episode with its date as the subtitle.
-     * 5. Existence guard: when the data axis knows the episode total
-     *    (`content_details.data_episodes`), never point past it. No fabricated
-     *    numbers — when the total is unknown the next-episode rule stands.
-     */
-    private suspend fun deriveNextUp(
-        continueRows: List<WatchProgress>,
-        recentRows: List<WatchProgress>,
-    ): List<HomeNextUpItem> {
-        val recentByMain = recentRows.filter { it.mainId != null }.distinctBy { it.mainId }
-        if (recentByMain.isEmpty()) return emptyList()
-        val continueEpByMain = continueRows
+    private suspend fun enrichContinue(rows: List<WatchProgress>): List<HomeContinueItem> {
+        val candidates = rows
+            .filter { !it.completed }
+            .filter { it.position >= MIN_POSITION_SECONDS }
+            .sortedByDescending { it.lastWatchedAt }
             .filter { it.mainId != null }
             .distinctBy { it.mainId }
-            .associate { it.mainId!! to episodeNumberOf(it) }
-        val highestMap = runCatching { watchProgressStore.getAllHighestWatchedNumbers() }
-            .getOrElse { e ->
-                Logger.w(TAG) { "highest-watched batch failed: ${e.message}" }
-                emptyMap()
-            }
+            .take(CONTINUE_CAP)
+        if (candidates.isEmpty()) return emptyList()
 
-        val items = mutableListOf<HomeNextUpItem>()
-        for (row in recentByMain) {
-            if (items.size >= RAIL_CAP) break
+        val items = mutableListOf<HomeContinueItem>()
+        for (row in candidates) {
             val mainId = row.mainId!!
-            val highest = highestMap[mainId] ?: 0
-            val next = highest + 1
-            if (next <= 0) continue
-
-            // The Continue rail already owns this resume — don't duplicate it.
-            val continueEp = continueEpByMain[mainId]
-            if (continueEp != null && continueEp >= next) continue
-
-            val content = contentRepository.getMainEntryByMainId(mainId) ?: continue
-            val details = contentRepository.getContentDetails(mainId)
-            val total = details?.dataEpisodes
-            val cover = details?.dataCoverUrl ?: details?.extThumbnailUrl
-
-            val state = updateStore.getAnimeUpdateState(mainId)
-            val airing = state?.takeIf {
-                it.status == "RELEASING" && it.nextAiringEpisode != null
-            }
-            val airingEp = airing?.nextAiringEpisode?.toInt()
-            if (airingEp != null && airingEp > highest) {
-                // Point past the total? Never.
-                if (total != null && airingEp > total) continue
-                items += HomeNextUpItem(
+            runCatching {
+                val content = contentRepository.getMainEntryByMainId(mainId)
+                    ?: error("no main_entry for $mainId")
+                val details = contentRepository.getContentDetails(mainId)
+                // The art: the EPISODE thumbnail when the data axis cached one,
+                // falling back to the show's cover.
+                val episodeThumb = dataCacheRepository.getEpisodeMetadata(mainId)
+                    .firstOrNull { it.episodeNumber.roundToInt() == episodeNumberOf(row) }
+                    ?.thumbnailUrl
+                val cover = episodeThumb
+                    ?: details?.dataCoverUrl
+                    ?: details?.extThumbnailUrl
+                val duration = row.duration.coerceAtLeast(0L)
+                val minutesLeft = if (duration > row.position) {
+                    ((duration - row.position + 59) / 60).coerceAtLeast(1L).toInt()
+                } else {
+                    1
+                }
+                HomeContinueItem(
                     mainId = mainId,
                     title = content.title,
-                    coverUrl = cover,
-                    episodeNumber = airingEp,
-                    subtitle = airing!!.nextAiringAt?.let { formatAiringDate(it) } ?: "Airing soon",
-                    isAiringNext = true,
+                    artUrl = cover,
+                    episodeNumber = episodeNumberOf(row),
+                    progressFraction = row.progressFraction,
+                    minutesLeft = minutesLeft,
                 )
-            } else {
-                if (total != null && next > total) continue
-                items += HomeNextUpItem(
-                    mainId = mainId,
-                    title = content.title,
-                    coverUrl = cover,
-                    episodeNumber = next,
-                    subtitle = "Up next",
-                    isAiringNext = false,
-                )
-            }
+            }.onSuccess { items += it }
+                .onFailure { e -> Logger.w(TAG) { "continue row $mainId skipped: ${e.message}" } }
         }
         return items
     }
 
-    /**
-     * Schedule rows (already ordered `scheduled_at ASC`, library semi-join,
-     * deduped defensively the same way ScheduleViewModel dedupes) → poster
-     * cards with the weekday + time subtitle (spec §1 #3).
-     */
-    private fun enrichSchedule(entries: List<ScheduleEntry>): List<HomeScheduleItem> {
-        return entries
-            .distinctBy { Triple(it.mainId, it.episodeNumber, it.scheduledAt) }
-            .take(RAIL_CAP)
-            .mapNotNull { entry ->
-                val content = contentRepository.getMainEntryByMainId(entry.mainId) ?: return@mapNotNull null
-                val details = contentRepository.getContentDetails(entry.mainId)
-                HomeScheduleItem(
-                    mainId = entry.mainId,
-                    title = content.title,
-                    coverUrl = details?.dataCoverUrl ?: details?.extThumbnailUrl,
-                    episodeNumber = entry.episodeNumber.toInt(),
-                    scheduledAt = entry.scheduledAt,
-                    subtitle = formatWeekdayTime(entry.scheduledAt),
-                )
-            }
-    }
-
-    /**
-     * The detected-update feed (already `discovered_at DESC`) → "just dropped"
-     * cards, deduped per mainId keeping the NEWEST row (the first occurrence).
-     */
-    private fun enrichReleases(updates: List<EpisodeUpdate>): List<HomeReleaseItem> {
-        val items = mutableListOf<HomeReleaseItem>()
-        for (update in updates.distinctBy { it.mainId }) {
-            if (items.size >= RAIL_CAP) break
-            val content = contentRepository.getMainEntryByMainId(update.mainId) ?: continue
-            val details = contentRepository.getContentDetails(update.mainId)
-            items += HomeReleaseItem(
-                mainId = update.mainId,
-                title = content.title,
-                coverUrl = details?.dataCoverUrl ?: details?.extThumbnailUrl,
-                episodeNumber = update.episodeNumber.toInt(),
-                discoveredAt = update.discoveredAt,
-            )
-        }
-        return items
-    }
-
-    // ── Small helpers ────────────────────────────────────────────────────────
-
-    /**
-     * The episode number carried by a progress row's standardized key
-     * (`"mainId|%05d"` — [com.confused.anikuta.core.watchprogress.EpisodeKeys]).
-     */
+    /** The episode number carried by a progress row's standardized key. */
     private fun episodeNumberOf(row: WatchProgress): Int =
         row.episodeKey.substringAfterLast('|').toIntOrNull() ?: 0
 
-    /** "Fri, Nov 21" — the airing-next subtitle. */
-    private fun formatAiringDate(at: Long): String =
-        Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault())
-            .format(DateTimeFormatter.ofPattern("EEE, MMM d"))
+    // ── Airs today (the source toggle + the user's 2+4 composition) ──────────
 
-    /** "Fri 18:30" — the releasing-soon subtitle (spec: the weekday + time). */
-    private fun formatWeekdayTime(at: Long): String =
-        Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault())
-            .format(DateTimeFormatter.ofPattern("EEE, HH:mm"))
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeAirsToday() {
+        viewModelScope.launch {
+            // ROUND 152: the GLOBAL branch is live — it fetches AniList's
+            // RELEASING feed (fetchGlobalAiringSchedule) and composes the same
+            // 2-released + next + 3-after shape as the library source, from
+            // the RELEASING shows' nextAiringEpisode clocks. LIBRARY keeps the
+            // reactive schedule store. The reload token re-opens the GLOBAL
+            // fetch on pull-to-refresh (the library source re-emits on its own).
+            homePreferences.airsSource.flatMapLatest { source ->
+                if (source == HomeAirsSource.GLOBAL) {
+                    _airsReloadToken.flatMapLatest { fetchGlobalAirsItems() }
+                } else {
+                    val now = System.currentTimeMillis()
+                    scheduleStore
+                        .observeUpcoming(from = now - SCHEDULE_WINDOW_MS, to = now + SCHEDULE_WINDOW_MS)
+                        .map { entries -> composeAirsToday(entries, System.currentTimeMillis()) }
+                }
+            }.collect { items ->
+                _airsToday.value = items
+                promoteOutOfError()
+            }
+        }
+    }
+
+    /**
+     * The GLOBAL "Airs today" feed: one [AniListApi.fetchGlobalAiringSchedule]
+     * fetch per activation (the flatMapLatest re-run), soft-failing to an
+     * empty list (the section hides — home stays Content on a network miss).
+     */
+    private fun fetchGlobalAirsItems(): Flow<List<HomeAirsItem>> = flow {
+        val items = runCatching {
+            val airing = anilistApi.fetchGlobalAiringSchedule()
+            Logger.i(TAG) { "global airing schedule fetched: ${airing.size} RELEASING shows" }
+            composeGlobalAirs(airing, System.currentTimeMillis())
+        }.getOrElse { e ->
+            if (e is CancellationException) throw e
+            Logger.e(TAG, e) { "global airing schedule failed: ${e.message}" }
+            emptyList()
+        }
+        emit(items)
+    }
+
+    /**
+     * The GLOBAL composition — the user's must on AniList data: released rows
+     * = episodes that aired within [GLOBAL_AIRS_WINDOW_MS] (a RELEASING
+     * episode's airingAt is only known forward, so "released" means "recently
+     * hit"), then EXACTLY 6 rows = 2 released (desc) + the next to air + the
+     * 3 after it (asc), padding from the other side on shortfalls — the same
+     * split [composeAirsToday] applies to the library schedule. Rows keep the
+     * library row shape (mainId becomes a synthetic `anilist-N` — the UI
+     * routes these through the AniList details path instead).
+     */
+    private fun composeGlobalAirs(airing: List<AniListAnime>, now: Long): List<HomeAirsItem> {
+        data class GlobalAirsRow(
+            val anilistId: Int,
+            val title: String,
+            val thumbUrl: String?,
+            val episodeNumber: Int,
+            val scheduledAt: Long,
+        )
+
+        val rows = airing.mapNotNull { anime ->
+            val next = anime.nextAiringEpisode ?: return@mapNotNull null
+            GlobalAirsRow(
+                anilistId = anime.id,
+                title = anime.displayName,
+                thumbUrl = anime.coverUrl,
+                episodeNumber = next.episode,
+                scheduledAt = next.airingAt * 1000L, // AniList airs in unix SECONDS
+            )
+        }
+        val released = rows
+            .filter { it.scheduledAt <= now && now - it.scheduledAt <= GLOBAL_AIRS_WINDOW_MS }
+            .sortedByDescending { it.scheduledAt }
+        val upcoming = rows
+            .filter { it.scheduledAt > now }
+            .sortedBy { it.scheduledAt }
+
+        val releasedHead = released.take(AIRS_RELEASED_COUNT)
+        val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
+        val releasedPad = released.drop(releasedHead.size)
+            .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
+
+        return (releasedHead + releasedPad + upcomingBody).map { row ->
+            HomeAirsItem(
+                mainId = "anilist-${row.anilistId}",
+                title = row.title,
+                thumbUrl = row.thumbUrl,
+                episodeNumber = row.episodeNumber,
+                scheduledAt = row.scheduledAt,
+                released = row.scheduledAt <= now,
+                anilistId = row.anilistId,
+            )
+        }
+    }
+
+    /**
+     * The user's composition must: EXACTLY 6 rows = 2 released (the most
+     * recently aired, desc) + the NEXT to air + the 3 after it (asc). Fewer
+     * released than 2 → take what exists and fill with upcoming; fewer
+     * upcoming → pad from the released. All released rows keep the top of the
+     * timeline (desc), the upcoming rows follow (asc). Enriched in one pass
+     * (runCatching per item — a row without a main_entry skips itself).
+     */
+    private suspend fun composeAirsToday(entries: List<ScheduleEntry>, now: Long): List<HomeAirsItem> {
+        val deduped = entries
+            .distinctBy { Triple(it.mainId, it.episodeNumber, it.scheduledAt) }
+        val released = deduped
+            .filter { it.scheduledAt <= now }
+            .sortedByDescending { it.scheduledAt }
+        val upcoming = deduped
+            .filter { it.scheduledAt > now }
+            .sortedBy { it.scheduledAt }
+
+        val releasedHead = released.take(AIRS_RELEASED_COUNT)
+        val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
+        val releasedPad = released.drop(releasedHead.size)
+            .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
+        val window = releasedHead + releasedPad + upcomingBody
+
+        val items = mutableListOf<HomeAirsItem>()
+        for (entry in window) {
+            runCatching {
+                val content = contentRepository.getMainEntryByMainId(entry.mainId)
+                    ?: error("no main_entry for ${entry.mainId}")
+                val details = contentRepository.getContentDetails(entry.mainId)
+                val episodeThumb = dataCacheRepository.getEpisodeMetadata(entry.mainId)
+                    .firstOrNull { it.episodeNumber.roundToInt() == entry.episodeNumber.roundToInt() }
+                    ?.thumbnailUrl
+                HomeAirsItem(
+                    mainId = entry.mainId,
+                    title = content.title,
+                    thumbUrl = episodeThumb
+                        ?: details?.dataCoverUrl
+                        ?: details?.extThumbnailUrl,
+                    episodeNumber = entry.episodeNumber.roundToInt(),
+                    scheduledAt = entry.scheduledAt,
+                    released = entry.scheduledAt <= now,
+                )
+            }.onSuccess { items += it }
+                .onFailure { e -> Logger.w(TAG) { "airs row ${entry.mainId} skipped: ${e.message}" } }
+        }
+        return items
+    }
+
+    // ── The suggested pool (library-genre affinity) ──────────────────────────
+
+    private fun observeSuggestedPool() {
+        viewModelScope.launch {
+            _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
+        }
+    }
+
+    /**
+     * The library's genre affinity: the library mainIds × the details map,
+     * parse `data_genres` CSV, count, top-3. Empty library → empty pool (the
+     * field agent owns the demo fallback).
+     */
+    private fun buildSuggestedPool(): HomeSuggestionPool {
+        return runCatching {
+            val libraryIds = contentRepository.getLibraryMainIds()
+            if (libraryIds.isEmpty()) return HomeSuggestionPool(emptyList())
+            val detailsMap = contentRepository.getAllContentDetailsMap()
+            val counts = HashMap<String, Int>()
+            for (mainId in libraryIds) {
+                val genres = detailsMap[mainId]?.dataGenres ?: continue
+                for (genre in genres.split(',')) {
+                    val g = genre.trim()
+                    if (g.isNotBlank()) counts.merge(g, 1, Int::plus)
+                }
+            }
+            val top = counts.entries
+                .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+                .take(SUGGESTED_GENRE_COUNT)
+                .map { it.key }
+            Logger.i(TAG) { "suggested pool genres: $top" }
+            HomeSuggestionPool(top)
+        }.getOrElse { e ->
+            Logger.w(TAG) { "suggested pool build failed: ${e.message}" }
+            HomeSuggestionPool(emptyList())
+        }
+    }
+
+    // ── The field's cover pool (ROUND 152) ───────────────────────────────────
+
+    /**
+     * The suggestion field's covers for the library's top genres: a
+     * [AniListApi.fetchByGenre] page per genre (popularity order), merged
+     * round-robin-style and deduped to a 50-cover pool. A failing genre
+     * fetch skips itself (the field falls back to the trending covers when
+     * the merge lands empty).
+     */
+    suspend fun suggestionCovers(genres: List<String>): List<AniListAnime> =
+        withContext(Dispatchers.IO) {
+            val merged = ArrayList<AniListAnime>()
+            val seen = HashSet<Int>()
+            for (genre in genres.take(SUGGESTED_GENRE_COUNT)) {
+                runCatching { anilistApi.fetchByGenre(genre, page = 1, perPage = SUGGESTED_COVERS_PER_GENRE) }
+                    .onSuccess { page ->
+                        for (anime in page.media) {
+                            if (seen.add(anime.id)) merged.add(anime)
+                        }
+                    }
+                    .onFailure { e -> Logger.w(TAG) { "suggestion covers for \"$genre\" failed: ${e.message}" } }
+            }
+            merged.take(SUGGESTED_COVER_POOL)
+        }
+
+    // ── Refresh (pull-to-refresh + the error Retry) ──────────────────────────
+
+    /**
+     * Parallel re-pull: the trending fetch is the only network section (the
+     * personal rails are reactive store flows). The suggestion pool rebuilds
+     * and its token bumps so the field reshuffles; ROUND 152 — the GLOBAL
+     * airs source re-fetches through the reload token.
+     */
+    fun refresh() {
+        viewModelScope.launch { fetchTrending() }
+        viewModelScope.launch {
+            _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
+            _suggestedRefreshToken.value += 1
+        }
+        viewModelScope.launch { _airsReloadToken.value += 1 }
+    }
+
+    /** The suggestion head's refresh button — a token bump only (no network). */
+    fun refreshSuggestions() {
+        _suggestedRefreshToken.value += 1
+    }
 }
 
 /** Home's overall state (the BrowseState shape: Loading → Content | Error). */
@@ -503,43 +565,41 @@ sealed interface HomeState {
     data class Error(val message: String) : HomeState
 }
 
-// ── Rail item models ─────────────────────────────────────────────────────────
+// ── Section item models ──────────────────────────────────────────────────────
 
-/** One Continue-watching card (poster + progress fraction + "EP N"). */
+/** One Continue-watching card (16:9 episode art + progress + minutes left). */
 data class HomeContinueItem(
     val mainId: String,
     val title: String,
-    val coverUrl: String?,
+    val artUrl: String?,
     val episodeNumber: Int,
     val progressFraction: Float,
-    val totalEpisodes: Int?,
+    val minutesLeft: Int,
 )
 
-/** One "What to watch next" card (the target episode, optionally airing-dated). */
-data class HomeNextUpItem(
+/** One Airs-today timeline row (the 2 released + next + 3 after composition). */
+data class HomeAirsItem(
     val mainId: String,
     val title: String,
-    val coverUrl: String?,
+    val thumbUrl: String?,
     val episodeNumber: Int,
-    val subtitle: String?,
-    val isAiringNext: Boolean,
-)
-
-/** One Releasing-soon card (weekday + time subtitle). */
-data class HomeScheduleItem(
-    val mainId: String,
-    val title: String,
-    val coverUrl: String?,
-    val episodeNumber: Int,
+    /** The episode's air time (epoch millis) — the UI formats the clock label. */
     val scheduledAt: Long,
-    val subtitle: String?,
+    val released: Boolean,
+    /**
+     * ROUND 152: the AniList id for GLOBAL-source rows (their [mainId] is a
+     * synthetic `anilist-N`) — the UI routes these taps to the AniList
+     * details page; library rows leave it null and keep the mainId path.
+     */
+    val anilistId: Int? = null,
 )
 
-/** One Recently-released card ("just dropped"). */
-data class HomeReleaseItem(
-    val mainId: String,
-    val title: String,
-    val coverUrl: String?,
-    val episodeNumber: Int,
-    val discoveredAt: Long,
+/**
+ * The suggestion field's data pool (ROUND 152: the [HomeSuggestionField]
+ * honeycomb consumes it — the top-3 library genres drive the cover fetch).
+ * Empty genres = the library is empty — the field falls back to the trending
+ * covers.
+ */
+data class HomeSuggestionPool(
+    val genres: List<String>,
 )

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
@@ -52,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,12 +74,15 @@ import com.confused.anikuta.core.designsystem.component.MoreListRow
 import com.confused.anikuta.core.designsystem.component.ScrollBlurOverlay
 import com.confused.anikuta.core.designsystem.component.SettingsIconTile
 import com.confused.anikuta.core.designsystem.theme.RobotoFamily
+import com.confused.anikuta.core.preferences.HomeAirsSource
+import com.confused.anikuta.core.preferences.HomePreferences
 import com.confused.anikuta.settings.search.SettingsHighlightTarget
 import com.confused.anikuta.settings.search.SettingsSearchEngine
 import com.confused.anikuta.settings.search.SettingsSearchEntry
 import com.confused.anikuta.settings.search.SettingsSearchPage
 import com.confused.anikuta.settings.search.SettingsSearchResult
 import com.confused.anikuta.settings.search.rememberSettingsAnchorScroll
+import org.koin.compose.koinInject
 
 /**
  * The Settings hub screen — reached by tapping "Settings" in MoreScreen.
@@ -176,9 +181,11 @@ fun SettingsScreen(
             // D-741: the About hub row is RETIRED (the More page already
             // carries the About & Updates door — the round-116 user order);
             // the Debug row moves up to its slot.
-            "torrent" to 6,
-            "permissions" to 7,
-            "debug" to 8,
+            // The handoff home rebuild's "Home feed" group sits between the
+            // Player block and Torrent — the three anchors below shift by one.
+            "torrent" to 7,
+            "permissions" to 8,
+            "debug" to 9,
         )
     }
     rememberSettingsAnchorScroll(highlightAnchor, { hubAnchorIndex[it] }, lazyListState)
@@ -394,6 +401,29 @@ fun SettingsScreen(
                         // redundant second door. The page itself is untouched —
                         // More → About & Updates, and the settings search's
                         // about.* entries still route there. ──
+
+                        // ── ROUND 151 (the design-handoff home rebuild): the
+                        // HOME FEED group — one row, the "Airs today" source
+                        // toggle cycling Library ↔ Global in place (the
+                        // subtitle shows the current value). ──
+                        item {
+                            Column {
+                                SettingsSectionLabel("Home feed")
+                                val homePreferences = koinInject<HomePreferences>()
+                                val airsSource by homePreferences.airsSource.collectAsState()
+                                MoreListRow(
+                                    icon = Icons.Filled.Home,
+                                    title = "Airs today source",
+                                    subtitle = when (airsSource) {
+                                        HomeAirsSource.LIBRARY ->
+                                            "Library — episodes scheduled for your library"
+                                        HomeAirsSource.GLOBAL ->
+                                            "Global — AniList's airing schedule"
+                                    },
+                                    onClick = { homePreferences.cycleAirsSource() },
+                                )
+                            }
+                        }
 
                         // ── Torrent (round 143, D-858) — the embedded torrent engine ──
                         item {
