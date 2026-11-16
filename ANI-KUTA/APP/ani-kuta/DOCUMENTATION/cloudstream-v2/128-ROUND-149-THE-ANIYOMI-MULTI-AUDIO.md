@@ -57,6 +57,5 @@
   (c) PRE-EXISTING: the retry handler re-loadfiles without re-setting pendingAudioTracks
   (external subs AND now audio versions drop on a cache-failure retry — the subtitle
   behavior since before; noted, not touched).
-- The home-page design comes from the user next (they are designing it); no release this
-  round — the debug line stays v1.1.89/10189, the next release carries 147-149.
-- Next decision: D-882; next record: 129.
+- **THE RELEASE (D-883)**: the user's order — BUT the testplay-byte account is GitHub-FLAGGED (everything 404s unauthenticated; Actions disabled; diagnosed by elimination — the tag re-push, the main push, the dispatch all dead). The user provided the Khurram00964/TEMP fallback: the temp remote mirrors main + ALL the release branches + the v1.1.90 tag (the ~50 historical release tags deliberately NOT mirrored — each would publish an old release on TEMP). NO app-code changes (the updater still points at testplay-byte). CI on TEMP is DISPATCH-DRIVEN (the push triggers don't fire on the fresh account). **v1.1.90 is LIVE on TEMP** (runs 43931441643 main + 43931582924 v1.1.90, both GREEN first try): the APK 76,203,792 bytes, the SHA 67f627f5… MATCHED — sideloadable over the v1.1.89 install. The switch-back procedure: credentials/temp-repo-notes.md.
+- Next decision: D-884; next record: 129.
