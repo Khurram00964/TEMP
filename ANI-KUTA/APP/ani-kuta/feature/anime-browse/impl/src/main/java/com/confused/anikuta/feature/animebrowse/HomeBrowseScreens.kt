@@ -284,7 +284,7 @@ class HomeGenresViewModel(private val anilistApi: AniListApi) : ViewModel() {
  * tap opening its title grid. Live data with skeleton + retry.
  */
 @Composable
-internal fun HomeGenresScreen(
+fun HomeGenresScreen(
     onBack: () -> Unit,
     onOpen: (kind: String, name: String) -> Unit,
     viewModel: HomeGenresViewModel = koinViewModel(),
@@ -644,7 +644,7 @@ private fun HomeCategoryGridScreen(
 
 /** One genre/tag page (HomeGenreKey) — the VM source rides the kind string. */
 @Composable
-internal fun HomeGenreScreen(
+fun HomeGenreScreen(
     kind: String,
     name: String,
     onBack: () -> Unit,
@@ -670,7 +670,7 @@ internal fun HomeGenreScreen(
  * "See all" passes TRENDING_DESC), titled from the key.
  */
 @Composable
-internal fun HomeCatalogScreen(
+fun HomeCatalogScreen(
     query: String,
     title: String,
     onBack: () -> Unit,
