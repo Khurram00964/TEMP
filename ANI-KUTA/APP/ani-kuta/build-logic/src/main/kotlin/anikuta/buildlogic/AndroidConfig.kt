@@ -544,8 +544,17 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10190
+    const val versionName = "1.1.90"
+    // ROUND 149 (v1.1.90): release/1.1.90 — cut from the round-149 main head
+    // adc4113b (the code tree of CI-green cbd38176 / run 43909899466): THE
+    // ANIYOMI MULTI-AUDIO (the unified AudioSheet — the file's own tracks +
+    // the extension's external versions, instant aid switching, the
+    // per-series audio memory; the landscape Audio button re-added right of
+    // Quality and WIRED; the portrait row EXACTLY [Subtitles, Quality,
+    // Audio] with prev/next removed; DOWNLOAD-ALL — video.audioTracks ride
+    // as AUDIO_VARIANT tracks on the one episode row into the audio/ layout).
+    // Carries rounds 147-149 on top of v1.1.89.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
