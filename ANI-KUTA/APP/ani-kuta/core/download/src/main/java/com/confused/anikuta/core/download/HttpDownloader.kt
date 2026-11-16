@@ -152,6 +152,14 @@ class HttpDownloader(
 
             // 4. Download subtitles to the temp cache (best-effort).
             val subtitleFiles = downloadSubtitlesToCache(task)
+
+            // 4b. ROUND 149 (download-all-audio): download the task's AUDIO_VARIANT
+            // tracks — the picked video's OWN audio versions (Aniyomi multi-audio:
+            // VF/VFQ/VOSTFR, English/Japanese dubs) + any DASH sibling variants —
+            // to the temp cache (best-effort). They publish into the same audio/
+            // layout the DASH pipeline uses (D-550), so ONE progressive enqueue
+            // downloads the video + every audio version onto the ONE episode row.
+            val audioFiles = downloadAudioToCache(task)
             emitPhaseProgress(onProgress, downloadedBytes, 97)
 
             // 5. Publish to SAF (atomic). Returns the content:// URI + subtitle URIs.
@@ -176,6 +184,9 @@ class HttpDownloader(
                 videoExtension = ext,
                 subtitleFiles = subtitleFiles,
                 subtitleLangs = subtitleLangs,
+                // ROUND 149 (download-all-audio): the audio versions ride into
+                // the audio/ folder with the video.
+                audioTempFiles = audioFiles,
             )
             emitPhaseProgress(onProgress, downloadedBytes, 99)
 
@@ -203,6 +214,11 @@ class HttpDownloader(
                         videoUrl = task.videoUrl,
                         videoUri = publishResult.videoUri,
                         subtitleUris = publishResult.subtitleUris,
+                        // ROUND 149 (download-all-audio): the audio/ versions'
+                        // URIs ride the same durable field the DASH publish
+                        // fills (the scanner also rebuilds them from the
+                        // on-disk audio/ siblings).
+                        audioUris = publishResult.audioUris,
                         quality = task.videoQuality.ifBlank { null },
                         videoServer = task.videoServer.ifBlank { null },
                         audioVariant = task.videoAudio.ifBlank { null },
@@ -484,6 +500,62 @@ class HttpDownloader(
         }
 
     /**
+     * ROUND 149 (download-all-audio): downloads the task's AUDIO_VARIANT tracks
+     * (the picked video's own audio versions + the DASH sibling variants) to
+     * the temp cache — the progressive twin of the DASH pipeline's extra audio
+     * groups. One best-effort fetch per version, the exact
+     * [downloadSubtitlesToCache] shape: per-track headers ([DownloadTrack.headers],
+     * the same MPV-format string the video carries) + the User-Agent fallback,
+     * failures logged + skipped (one bad version never fails the download).
+     *
+     * Returns the temp files in track order (the publish step numbers them
+     * `<videoBase>.audio<N>.mp4` in this order).
+     */
+    private suspend fun downloadAudioToCache(task: DownloadTask): List<File> =
+        withContext(Dispatchers.IO) {
+            val variants = task.audioTracks.filter { it.kind == TrackKind.AUDIO_VARIANT }
+            if (variants.isEmpty()) return@withContext emptyList()
+            DownloadLogger.i {
+                "Downloading ${variants.size} audio version(s) for EP ${task.episode.episodeNumber}"
+            }
+            val results = mutableListOf<File>()
+            for ((index, track) in variants.withIndex()) {
+                val tempFile = tempCache.getTempFile(task.id, "audio-$index.${audioExtension(track.url)}")
+                try {
+                    val requestBuilder = Request.Builder().url(track.url)
+                    applyTrackHeaders(requestBuilder, track.headers)
+                    if (track.headers.isNullOrBlank() ||
+                        !track.headers.contains("User-Agent", ignoreCase = true)
+                    ) {
+                        requestBuilder.addHeader(
+                            "User-Agent",
+                            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+                                "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+                        )
+                    }
+                    client.newCall(requestBuilder.build()).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            DownloadLogger.w {
+                                "Audio version $index (${track.lang}) fetch failed " +
+                                    "(${response.code}) — skipping"
+                            }
+                            return@use
+                        }
+                        tempFile.outputStream().use { out ->
+                            response.body?.byteStream()?.use { it.copyTo(out) }
+                        }
+                        results.add(tempFile)
+                    }
+                } catch (e: Exception) {
+                    DownloadLogger.w {
+                        "Audio version $index (${track.lang}) download failed — skipping: ${e.message}"
+                    }
+                }
+            }
+            results
+        }
+
+    /**
      * Parses the track's `headers` string (MPV `http-header-fields` format:
      * comma-separated `"Key: Value,Key2: Value2"`) + applies each entry to the
      * request builder. No-op if [headers] is null/blank (best-effort — a parse
@@ -543,6 +615,20 @@ class HttpDownloader(
         return when (ext) {
             "ass", "srt", "vtt", "ssa", "sub" -> ext
             else -> "srt"
+        }
+    }
+
+    /**
+     * ROUND 149: the audio-version temp file's extension (defaults to `"mp4"`
+     * — the extensions' multi-audio streams are mp4/m4a audio files; the
+     * published name is `.audio<N>.mp4` either way, this only shapes the
+     * temp cache file).
+     */
+    private fun audioExtension(url: String): String {
+        val ext = url.substringBefore('?').substringAfterLast('.', missingDelimiterValue = "").lowercase()
+        return when (ext) {
+            "mp4", "m4a", "aac", "mp3", "mka", "webm" -> ext
+            else -> "mp4"
         }
     }
 

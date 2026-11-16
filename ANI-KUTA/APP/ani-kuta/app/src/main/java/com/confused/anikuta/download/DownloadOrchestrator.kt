@@ -236,11 +236,18 @@ class DownloadOrchestrator(
                 headers = fallbackHeaders,
             )
         }
+        // ROUND 149 (download-all-audio): the picked video's OWN audio versions
+        // (the Aniyomi multi-audio streams — VF/VFQ/VOSTFR, English/Japanese
+        // dubs) ride as AUDIO_VARIANT now — the same kind the DASH siblings
+        // use — so ONE enqueue downloads the video + every audio version onto
+        // the ONE (main_id, episode_key) row. The progressive downloader
+        // (HttpDownloader) publishes them into the same audio/ layout the
+        // DASH pipeline uses (D-550); the old AUDIO kind had no consumer.
         val audioTracks = video.audioTracks.map { track ->
             DownloadTrack(
                 url = track.url,
                 lang = track.lang,
-                kind = TrackKind.AUDIO,
+                kind = TrackKind.AUDIO_VARIANT,
                 headers = fallbackHeaders,
             )
         } + siblingVariantTracks(video, serverName, servers, fallbackHeaders)

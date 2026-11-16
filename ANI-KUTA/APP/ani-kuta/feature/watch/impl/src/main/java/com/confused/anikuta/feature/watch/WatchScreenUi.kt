@@ -136,6 +136,8 @@ internal fun FullscreenMode(
     onBack: () -> Unit,
     onQualityClick: () -> Unit = {},
     onSubtitleClick: () -> Unit = {},
+    // ROUND 149: the Audio button (right of Quality) — opens the AudioSheet.
+    onAudioClick: () -> Unit = {},
     onSpeedClick: () -> Unit = {},
     onSkipForward: () -> Unit = {},
     onRetry: () -> Unit = {},
@@ -199,6 +201,8 @@ internal fun FullscreenMode(
             onLockToggle = { stateHolder.updateControlsLocked(!stateHolder.controlsLocked.value) },
             onQualityClick = onQualityClick,
             onSubtitleClick = onSubtitleClick,
+            // ROUND 149: the wired Audio button (right of Quality).
+            onAudioClick = onAudioClick,
             onSpeedClick = onSpeedClick,
             // ROUND 121: the episodes browser (the previously dead More button).
             onMoreClick = onOpenEpisodesSheet,

@@ -100,6 +100,7 @@ import com.confused.anikuta.core.player.PlayerStateHolder
 import com.confused.anikuta.core.player.controls.EpisodeSwitchingOverlay
 import com.confused.anikuta.core.playbackcache.PlaybackCacheManager
 import com.confused.anikuta.core.playbackcache.PlaybackVideoId
+import com.confused.anikuta.core.playbackcache.deserializeTracks
 import com.confused.anikuta.core.playbackcache.serializeTracks
 import com.confused.anikuta.core.playbackcache.serverKeyFromVideoTitle
 import com.confused.anikuta.core.videoresolver.ResolvedVideo
@@ -1204,6 +1205,34 @@ fun WatchScreen(
             }
         }
 
+    // ── ROUND 149: the REMEMBERED-AUDIO PRE-APPLY — the exact mirror of the
+    // remembered-subtitle rhythm above (the per-series audio-version memory):
+    // the AudioSheet's selections persist the track's label/lang, and this
+    // pre-applies the match (by name OR lang) on every track-list reload —
+    // file load, episode switch, and once a just-audio-add'ed external
+    // version finishes registering. No "off" case — MPV always has an active
+    // audio track for videos with audio. Idempotent (only sets aid when the
+    // selection differs).
+    val applyRememberedAudio: (List<com.confused.anikuta.core.player.VideoTrack>) -> Unit =
+        { audios ->
+            val mainId = watchKey.mainId
+            val remembered = if (mainId.isNotBlank()) {
+                playerPreferences.getPreferredAudioTrack(mainId)
+            } else ""
+            if (remembered.isNotBlank()) {
+                val match = audios.firstOrNull {
+                    it.name == remembered ||
+                        it.lang?.equals(remembered, ignoreCase = true) == true
+                }
+                if (match != null && stateHolder.currentAudioTrack.value != match.id) {
+                    runCatching { MPVLib.setPropertyInt("aid", match.id) }
+                    Logger.i(TAG) {
+                        "Remembered audio: '$remembered' → track id ${match.id} (pre-applied)"
+                    }
+                }
+            }
+        }
+
     // ── Init MPV + load video (once) ──
     val initMpv: (AnikutaMPVView) -> Unit = remember {
         { view ->
@@ -1214,7 +1243,13 @@ fun WatchScreen(
                 observer = obs      // Store reference so switch handlers can set pending tracks
                 // D-408 (round 32): the remembered-subtitle pre-apply hook —
                 // the observer fires it after every track-list reload.
-                obs.onTracksLoaded = applyRememberedSubtitle
+                // ROUND 149: the remembered-AUDIO pre-apply rides the SAME hook
+                // (loadTracksFromMpv updates the holder's audioTracks BEFORE
+                // invoking it, so the fresh list is what we match against).
+                obs.onTracksLoaded = { subs ->
+                    applyRememberedSubtitle(subs)
+                    applyRememberedAudio(stateHolder.audioTracks.value)
+                }
 
                 // D-747: the EOF hook — the file reached its natural end. Two
                 // jobs: (1) the explicit completion write (save() with the final
@@ -1532,7 +1567,21 @@ fun WatchScreen(
     // ── Layout ──
     // Sheet visibility state (shared between minimized + fullscreen)
     var showSubtitleSheet by remember { mutableStateOf(false) }
+    // ROUND 149: the unified AUDIO sheet (the landscape Audio button + the
+    // portrait [Subtitles, Quality, Audio] row both open it).
+    var showAudioSheet by remember { mutableStateOf(false) }
     var showQualitySheet by remember { mutableStateOf(false) }
+
+    // ROUND 149: the CURRENT video's external audio versions — deserialized
+    // from the SAME carrier the pendingAudioTracks path consumes (the
+    // watchKey seed → the quality switch → the episode switch all refresh
+    // it), so the AudioSheet's "Audio versions" section always describes
+    // exactly the streams that were audio-add'ed for this video.
+    val currentExternalAudioVersions = remember(currentAudioTracksSerialized) {
+        deserializeTracks(currentAudioTracksSerialized).map { (url, lang) ->
+            com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack(url = url, lang = lang)
+        }
+    }
     var showSubtitleSettingsSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
 
@@ -1790,10 +1839,83 @@ fun WatchScreen(
                     playerPreferences.setPreferredSubtitleTrack(watchKey.mainId, label)
                 }
             }
+    } catch (e: Exception) {
+        Logger.w(TAG) { "Failed to set subtitle track: ${e.message}" }
+    }
+}
+
+// ── ROUND 149: Audio track selection handler — the sid mirror ──
+// An INSTANT aid switch (setPropertyInt — no reload; mpv crossfades the
+// streams). The picked track's label is remembered per series (the same
+// per-series memory the subtitle sheet uses; pre-applied by
+// [applyRememberedAudio] after every track-list reload).
+val onAudioSelected: (Int) -> Unit = { trackId ->
+    try {
+        if (trackId <= 0) {
+            // Defensive parity with the subtitle handler — the sheet offers no
+            // Off row, so this only fires on a stale/invalid id.
+            MPVLib.setPropertyString("aid", "no")
+        } else {
+            MPVLib.setPropertyInt("aid", trackId)
+            val label = stateHolder.audioTracks.value
+                .firstOrNull { it.id == trackId }?.name
+            if (!label.isNullOrBlank() && watchKey.mainId.isNotBlank()) {
+                playerPreferences.setPreferredAudioTrack(watchKey.mainId, label)
+            }
+        }
+    } catch (e: Exception) {
+        Logger.w(TAG) { "Failed to set audio track: ${e.message}" }
+    }
+}
+
+// ── ROUND 149: External audio-version pick handler (the Aniyomi
+// multi-audio world: VF/VFQ/VOSTFR, English/Japanese dubs as separate
+// streams). Two paths, exactly the sheet's contract:
+//  1. A REGISTERED mpv track matches the version (by lang OR title) →
+//     select it via aid (instant) + close the sheet.
+//  2. Nothing registered yet → `audio-add <url> select <lang> <lang>` —
+//     mpv registers AND selects the stream; the observer's track-list/count
+//     reload + the aid property feedback land it in the LIVE sheet (which
+//     stays open so the just-registered track lights up).
+// The version's label persists into the same per-series audio memory either
+// way. Headers: none needed — the loadfile-time `http-header-fields` OPTION
+// is process-wide, so mpv's audio-add fetch inherits the video's headers
+// (the same reason PlayerObserver.loadExternalTracks sends bare audio-adds).
+val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack) -> Unit =
+    { version ->
+        try {
+            val registered = stateHolder.audioTracks.value.firstOrNull { track ->
+                version.lang.isNotBlank() && (
+                    track.lang?.equals(version.lang, ignoreCase = true) == true ||
+                        track.name.equals(version.lang, ignoreCase = true)
+                    )
+            }
+            if (registered != null) {
+                MPVLib.setPropertyInt("aid", registered.id)
+                if (watchKey.mainId.isNotBlank()) {
+                    playerPreferences.setPreferredAudioTrack(watchKey.mainId, version.lang)
+                }
+                showAudioSheet = false
+                Logger.i(TAG) {
+                    "Audio version '${version.lang}' → registered track id ${registered.id} (aid)"
+                }
+            } else {
+                MPVLib.command(
+                    arrayOf("audio-add", version.url, "select", version.lang, version.lang),
+                )
+                if (watchKey.mainId.isNotBlank()) {
+                    playerPreferences.setPreferredAudioTrack(watchKey.mainId, version.lang)
+                }
+                Logger.i(TAG) {
+                    "Audio version '${version.lang}' not registered yet — audio-add (select) sent; " +
+                        "the sheet stays open until the track lands"
+                }
+            }
         } catch (e: Exception) {
-            Logger.w(TAG) { "Failed to set subtitle track: ${e.message}" }
+            Logger.w(TAG) { "Failed to pick audio version '${version.lang}': ${e.message}" }
         }
     }
+
 
     // ── Speed selection handler — applies live via setPropertyDouble ──
     val onSpeedSelected: (Float) -> Unit = { speed ->
@@ -2387,6 +2509,8 @@ fun WatchScreen(
             onBack = { stateHolder.updateMode(PlayerMode.MINIMIZED) },
             onQualityClick = { showQualitySheet = true },
             onSubtitleClick = { showSubtitleSheet = true },
+            // ROUND 149: the wired Audio button (right of Quality).
+            onAudioClick = { showAudioSheet = true },
             onSpeedClick = { showSpeedSheet = true },
             onSkipForward = onSkipForward,
             onRetry = onRetry,
@@ -2440,6 +2564,10 @@ fun WatchScreen(
             },
             onQualityClick = { showQualitySheet = true },
             onSubtitleClick = { showSubtitleSheet = true },
+            // ROUND 149: the wired Audio button — the portrait top-right row is
+            // EXACTLY [Subtitles, Quality, Audio]; the prev/next pass-throughs
+            // are gone (the fullscreen cluster keeps them).
+            onAudioClick = { showAudioSheet = true },
             onRetry = onRetry,
             onDismissError = onDismissError,
             onEpisodeSwitch = onEpisodeSwitch,
@@ -2455,8 +2583,6 @@ fun WatchScreen(
             onSkipPillAction = onSkipPillAction,
             resumePillSec = resumePillSec,
             onRestartFromStart = onRestartFromStart,
-            onPrevEpisode = onSkipBackward,
-            onNextEpisode = onSkipForward,
             onCancelSwitch = onCancelSwitch,
             skipRanges = watchController.skipRanges,
             cinema = cinemaMode,
@@ -2546,6 +2672,24 @@ fun WatchScreen(
         )
     }
 
+    // ── ROUND 149: the unified AUDIO sheet — the mpv aid switch + the
+    // extension's external audio versions. The same drawer/sheet presentation
+    // split as the subtitle sheet (drawer in fullscreen, bottom-up in
+    // portrait). The track list is LIVE: stateHolder.audioTracks updates on
+    // every track-list/count change (audio-add → observer reload), so a
+    // just-registered version lights up while the sheet is open.
+    if (showAudioSheet) {
+        AudioSheet(
+            audioTracks = stateHolder.audioTracks.collectAsState().value,
+            currentAudioTrackId = stateHolder.currentAudioTrack.collectAsState().value,
+            onSelectTrack = onAudioSelected,
+            externalVersions = currentExternalAudioVersions,
+            onPickExternal = onExternalAudioPicked,
+            onDismiss = { showAudioSheet = false },
+            asDrawer = playerMode == PlayerMode.FULLSCREEN,
+        )
+    }
+
     if (showQualitySheet) {
         QualitySheet(
             servers = resolvedServers,
@@ -2624,6 +2768,10 @@ private fun MinimizedMode(
     onMaximize: () -> Unit,
     onQualityClick: () -> Unit = {},
     onSubtitleClick: () -> Unit = {},
+    // ROUND 149: the Audio button (right of Quality) — the portrait top-right
+    // row is EXACTLY [Subtitles, Quality, Audio] (the prev/next episode
+    // buttons removed; the fullscreen cluster keeps them).
+    onAudioClick: () -> Unit = {},
     onRetry: () -> Unit = {},
     onDismissError: () -> Unit = {},
     onEpisodeSwitch: (SimpleEpisode) -> Unit = {},
@@ -2640,8 +2788,6 @@ private fun MinimizedMode(
     onSkipPillAction: () -> Unit = {},
     resumePillSec: Long = -1L,
     onRestartFromStart: () -> Unit = {},
-    onPrevEpisode: () -> Unit = {},
-    onNextEpisode: () -> Unit = {},
     // ROUND 121: cancel a stuck episode switch (the overlay's button).
     onCancelSwitch: () -> Unit = {},
     // ROUND 122 (R5): the seek-bar skip-range ribbon.
@@ -3082,10 +3228,11 @@ private fun MinimizedMode(
                     onMaximize = onMaximize,
                     onQualityClick = onQualityClick,
                     onSubtitleClick = onSubtitleClick,
+                    // ROUND 149: the Audio button — the portrait top-right row is
+                    // EXACTLY [Subtitles, Quality, Audio] (prev/next removed).
+                    onAudioClick = onAudioClick,
                     onRetry = onRetry,
                     onDismissError = onDismissError,
-                    onPrevEpisode = onPrevEpisode,
-                    onNextEpisode = onNextEpisode,
                     skipRanges = skipRanges,
                     gestureConfig = gestureConfig,
                 )

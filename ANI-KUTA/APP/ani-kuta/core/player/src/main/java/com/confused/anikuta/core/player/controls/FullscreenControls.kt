@@ -100,7 +100,12 @@ fun FullscreenControls(
     // ROUND 145 (P-M3): the DEAD Audio button removed — the MPV stack never
     // wired a handler (the only call site passed nothing) and a tap that does
     // nothing is worse than no button. The CS stack keeps its own wired one.
+    // ROUND 149: the Audio button is BACK and WIRED — the Aniyomi multi-audio
+    // sheet (AudioSheet) now backs it (the mpv aid switch + the audio-add
+    // "select" path), so the removal's premise (nothing to wire) no longer
+    // holds. Sits RIGHT of Quality (the CS stack's exact order).
 
+    onAudioClick: () -> Unit = {},
     onServerClick: () -> Unit = {},
     onSpeedClick: () -> Unit = {},
     onMoreClick: () -> Unit = {},
@@ -350,6 +355,10 @@ fun FullscreenControls(
                         ) {
                             FSSmallButton(icon = Icons.Default.Subtitles, contentDescription = "Subtitles", onClick = onSubtitleClick)
                             FSSmallButton(icon = Icons.Default.HighQuality, contentDescription = "Quality", onClick = onQualityClick)
+                            // ROUND 149: the Audio button re-added RIGHT of Quality —
+                            // now wired (the AudioSheet; the CS stack's exact order
+                            // Subtitles → Quality → Audio → More).
+                            FSSmallButton(icon = Icons.Default.MusicNote, contentDescription = "Audio", onClick = onAudioClick)
                             // ROUND 121 (the device round's order): the top-right
                             // cluster is EPISODE NAVIGATION — previous + next.
                             // (The old intro/outro editor button moved into the

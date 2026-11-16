@@ -85,6 +85,7 @@ import com.confused.anikuta.core.preferences.PlayerPreferences
 import com.confused.anikuta.core.videoresolver.ResolverAudioVersion
 import com.confused.anikuta.core.videoresolver.ResolverDebugReport
 import com.confused.anikuta.core.videoresolver.ResolverServer
+import com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack
 import com.confused.anikuta.core.videoresolver.ResolverVideo
 import org.koin.compose.koinInject
 
@@ -504,6 +505,255 @@ private fun TrackRow(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * ROUND 149: the unified AUDIO bottom sheet — the mirror of
+ * [SubtitleTracksSheet]'s panel language + row anatomy (same host split, same
+ * header/divider, the same [TrackRow] highlight), fed by BOTH audio worlds:
+ *
+ *  - "Audio tracks" — MPV's LIVE track-list (the embedded audio + every
+ *    audio-add'ed external version). Selecting a row sets `aid` directly —
+ *    an instant switch, no reload. The list is stateless here: the host
+ *    passes `stateHolder.audioTracks` collected each recomposition, so a
+ *    just-registered external track (audio-add → track-list/count change →
+ *    updateTracks) lights up without reopening the sheet.
+ *  - "Audio versions" — the extension's external audio versions for the
+ *    CURRENT video (Aniyomi multi-audio: VF/VFQ/VOSTFR, English/Japanese
+ *    dubs as separate streams). Picking one first looks for a registered MPV
+ *    track with the matching lang/title and selects it; when none matches
+ *    yet the host re-registers it via `audio-add "select"` and the observer's
+ *    track reload + aid feedback land the row here (the sheet stays open so
+ *    the new track can light up).
+ *
+ * NO "Off"/"Default" row — MPV always has an active audio track for videos
+ * with audio (the CS sheet's "Auto" semantics would be a no-op here).
+ *
+ * @param audioTracks MPV's audio tracks (from [AnikutaMPVView.loadTracks] —
+ *   embedded + audio-add'ed externals, LIVE via the host's StateFlow).
+ * @param currentAudioTrackId The currently-selected audio track id (aid).
+ * @param onSelectTrack Called when the user taps a registered track (aid).
+ * @param externalVersions The current video's external audio versions
+ *   (url + lang) from the resolver. Empty when the stream has none.
+ * @param onPickExternal Called when the user taps an audio version row.
+ * @param onDismiss Close the sheet.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AudioSheet(
+    audioTracks: List<VideoTrack>,
+    currentAudioTrackId: Int?,
+    onSelectTrack: (Int) -> Unit,
+    externalVersions: List<ResolverSubtitleTrack> = emptyList(),
+    onPickExternal: (ResolverSubtitleTrack) -> Unit = {},
+    onDismiss: () -> Unit,
+    // ROUND 149: the same presentation split as SubtitleTracksSheet — the
+    // fullscreen drawer only in landscape; portrait keeps the bottom-up sheet.
+    asDrawer: Boolean = false,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * 0.70f
+    val host: @Composable (content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) -> Unit =
+        if (asDrawer) {
+            { content ->
+                PlayerSideDrawerShell(
+                    onDismiss = onDismiss,
+                    widthFraction = 0.45f,
+                    maxWidthDp = 400,
+                    content = content,
+                )
+            }
+        } else {
+            { content ->
+                ModalBottomSheet(
+                    onDismissRequest = onDismiss,
+                    sheetState = sheetState,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    dragHandle = null,
+                ) {
+                    content()
+                }
+            }
+        }
+    host {
+        Column(
+            modifier = if (asDrawer) {
+                Modifier.fillMaxSize().padding(top = 20.dp)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxSheetHeight)
+                    .padding(top = 20.dp)
+                    .navigationBarsPadding()
+            },
+        ) {
+            // ── Header ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Audio",
+                    fontFamily = RobotoFamily,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.size(32.dp).clickable(onClick = onDismiss),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 8.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // ── "Audio tracks" — MPV's live track-list (embedded + the
+                // audio-add'ed external versions). The selected row highlights
+                // through the shared TrackRow anatomy. No "Off" row (see the
+                // KDoc — mpv always has an active audio track for videos with
+                // audio).
+                item(key = "sec-audio-tracks") {
+                    Text(
+                        text = "AUDIO TRACKS",
+                        fontFamily = RobotoFamily,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.2.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp),
+                    )
+                }
+                if (audioTracks.isEmpty()) {
+                    item(key = "empty-audio-msg") {
+                        Text(
+                            text = "No audio tracks found in this stream.",
+                            fontFamily = RobotoFamily,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(20.dp),
+                        )
+                    }
+                } else {
+                    items(audioTracks.size) { index ->
+                        val track = audioTracks[index]
+                        TrackRow(
+                            label = track.name.ifBlank { "Audio ${index + 1}" },
+                            isSelected = track.id == currentAudioTrackId,
+                            onClick = {
+                                onSelectTrack(track.id)
+                                onDismiss()
+                            },
+                        )
+                    }
+                }
+                // ── "Audio versions" — the extension's external multi-audio
+                // streams for the current video (the Aniyomi VF/VFQ/VOSTFR /
+                // English-dub world). Same action-row anatomy as the subtitle
+                // sheet's "Available in storage" rows (an ACTION, not a
+                // selectable state). Hidden when the stream has none.
+                if (externalVersions.isNotEmpty()) {
+                    item(key = "sec-audio-versions") {
+                        Text(
+                            text = "AUDIO VERSIONS",
+                            fontFamily = RobotoFamily,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.2.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp),
+                        )
+                    }
+                    itemsIndexed(
+                        externalVersions,
+                        key = { index, version -> "audio-version-${version.url}|$index" },
+                    ) { index, version ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.04f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    onClick = {
+                                        // ROUND 149: NO self-dismiss here — the HOST
+                                        // closes the sheet when the pick resolves
+                                        // instantly (a registered track matched) and
+                                        // keeps it open when the version needs an
+                                        // audio-add "select" first (the registered
+                                        // track then lights up live below).
+                                        onPickExternal(version)
+                                    },
+                                ),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.size(26.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(15.dp),
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = version.lang.ifBlank { "Audio version ${index + 1}" },
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Load audio",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

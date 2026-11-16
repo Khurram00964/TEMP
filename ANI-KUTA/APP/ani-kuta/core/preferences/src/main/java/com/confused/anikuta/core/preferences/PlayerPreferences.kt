@@ -312,6 +312,31 @@ class PlayerPreferences(private val store: PreferenceStore) {
         if (label.isBlank()) store.delete(key) else store.putString(key, label)
     }
 
+    // ── ROUND 149: the per-series selected-AUDIO memory — the exact mirror ──
+    // The AudioSheet's track/version picks persist the track's display label
+    // (or the external version's lang — "English"/"Japanese"/"VF"), and the
+    // player pre-applies the match (by name OR lang) after every track-list
+    // reload, the same rhythm as the subtitle memory above. No "off" case —
+    // MPV always has an active audio track for videos with audio.
+
+    /**
+     * The remembered selected audio track for a series.
+     * @return "" = nothing remembered; anything else = the track's display
+     *   label / the audio-version lang to pre-select on open.
+     */
+    fun getPreferredAudioTrack(mainId: String): String =
+        if (mainId.isBlank()) "" else store.getString(KEY_PREFIX_AUDIO_TRACK_MEMORY + mainId, "")
+
+    /**
+     * Remembers the selected audio track for a series. [label] = the track's
+     * display label or the audio version's lang, blank to CLEAR the memory.
+     */
+    fun setPreferredAudioTrack(mainId: String, label: String) {
+        if (mainId.isBlank()) return
+        val key = KEY_PREFIX_AUDIO_TRACK_MEMORY + mainId
+        if (label.isBlank()) store.delete(key) else store.putString(key, label)
+    }
+
     // ── Round 120 (D-747): playback behavior (the Player settings hub) ───────
     //
     // The round-120 order: the player needed REAL settings beyond auto-select
@@ -545,6 +570,8 @@ class PlayerPreferences(private val store: PreferenceStore) {
         private const val KEY_GESTURES = "player_gestures"
         private const val KEY_HW_DECODE = "player_hw_decode"
         private const val KEY_PREFIX_SUB_TRACK_MEMORY = "pref_sub_track_memory_"
+        // ROUND 149: the audio twin of the subtitle memory prefix.
+        private const val KEY_PREFIX_AUDIO_TRACK_MEMORY = "pref_audio_track_memory_"
         private const val KEY_PREFIX_SKIP_TIMESTAMPS = "pref_skip_timestamps_"
         private const val KEY_PREFIX_EPISODE_SKIP = "pref_episode_skip_"
         // ROUND 123 (R5): the "_v2" suffix ONE-TIME invalidates every latch the

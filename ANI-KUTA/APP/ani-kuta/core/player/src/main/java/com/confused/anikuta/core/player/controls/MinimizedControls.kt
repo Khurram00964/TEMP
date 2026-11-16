@@ -19,11 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
-// ROUND 121-fix: SkipForward is NOT in the pinned icons artifact (see
-// FullscreenControls) — SkipNext is the next-episode glyph here too.
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Subtitles
@@ -58,7 +55,9 @@ import kotlinx.coroutines.launch
  *
  * Ported from the old project. Layout (when controls are visible):
  *  - Top-left: current time / total duration
- *  - Top-right: subtitle button + quality button
+ *  - Top-right: subtitle + quality + audio buttons (ROUND 149 — the exact
+ *    [Subtitles, Quality, Audio] order; the prev/next episode buttons are
+ *    removed — episode navigation stays fullscreen-only)
  *  - Center: transparent play/pause icon with themed-dark glass background
  *  - Bottom: minimal seekbar (left, fills width) + maximize button (right)
  *
@@ -77,11 +76,13 @@ fun MinimizedControls(
     onMaximize: () -> Unit,
     onQualityClick: () -> Unit,
     onSubtitleClick: () -> Unit,
+    // ROUND 149: the Audio button (right of Quality) — opens the AudioSheet.
+    // The ROUND 121 prev/next episode buttons are GONE from the portrait
+    // top-right row (the exact [Subtitles, Quality, Audio] order) — episode
+    // navigation stays on the FULLSCREEN cluster only.
+    onAudioClick: () -> Unit = {},
     onRetry: () -> Unit = {},
     onDismissError: () -> Unit = {},
-    /** ROUND 121: episode navigation in the top-right cluster. */
-    onPrevEpisode: () -> Unit = {},
-    onNextEpisode: () -> Unit = {},
     // ROUND 122 (R5): the seek-bar skip-range ribbon.
     skipRanges: SkipRanges = SkipRanges(),
     // ROUND 131 (D-809): swipe gestures (volume/brightness sides + live seek).
@@ -294,7 +295,7 @@ fun MinimizedControls(
                         .padding(start = 12.dp, top = 8.dp),
                 )
 
-                // Top-right: subtitle + quality
+                // Top-right: subtitle + quality + audio (ROUND 149)
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -312,18 +313,14 @@ fun MinimizedControls(
                         contentDescription = "Quality",
                         onClick = onQualityClick,
                     )
-                    // ROUND 121 (the device round's order): episode navigation
-                    // replaces the intro/outro editor entry (the editor moved
-                    // into the episodes sheet; skip is AniSkip-fed now).
+                    // ROUND 149: the Audio button — the portrait top-right row is
+                    // EXACTLY [Subtitles, Quality, Audio]; the ROUND 121
+                    // prev/next episode buttons are removed completely (episode
+                    // navigation stays on the fullscreen cluster only).
                     TransparentIconButton(
-                        icon = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous episode",
-                        onClick = onPrevEpisode,
-                    )
-                    TransparentIconButton(
-                        icon = Icons.Default.SkipNext,
-                        contentDescription = "Next episode",
-                        onClick = onNextEpisode,
+                        icon = Icons.Default.MusicNote,
+                        contentDescription = "Audio",
+                        onClick = onAudioClick,
                     )
                 }
 

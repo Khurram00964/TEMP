@@ -164,6 +164,12 @@ class DownloadStorageProvider(
         videoExtension: String,
         subtitleFiles: List<File> = emptyList(),
         subtitleLangs: List<String> = emptyList(),
+        // ROUND 149 (download-all-audio): the picked video's audio versions,
+        // downloaded to the temp cache by HttpDownloader — published into the
+        // same dedicated audio/ folder the DASH pipeline uses (D-550), one
+        // `<videoBase>.audio<N>.mp4` per version, so ONE progressive enqueue
+        // carries the video + every audio version on the ONE episode row.
+        audioTempFiles: List<File> = emptyList(),
     ): PublishResult = withContext(Dispatchers.IO) {
         val contentDir = getContentFolder(content.mainId, content.title)
             ?: throw DownloadException("Failed to create content folder for ${content.title}")
@@ -217,9 +223,53 @@ class DownloadStorageProvider(
             }
         }
 
+        // 5b. ROUND 149 (download-all-audio): the video's audio versions → the
+        // dedicated "audio" subfolder — the exact D-550 DASH layout (video in
+        // episodes/, audio in audio/, subtitles in subtitles/). Names follow
+        // the DASH contract `<videoBase>.audio<N>.mp4` AND the scanner's
+        // sibling rule (`videoFileName.removeSuffix(".mp4")` prefix — see
+        // DownloadScanner.audioSiblingFiles) so the scanner rebuilds the
+        // audioUris on every scan for BOTH extensions. "video/mp4" — the same
+        // SAF mime reconciliation dodge as publishDashEpisode ("audio/mp4"
+        // would RENAME the file to .m4a and break the naming contract).
+        // Best-effort per file: a failed version is logged + skipped (the
+        // video itself must never pay for an audio variant).
+        val publishedAudioUris = mutableListOf<String>()
+        if (audioTempFiles.isNotEmpty()) {
+            val audioDir = getOrCreateSubfolder(contentDir, "audio", index)
+            val audioDirIndex = audioDir.listFiles().associateBy { it.name!! }
+            val audioBase = videoName.removeSuffix(".mp4")
+            for ((audioIndex, audioTemp) in audioTempFiles.withIndex()) {
+                val audioName = "$audioBase.audio${audioIndex + 1}.mp4"
+                audioDirIndex[audioName]?.delete()
+                // The D-550 stale-copy sweep — re-publishing must delete the
+                // legacy episodes/ copies the v1.1.23 layout wrote next to the
+                // video (orphans otherwise).
+                epIndex[audioName]?.delete()
+                runCatching {
+                    val audioTarget = audioDir.createFile("video/mp4", audioName)
+                    if (audioTarget != null) {
+                        copyFile(audioTemp, audioTarget.uri)
+                        publishedAudioUris.add(audioTarget.uri.toString())
+                    } else {
+                        DownloadLogger.w {
+                            "publishVideoFile($downloadId) — audio version ${audioIndex + 1}: " +
+                                "createFile failed for $audioName — skipped"
+                        }
+                    }
+                }.onFailure { e ->
+                    DownloadLogger.w {
+                        "publishVideoFile($downloadId) — audio version ${audioIndex + 1} " +
+                            "publish failed (skipped): ${e.message}"
+                    }
+                }
+            }
+        }
+
         DownloadLogger.i {
             "publishVideoFile($downloadId) — published $videoName (${tempFile.length()} bytes) " +
-                "to ${contentDir.name} + ${publishedSubtitleUris.size} subtitle(s)"
+                "to ${contentDir.name} + ${publishedSubtitleUris.size} subtitle(s) + " +
+                "${publishedAudioUris.size} audio version(s) in audio/"
         }
         // D-242-fix: return the contentFolder so HttpDownloader can pass it directly
         // to upsertEpisodeInDataJson without a second findContentFolder walk.
@@ -227,6 +277,10 @@ class DownloadStorageProvider(
             videoUri = videoTarget.uri.toString(),
             subtitleUris = publishedSubtitleUris,
             contentFolder = contentDir,
+            // ROUND 149: the audio/ versions' content:// URIs (the .data.json
+            // episode entry's audioUris record — the same field the DASH
+            // publish fills).
+            audioUris = publishedAudioUris,
         )
     }
 
