@@ -544,8 +544,24 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10192
+    const val versionName = "1.1.92"
+    // ROUND 152 (v1.1.92): release/1.1.92 — cut from the round-152 head 7b330bff
+    // (CI 44125007041 GREEN on the TEMP mirror): the audio round three (THE ANR
+    // dead — the audio-add dispatched to IO; the never-silent ladder extended —
+    // the externals take priority over an embedded-but-broken track; the sheet's
+    // per-version states (the check/the spinner/the honest failure) with no plus
+    // icon; THE OFFLINE AUDIO FIXED — the HLS audio variants download through the
+    // bundled FFmpegKit; the cache-hit autoplay (the playback cache consulted
+    // before the network resolve) + the per-series playback pin; the rotate
+    // moved between speed and next with the new icon pair). THE HOME POLISH: the
+    // Bricolage Grotesque display font bundled, the real app-art logo + the
+    // profile avatar in the TopBar, the hero snap fixed (the never-cancelled
+    // auto-advance), the never-ellipsizing title lockup, the squished pills,
+    // the airs release animation + the schedule tab intent, the genres/tags
+    // cached app-side, the suggestion field (the melt geometry fixed, no border,
+    // the covers cached). Carries rounds 147-152 on top of v1.1.89. Released on
+    // the TEMP mirror while testplay-byte is flagged.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
