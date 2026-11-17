@@ -1254,8 +1254,9 @@ fun AppRoot() {
                     is AnimeDetailsKey.AniList -> DetailsScreen(
                         detailsKey = currentKey,
                         onBack = pop,
-                        onNavigateToWatch = { mainId, videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, subTracks, audioTracks, epMeta, coverAccent, coverUrl ->
-                            pushKey(WatchKey(videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, mainId, subTracks, audioTracks, epMeta, coverAccentArgb = coverAccent, coverUrl = coverUrl))
+                        onNavigateToWatch = { mainId, videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, subTracks, audioTracks, epMeta, coverAccent, coverUrl, audioVariant ->
+                            pushKey(WatchKey(videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, mainId, subTracks, audioTracks, epMeta, coverAccentArgb = coverAccent, coverUrl = coverUrl, // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                            episodeAudioVariant = audioVariant))
                         },
                         // Task 52: CloudStream episodes → the resolve sheet
                         // (Task 53 / RC-6): the details page stays visible under
@@ -1363,8 +1364,9 @@ fun AppRoot() {
                     is AnimeDetailsKey.Extension -> DetailsScreen(
                         detailsKey = currentKey,
                         onBack = pop,
-                        onNavigateToWatch = { mainId, videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, subTracks, audioTracks, epMeta, coverAccent, coverUrl ->
-                            pushKey(WatchKey(videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, mainId, subTracks, audioTracks, epMeta, coverAccentArgb = coverAccent, coverUrl = coverUrl))
+                        onNavigateToWatch = { mainId, videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, subTracks, audioTracks, epMeta, coverAccent, coverUrl, audioVariant ->
+                            pushKey(WatchKey(videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, mainId, subTracks, audioTracks, epMeta, coverAccentArgb = coverAccent, coverUrl = coverUrl, // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                            episodeAudioVariant = audioVariant))
                         },
                         // Task 52: CloudStream episodes → the resolve sheet
                         // (Task 53 / RC-6, AnymeX entry pattern).

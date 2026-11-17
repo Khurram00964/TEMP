@@ -182,6 +182,11 @@ class PlayerStateHolder {
 
     private val _currentEpisodeTitle = MutableStateFlow("")
     val currentEpisodeTitle: StateFlow<String> = _currentEpisodeTitle.asStateFlow()
+    // ROUND 153: the current episode's AUDIO VARIANT ("dub"/"sub"/"") — the truth
+    // the default-audio ladder consumes (the per-number metadata map collapses
+    // dual-variant rows, so the map's scanlator can carry the other variant).
+    private val _currentEpisodeAudioVariant = MutableStateFlow("")
+    val currentEpisodeAudioVariant: StateFlow<String> = _currentEpisodeAudioVariant.asStateFlow()
 
     // The registry key for the CURRENT episode's resolved servers (QualitySheet).
     // Updated on episode switch so the QualitySheet shows the new episode's servers.
@@ -325,21 +330,35 @@ class PlayerStateHolder {
     /**
      * Seed the current-episode state from the WatchKey (called once on init).
      */
-    fun seedEpisodeState(url: String, number: Float, title: String, resolvedVideosKey: String) {
+    fun seedEpisodeState(
+        url: String,
+        number: Float,
+        title: String,
+        resolvedVideosKey: String,
+        audioVariant: String = "",
+    ) {
         _currentEpisodeUrl.value = url
         _currentEpisodeNumber.value = number
         _currentEpisodeTitle.value = title
+        _currentEpisodeAudioVariant.value = audioVariant
         _currentResolvedVideosKey.value = resolvedVideosKey
     }
 
     /**
      * Update the current-episode state after an episode switch.
      */
-    fun updateCurrentEpisode(url: String, number: Float, title: String, resolvedVideosKey: String) {
+    fun updateCurrentEpisode(
+        url: String,
+        number: Float,
+        title: String,
+        resolvedVideosKey: String,
+        audioVariant: String = "",
+    ) {
         Logger.d(TAG) { "Current episode → num=$number url=${url.take(60)}" }
         _currentEpisodeUrl.value = url
         _currentEpisodeNumber.value = number
         _currentEpisodeTitle.value = title
+        _currentEpisodeAudioVariant.value = audioVariant
         _currentResolvedVideosKey.value = resolvedVideosKey
     }
 

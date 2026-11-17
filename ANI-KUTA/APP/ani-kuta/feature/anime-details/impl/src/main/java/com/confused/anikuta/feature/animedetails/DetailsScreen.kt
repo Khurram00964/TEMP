@@ -93,6 +93,7 @@ import androidx.compose.ui.layout.boundsInRoot  // D-315: cover bounds
 import com.confused.anikuta.core.designsystem.animation.coverSharedElement  // D-320
 import com.confused.anikuta.core.anilist.model.AniListAnime
 import com.confused.anikuta.core.common.HapticHelper
+import com.confused.anikuta.core.common.parseAudioAvailability
 import com.confused.anikuta.core.common.Logger
 import com.confused.anikuta.core.designsystem.component.ScrollBlurOverlay
 import com.confused.anikuta.core.designsystem.theme.LocalCardDescriptionColor
@@ -140,7 +141,7 @@ fun DetailsScreen(
     onBack: () -> Unit,
     // ROUND 108 (D-713): the trailing coverUrl — the player rows' thumbnail
     // fallback (the details page's cover), riding the key like coverAccent.
-    onNavigateToWatch: (mainId: String, videoUrl: String, animeTitle: String, quality: String, episodeUrl: String, episodeNumber: Float, episodeTitle: String, episodeListSerialized: String, videoHeaders: String, resolvedVideosKey: String, sourceId: Long, subtitleTracksSerialized: String, audioTracksSerialized: String, episodeMetadataSerialized: String, coverAccentArgb: Long, coverUrl: String) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+    onNavigateToWatch: (mainId: String, videoUrl: String, animeTitle: String, quality: String, episodeUrl: String, episodeNumber: Float, episodeTitle: String, episodeListSerialized: String, videoHeaders: String, resolvedVideosKey: String, sourceId: Long, subtitleTracksSerialized: String, audioTracksSerialized: String, episodeMetadataSerialized: String, coverAccentArgb: Long, coverUrl: String, audioVariant: String) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
     // Task 52 (round 12 — the playback port): CloudStream episode taps route
     // here INSTEAD of the classic resolver/watch pipeline. Primitives (not
     // CsWatchKey) to keep :feature:anime-details free of feature-to-feature
@@ -653,6 +654,8 @@ fun DetailsScreen(
                             // ROUND 108 (D-713): the cover rides the nav — the
                             // player rows' thumbnail fallback.
                             ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                            // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                            episodeAudioVariantOf(ep.scanlator, ep.name),
                         )
                         viewModel.clearResolver()
                         return@LaunchedEffect
@@ -713,6 +716,8 @@ fun DetailsScreen(
                                 // ROUND 108 (D-713): the cover rides the nav — the player
                                 // rows' thumbnail fallback.
                                 ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                                // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                                episodeAudioVariantOf(ep.scanlator, ep.name),
                             )
                             viewModel.clearResolver()
                         }
@@ -979,6 +984,8 @@ fun DetailsScreen(
                             // ROUND 108 (D-713): the cover rides the nav — the player
                             // rows' thumbnail fallback.
                             ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                            // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                            episodeAudioVariantOf(episode.scanlator, episode.name),
                         )
                     }
                     return@onEpisodeClick
@@ -1968,6 +1975,8 @@ fun DetailsScreen(
                         // ROUND 108 (D-713): the cover rides the nav — the player
                         // rows' thumbnail fallback.
                         ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                        // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                        episodeAudioVariantOf(ep.scanlator, ep.name),
                     )
                 }
                 showResolverSheet = false
@@ -4119,3 +4128,19 @@ private fun SubDubSelectorRow(
         }
     }
 }
+
+/**
+ * ROUND 153: the clicked episode's AUDIO VARIANT ("dub"/"sub"/"") — computed from
+ * the clicked row's OWN scanlator + name and passed through the nav into the watch
+ * screen's default-audio ladder. The watch screen's per-number metadata map collapses
+ * dual-variant rows (sub + dub share an episode number), so the map's scanlator can
+ * carry the OTHER variant's label — a dub episode then auto-picked Japanese.
+ */
+private fun episodeAudioVariantOf(scanlator: String?, name: String): String =
+    parseAudioAvailability(scanlator, name).let { av ->
+        when {
+            av.hasDub -> "dub"
+            av.hasSub -> "sub"
+            else -> ""
+        }
+    }

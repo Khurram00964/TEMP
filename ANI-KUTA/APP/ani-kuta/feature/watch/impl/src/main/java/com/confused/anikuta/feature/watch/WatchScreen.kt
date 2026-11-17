@@ -366,6 +366,10 @@ fun WatchScreen(
             number = watchKey.episodeNumber,
             title = watchKey.episodeTitle,
             resolvedVideosKey = watchKey.resolvedVideosKey,
+            // ROUND 153: the clicked episode's variant rides the key — the
+            // metadata map collapses dual-variant rows, so the map's scanlator
+            // can carry the OTHER variant's label (the dub-picked-Japanese bug).
+            audioVariant = watchKey.episodeAudioVariant,
         )
     }
 
@@ -1371,10 +1375,18 @@ fun WatchScreen(
                                 registeredAudioTrackFor(version)?.id == track.id
                             }
                         }
-                        val variant = parseAudioAvailability(
-                            episodeMetadata[stateHolder.currentEpisodeNumber.value.toInt()]?.scanlator,
-                            stateHolder.currentEpisodeTitle.value,
-                        )
+                        // ROUND 153: the key/state variant (the clicked row's
+                        // own truth) OVERRIDES the collapsed metadata map.
+                        val variant = when (
+                            stateHolder.currentEpisodeAudioVariant.value.lowercase()
+                        ) {
+                            "dub" -> parseAudioAvailability("DUB", "")
+                            "sub" -> parseAudioAvailability("SUB", "")
+                            else -> parseAudioAvailability(
+                                episodeMetadata[stateHolder.currentEpisodeNumber.value.toInt()]?.scanlator,
+                                stateHolder.currentEpisodeTitle.value,
+                            )
+                        }
                         val langTokens = if (variant.hasDub) {
                             listOf("eng", "english")
                         } else {
@@ -1407,10 +1419,16 @@ fun WatchScreen(
                     // (c) The variant-based match (DUB → eng, SUB/HSUB → jpn).
                     val variantMatch = if (rememberedMatch == null) {
                         val currentEpNum = stateHolder.currentEpisodeNumber.value.toInt()
-                        val variant = parseAudioAvailability(
-                            episodeMetadata[currentEpNum]?.scanlator,
-                            stateHolder.currentEpisodeTitle.value,
-                        )
+                        val variant = when (
+                            stateHolder.currentEpisodeAudioVariant.value.lowercase()
+                        ) {
+                            "dub" -> parseAudioAvailability("DUB", "")
+                            "sub" -> parseAudioAvailability("SUB", "")
+                            else -> parseAudioAvailability(
+                                episodeMetadata[currentEpNum]?.scanlator,
+                                stateHolder.currentEpisodeTitle.value,
+                            )
+                        }
                         val langTokens = if (variant.hasDub) {
                             listOf("eng", "english")
                         } else {

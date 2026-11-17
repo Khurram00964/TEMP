@@ -15,6 +15,15 @@ data class WatchKey(
     val episodeUrl: String = "",
     val episodeNumber: Float = 0f,
     val episodeTitle: String = "",
+    /**
+     * ROUND 153: the clicked episode's AUDIO VARIANT — "dub" / "sub" / "" (unknown),
+     * computed by the details page from the clicked row's own scanlator + name. The
+     * watch screen's default-audio ladder consumes it FIRST: the per-number metadata
+     * map collapses dual-variant rows (sub + dub share an episode number), so the
+     * map's scanlator can carry the OTHER variant's label — a dub episode opened
+     * through the key then auto-picked Japanese. Empty = fall back to the map.
+     */
+    val episodeAudioVariant: String = "",
     /** Serialized episode list for episode switching in the watch screen.
      *  Each entry is "url\u001FepisodeNumber\u001Fname" separated by newlines.
      *
