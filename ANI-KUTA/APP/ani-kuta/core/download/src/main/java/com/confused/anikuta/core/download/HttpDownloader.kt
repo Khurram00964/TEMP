@@ -166,7 +166,13 @@ class HttpDownloader(
             // to the temp cache (best-effort). They publish into the same audio/
             // layout the DASH pipeline uses (D-550), so ONE progressive enqueue
             // downloads the video + every audio version onto the ONE episode row.
-            val audioFiles = downloadAudioToCache(task)
+            val audioVariants = downloadAudioToCache(task)
+            val audioFiles = audioVariants.map { it.file }
+            // ROUND 153: the extension's language labels ride beside the
+            // files (the data.json parallel to audioUris) — the offline
+            // sheet shows the real names ("Japanese"/"English"), not
+            // "Audio 1"/"Audio 2".
+            val audioLangs = audioVariants.map { it.lang }
             emitPhaseProgress(onProgress, downloadedBytes, 97)
 
             // 5. Publish to SAF (atomic). Returns the content:// URI + subtitle URIs.
@@ -194,6 +200,8 @@ class HttpDownloader(
                 // ROUND 149 (download-all-audio): the audio versions ride into
                 // the audio/ folder with the video.
                 audioTempFiles = audioFiles,
+                // ROUND 153: the langs land in data.json beside the URIs.
+                audioLangs = audioLangs,
             )
             emitPhaseProgress(onProgress, downloadedBytes, 99)
 
@@ -226,6 +234,7 @@ class HttpDownloader(
                         // fills (the scanner also rebuilds them from the
                         // on-disk audio/ siblings).
                         audioUris = publishResult.audioUris,
+                        audioLangs = publishResult.audioLangs,
                         quality = task.videoQuality.ifBlank { null },
                         videoServer = task.videoServer.ifBlank { null },
                         audioVariant = task.videoAudio.ifBlank { null },
@@ -589,7 +598,7 @@ class HttpDownloader(
                             tempFile.delete()
                             return@use
                         }
-                        results.add(tempFile)
+                        results.add(DownloadedAudioVariant(tempFile, track.lang))
                     }
                 } catch (e: Exception) {
                     DownloadLogger.w {

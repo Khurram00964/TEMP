@@ -1185,6 +1185,8 @@ class DefaultDownloadManager(
         }
 
         val uris = mutableListOf<String>()
+        // ROUND 153: the parallel lang labels (the data.json record's order).
+        val langs = mutableListOf<String>()
 
         // 1. The `.data.json` `audioUris` — the durable publish record.
         runCatching {
@@ -1201,6 +1203,13 @@ class DefaultDownloadManager(
                             "for mainId=$mainId E$episodeNumber"
                     }
                     uris += recorded
+                    // ROUND 153: the parallel lang labels ("Japanese"/"English" —
+                    // written beside the URIs at publish time). The offline sheet
+                    // shows the REAL names instead of "Audio 1"/"Audio 2".
+                    val recordedLangs = entry?.audioLangs.orEmpty()
+                    if (recordedLangs.isNotEmpty()) {
+                        langs += recordedLangs.take(recorded.size)
+                    }
                 }
             }
         }.onFailure {
@@ -1268,10 +1277,17 @@ class DefaultDownloadManager(
             }
         }
 
+        // ROUND 153: the label per uri — the recorded lang when present
+        // (index-aligned), else the "Audio N" fallback (the disk walk's
+        // filenames carry no lang).
+        // ROUND 153: the label per uri — the recorded lang when present
+        // (index-aligned, dedupe-safe via the source-list lookup), else the
+        // "Audio N" fallback (the disk walk's filenames carry no lang).
         uris.distinct().mapIndexed { index, uri ->
             DownloadedAudioTrack(
                 uri = uri,
-                label = "Audio ${index + 1}",
+                label = langs.getOrNull(uris.indexOf(uri))?.takeIf { it.isNotBlank() }
+                    ?: "Audio ${index + 1}",
             )
         }
     }

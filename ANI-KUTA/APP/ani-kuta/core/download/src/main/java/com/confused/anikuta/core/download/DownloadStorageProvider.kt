@@ -170,6 +170,10 @@ class DownloadStorageProvider(
         // `<videoBase>.audio<N>.mp4` per version, so ONE progressive enqueue
         // carries the video + every audio version on the ONE episode row.
         audioTempFiles: List<File> = emptyList(),
+        // ROUND 153: the audio versions' language labels (the same order as
+        // audioTempFiles) — they land in .data.json beside audioUris so the
+        // offline sheet shows the REAL names ("Japanese"/"English").
+        audioLangs: List<String> = emptyList(),
     ): PublishResult = withContext(Dispatchers.IO) {
         val contentDir = getContentFolder(content.mainId, content.title)
             ?: throw DownloadException("Failed to create content folder for ${content.title}")
@@ -281,6 +285,8 @@ class DownloadStorageProvider(
             // episode entry's audioUris record — the same field the DASH
             // publish fills).
             audioUris = publishedAudioUris,
+            // ROUND 153: the parallel lang labels (the offline sheet's names).
+            audioLangs = audioLangs,
         )
     }
 

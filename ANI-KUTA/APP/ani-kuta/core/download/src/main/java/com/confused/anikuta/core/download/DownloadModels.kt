@@ -302,6 +302,10 @@ data class PublishResult(
      * playback-truth copy).
      */
     val audioUris: List<String> = emptyList(),
+    // ROUND 153: the parallel language labels ("Japanese"/"English") for
+    // audioUris — they land in .data.json so the offline sheet shows the
+    // REAL names instead of "Audio 1"/"Audio 2".
+    val audioLangs: List<String> = emptyList(),
 )
 
 /**

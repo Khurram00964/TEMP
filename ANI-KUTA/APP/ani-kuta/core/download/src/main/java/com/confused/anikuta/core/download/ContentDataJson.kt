@@ -247,4 +247,9 @@ data class DownloadedEpisodeInfo(
      */
     @SerialName("audioUris")
     val audioUris: List<String>? = null,
+    // ROUND 153: the parallel language labels (the same order as audioUris) —
+    // the offline player's audio sheet shows the REAL names. Additive + nullable:
+    // the older data.json files decode fine (ignoreUnknownKeys both ways).
+    @SerialName("audioLangs")
+    val audioLangs: List<String>? = null,
 )
