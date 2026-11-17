@@ -167,6 +167,11 @@ class HttpDownloader(
             // layout the DASH pipeline uses (D-550), so ONE progressive enqueue
             // downloads the video + every audio version onto the ONE episode row.
             val audioVariants = downloadAudioToCache(task)
+            val audioFiles = audioVariants.map { variant -> variant.file }
+            // ROUND 153: the extension's language labels ride beside the files
+            // (the data.json parallel to audioUris) — the offline sheet shows the
+            // REAL names ("Japanese"/"English"), not "Audio 1"/"Audio 2".
+            val audioLangs = audioVariants.map { variant -> variant.lang }
             val audioFiles = audioVariants.map { it.file }
             // ROUND 153: the extension's language labels ride beside the
             // files (the data.json parallel to audioUris) — the offline
@@ -531,7 +536,10 @@ class HttpDownloader(
      * Returns the temp files in track order (the publish step numbers them
      * `<videoBase>.audio<N>.mp4` in this order).
      */
-    private suspend fun downloadAudioToCache(task: DownloadTask): List<File> =
+    /** One downloaded audio version: the temp file + the extension's language label. */
+    private data class DownloadedAudioVariant(val file: File, val lang: String)
+
+    private suspend fun downloadAudioToCache(task: DownloadTask): List<DownloadedAudioVariant> =
         withContext(Dispatchers.IO) {
             val variants = task.audioTracks.filter { it.kind == TrackKind.AUDIO_VARIANT }
             if (variants.isEmpty()) return@withContext emptyList()
@@ -556,7 +564,7 @@ class HttpDownloader(
                     // [downloadHlsAudioVariantToCache].
                     val hlsFile = downloadHlsAudioVariantToCache(task.id, index, track)
                     if (hlsFile != null) {
-                        results.add(hlsFile)
+                        results.add(DownloadedAudioVariant(hlsFile, track.lang))
                     }
                     continue
                 }

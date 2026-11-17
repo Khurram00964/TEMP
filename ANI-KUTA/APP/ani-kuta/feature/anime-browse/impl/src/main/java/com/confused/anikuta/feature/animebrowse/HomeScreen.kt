@@ -228,7 +228,6 @@ fun HomeScreen(
     onOpenDetailsByMainId: (String, Int?, Boolean) -> Unit = { _, _, _ -> },
     // ROUND 152: the brand chip's art — the APP's real logo (app-side drawable
     // res id; this module can't see app resources). Null = the glyph fallback.
-    homeLogoRes: Int? = null,
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -372,7 +371,6 @@ fun HomeScreen(
                         item(key = "topbar") {
                             HomeTopBar(
                                 onProfileClick = onProfileClick,
-                                logoRes = homeLogoRes,
                                 avatarUrl = profileAvatarUrl,
                                 avatarInitial = profileInitial,
                             )
@@ -788,9 +786,9 @@ private fun HomeHero(
             LazyRow(
                 state = listState,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
-                // ROUND 153: re-derived for the narrower card — (width − card)/2
-                // keeps the snap dead-centered on the active cover.
-                contentPadding = PaddingValues(horizontal = (maxWidth - (maxWidth - 88.dp)) / 2, vertical = 4.dp),
+                // ROUND 153: re-derived for the narrower card — the centering
+                // padding is (width − card)/2 = a constant 44dp (88dp of edge).
+                contentPadding = PaddingValues(horizontal = 44.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
