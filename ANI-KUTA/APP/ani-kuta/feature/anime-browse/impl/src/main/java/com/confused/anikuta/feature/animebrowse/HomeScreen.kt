@@ -330,8 +330,40 @@ fun HomeScreen(
                     // the rail survives the LazyColumn disposing the moods item
                     // on a far scroll — and "Surprise me" is the ACTIVE chip on
                     // entry ("" = the rail hidden; the seed reshuffles per tap). ──
-                    var activeMood by remember { mutableStateOf(MOOD_SURPRISE) }
+                    // ROUND 154 (the device round): the rail is HIDDEN on entry —
+                    // Surprise me stays LIT (its brand style never turns off) but
+                    // the rail only appears after the tap (which reshuffles). ""
+                    // = no rail; MOOD_SURPRISE = the rail shown.
+                    var activeMood by remember { mutableStateOf("") }
                     var surpriseSeed by remember { mutableIntStateOf(0) }
+                    // ROUND 154 (the user's order): the mood section COLLAPSES when
+                    // it leaves the viewport — "when I scroll to the very top and
+                    // then to the very bottom again, only the genres and surprise me
+                    // button will show". The derived visibility watches the home
+                    // list's scroll window against the moods item's bounds; the
+                    // exit resets activeMood to "" (the rail collapses; the chips
+                    // stay; a tap re-opens fresh).
+                    val moodsVisible by remember {
+                        derivedStateOf {
+                            val info = listState.layoutInfo
+                            val moodsItem = info.visibleItemsInfo.firstOrNull {
+                                it.key == "moods"
+                            }
+                            if (moodsItem == null) {
+                                false
+                            } else {
+                                val viewportTop = info.viewportStartOffset - 200
+                                val viewportBottom = info.viewportEndOffset + 200
+                                moodsItem.offset + moodsItem.size > viewportTop &&
+                                    moodsItem.offset < viewportBottom
+                            }
+                        }
+                    }
+                    LaunchedEffect(moodsVisible) {
+                        if (!moodsVisible && activeMood != "") {
+                            activeMood = ""
+                        }
+                    }
                     // The mounted clock driving the 1s countdown chips; the VM's
                     // per-minute ticker recomputes the released flags + the row
                     // identities, so the release transition fires on its own.
@@ -782,7 +814,46 @@ private fun HomeHero(
             }
         }
 
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // ROUND 154 (the device round): the cover-derived gradient wash BEHIND
+        // the carousel — the ACTIVE slide's art, blurred + dimmed, fading to
+        // the background (a subtle read: "not that much, but a very subtle
+        // looking kind of one"). Rides the same fractional position as the
+        // cards, so the wash crossfades as the carousel advances. The wash is
+        // an UNDERLAY: the carousel Column stacks on top (sibling order), the
+        // wash shows through the 10dp gaps + the peeking neighbour edges.
+        Box(modifier = Modifier.fillMaxWidth()) {
+            val washIndex = fractionalPos.roundToInt().coerceIn(0, n - 1)
+            val washSlide = slides.getOrNull(washIndex)
+            Box(
+                modifier = Modifier
+                    .matchParentSize(),
+            ) {
+                if (washSlide != null) {
+                    AsyncImage(
+                        model = washSlide.coverUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(28.dp),
+                    )
+                }
+                // The dim + the fade to the screen background (subtle, not a poster).
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                                    0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                    1f to MaterialTheme.colorScheme.background,
+                                ),
+                            ),
+                        ),
+                )
+            }
+            Column(modifier = Modifier.fillMaxWidth()) {
             LazyRow(
                 state = listState,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
@@ -824,6 +895,7 @@ private fun HomeHero(
                     )
                 }
             }
+        }
 
             // ── The dots — loop controls with the direction-aware seam ──
             val lit = if (dir < 0) {
@@ -1520,12 +1592,16 @@ private fun HomeAirsRow(
                 contentAlignment = Alignment.Center,
             ) {
                 // The pulsing halo on the NEXT episode (node-pulse, shared alpha).
+                // ROUND 154 (the device round): the swing DEEPENS (0.10→0.45 — the
+                // report: "the time was highlighted, but very subtly") and the
+                // pill's own background rides the pulse (a primary wash) so the
+                // next node is unmistakable.
                 if (pulsing) {
                     Box(
                         modifier = Modifier
                             .size(width = 80.dp, height = 28.dp)
                             .clip(PillShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f * pulse)),
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f + 0.35f * pulse)),
                     )
                 }
                 Row(
@@ -1533,11 +1609,25 @@ private fun HomeAirsRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier
                         .clip(PillShape)
-                        .background(if (released) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background)
+                        .background(
+                            when {
+                                released -> MaterialTheme.colorScheme.primary
+                                pulsing -> MaterialTheme.colorScheme.primary.copy(
+                                    alpha = 0.10f + 0.18f * pulse,
+                                )
+                                else -> MaterialTheme.colorScheme.background
+                            },
+                        )
                         .border(
                             BorderStroke(
                                 1.5.dp,
-                                if (released) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                when {
+                                    released -> MaterialTheme.colorScheme.primary
+                                    pulsing -> MaterialTheme.colorScheme.primary.copy(
+                                        alpha = 0.30f + 0.55f * pulse,
+                                    )
+                                    else -> MaterialTheme.colorScheme.outlineVariant
+                                },
                             ),
                             PillShape,
                         )
@@ -1557,10 +1647,14 @@ private fun HomeAirsRow(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.2.sp,
-                        color = if (released) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                        color = when {
+                            released -> MaterialTheme.colorScheme.onPrimary
+                            pulsing -> lerp(
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                MaterialTheme.colorScheme.primary,
+                                pulse,
+                            )
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         // nowrap enforced — the 78dp column guarantees the fit.
                         maxLines = 1,
@@ -2000,10 +2094,10 @@ private fun HomeMoodChips(
         // ROUND 153: the tapped chip CENTERS itself in the rail (the smooth
         // scroll needs a scope in this composable).
         val scope = rememberCoroutineScope()
-        // The chip rail resets to the start on every active-chip change.
-        LaunchedEffect(activeMood) {
-            chipListState.scrollToItem(0)
-        }
+        // ROUND 154 (the device round): the reset-on-active-change is GONE — it
+        // yanked the rail back to the left AFTER the centering (the report:
+        // tapping the rightmost genre scrolled everything to the left). The
+        // centering below is the only rail motion on tap.
         LazyRow(
             state = chipListState,
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
