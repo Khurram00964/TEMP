@@ -544,8 +544,22 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10194
+    const val versionName = "1.1.94"
+    // ROUND 154 (v1.1.94): release/1.1.94 — cut from the round-154 head
+    // 36553e16 (CI green — run 44175100066 on TEMP): THE VARIANT TRUTH FINAL
+    // (the resolver-sheet pick's OWN audio-version label rides the key — the
+    // sheet's SUB/DUB chips grouped those videos by that label; the episode
+    // variant steers tryAutoSelect's DUB/SUB group over the continuity pin;
+    // the ladder reads the live video flavor first — a sub pick stays
+    // Japanese, a dub pick stays English), THE FIRST-FRAME COVER (the initial
+    // stream fetch shows the cover + a spinner instead of black, crossfading
+    // out at the first real frame), THE AUDIO-SWITCH PILL (the deliberate
+    // pause while the external audio fetches is visible on the player), and
+    // THE HOME POLISH (the hero cover-wash underlay, the airs next-node
+    // highlight strengthened, the Surprise rail hidden on entry + always-lit,
+    // the tapped chip centering, the mood collapse-on-exit). THE LAST DEBUG
+    // BUILD — the release line follows on the official repository.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
