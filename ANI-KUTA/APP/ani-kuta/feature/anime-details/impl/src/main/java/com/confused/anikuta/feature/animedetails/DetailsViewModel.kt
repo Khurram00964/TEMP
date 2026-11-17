@@ -1147,7 +1147,7 @@ class DetailsViewModel(
                 return com.confused.anikuta.core.videoresolver.ResolvedVideo(
                     url = variantVideo.url,
                     quality = variantVideo.quality ?: variantVideo.videoTitle,
-                    headers = variantVideo.headers,
+                    headers = variantVideo.videoHeaders ?: "",
                 )
             }
         }

@@ -1969,6 +1969,18 @@ fun DetailsScreen(
                         metadata = episodeMetadata,
                         currentScanlator = ep.scanlator,
                     )
+                    // ROUND 154: the picked row's audio-version label IS the
+                    // variant truth - the resolver sheet's SUB/DUB chips grouped
+                    // these videos by that label, and ResolvedVideo carries no
+                    // title field. HSUB counts as sub (the same group the
+                    // steering reads); an unknown label falls back to "" (the
+                    // ladder's episode-row variant - never worse than before).
+                    val pickedVariant = when {
+                        audioLabel.contains("DUB", ignoreCase = true) &&
+                            !audioLabel.contains("HSUB", ignoreCase = true) -> "dub"
+                        audioLabel.contains("SUB", ignoreCase = true) -> "sub"
+                        else -> ""
+                    }
                     onNavigateToWatch(
                         viewModel.currentMainId ?: "",
                         video.url,
@@ -1989,11 +2001,8 @@ fun DetailsScreen(
                         // ROUND 108 (D-713): the cover rides the nav — the player
                         // rows' thumbnail fallback.
                         ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
-                        // ROUND 153: the picked video's OWN title flavor — the
-                        // resolver sheet's SUB/DUB chips grouped these videos by
-                        // parseAudioVersion, so the title IS the user's picked
-                        // variant (the episode row's scanlator can be variant-less).
-                        episodeAudioVariantOf("", video.title),
+                        // ROUND 154: the resolver-sheet pick's own variant (above).
+                        pickedVariant,
                     )
                 }
                 showResolverSheet = false

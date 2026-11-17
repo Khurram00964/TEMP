@@ -1374,12 +1374,12 @@ fun WatchScreen(
         //   3. The metadata map + the title parse (the fallback).
         val live = currentAudioVersion.uppercase()
         when {
-            live.contains("DUB") -> parseAudioAvailability("DUB", "")
-            live.contains("SUB") || live.contains("HSUB") -> parseAudioAvailability("SUB", "")
+            live.contains("DUB") -> com.confused.anikuta.core.common.parseAudioAvailability("DUB", "")
+            live.contains("SUB") || live.contains("HSUB") -> com.confused.anikuta.core.common.parseAudioAvailability("SUB", "")
             else -> when (stateHolder.currentEpisodeAudioVariant.value.lowercase()) {
-                "dub" -> parseAudioAvailability("DUB", "")
-                "sub" -> parseAudioAvailability("SUB", "")
-                else -> parseAudioAvailability(
+                "dub" -> com.confused.anikuta.core.common.parseAudioAvailability("DUB", "")
+                "sub" -> com.confused.anikuta.core.common.parseAudioAvailability("SUB", "")
+                else -> com.confused.anikuta.core.common.parseAudioAvailability(
                     episodeMetadata[stateHolder.currentEpisodeNumber.value.toInt()]?.scanlator,
                     stateHolder.currentEpisodeTitle.value,
                 )
