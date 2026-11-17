@@ -25,6 +25,10 @@ dependencies {
     implementation(project(":core:content"))
     implementation(project(":core:data-cache"))
     implementation(project(":core:download"))
+    // ROUND 152: the auto-play CACHE-HIT — the pendingAutoPlay poll replays a
+    // prior PlaybackCacheStore entry for the same identity directly (before
+    // any network resolve), the MainActivity tap-to-play precedent.
+    implementation(project(":core:playback-cache"))
     implementation(project(":core:watch-progress"))
     implementation(project(":core:ratings"))  // Phase 4: per-anime rating UI
     implementation(project(":core:activity-tracker"))  // D-192: activity tracking

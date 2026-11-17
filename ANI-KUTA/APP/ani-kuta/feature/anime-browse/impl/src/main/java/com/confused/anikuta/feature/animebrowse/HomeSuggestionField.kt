@@ -3,9 +3,7 @@ package com.confused.anikuta.feature.animebrowse
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -44,7 +42,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
-import com.confused.anikuta.core.anilist.model.AniListAnime
 import com.confused.anikuta.core.designsystem.theme.Motion
 import kotlin.math.PI
 import kotlin.math.abs
@@ -645,6 +642,15 @@ private class FieldEngine {
      * stays fully clear — the handoff's visual contract). `cut` is the border
      * line in the tile's LOCAL unscaled px (screen distance ÷ scale), measured
      * from the tile's leading edge along the mask direction.
+     *
+     * ROUND 152 (the MELT fix — the "rotated strips" bug): the old call built
+     * Brush.linearGradient WITHOUT start/end, so EVERY edge's gradient ran the
+     * default (0,0)→(w,h) = a 45° DIAGONAL, and the DstOut bands rendered as
+     * rotated strips instead of edge melts. Every edge now gets its own axis
+     * EXPLICITLY: horizontal for RIGHT/LEFT (start Offset.Zero → end
+     * (extent, 0) — the stops already encode each side), vertical for
+     * BOTTOM/TOP (end (0, extent)); TOP/LEFT read the same left→right /
+     * top→bottom stop arrays, only the masks differ.
      */
     fun meltBrush(tile: FieldTile, dir: Int, cut: Float, extent: Float): Brush? {
         val c = (cut * 4f).toInt()
@@ -660,28 +666,38 @@ private class FieldEngine {
             if (end <= 0f) {
                 null
             } else {
-                Brush.linearGradient(
-                    colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        start to Color.Transparent,
-                        end to Color.Black,
-                        1f to Color.Black,
-                    ),
+                val stops = arrayOf(
+                    0f to Color.Transparent,
+                    start to Color.Transparent,
+                    end to Color.Black,
+                    1f to Color.Black,
                 )
+                if (dir == MELT_RIGHT) {
+                    // The horizontal axis: tile-local left → right.
+                    Brush.linearGradient(colorStops = stops, start = Offset.Zero, end = Offset(extent, 0f))
+                } else {
+                    // The vertical axis: tile-local top → bottom.
+                    Brush.linearGradient(colorStops = stops, start = Offset.Zero, end = Offset(0f, extent))
+                }
             }
         } else {
             // to left / to top: fully erased up to the border line, ramping
             // back to clear over the inner band.
             val start = (cut / extent).coerceIn(0f, 1f)
             val end = ((cut + meltBand) / extent).coerceIn(0f, 1f)
-            Brush.linearGradient(
-                colorStops = arrayOf(
-                    0f to Color.Black,
-                    start to Color.Black,
-                    end to Color.Transparent,
-                    1f to Color.Transparent,
-                ),
+            val stops = arrayOf(
+                0f to Color.Black,
+                start to Color.Black,
+                end to Color.Transparent,
+                1f to Color.Transparent,
             )
+            if (dir == MELT_LEFT) {
+                // Same horizontal axis (the stops flip the mask side).
+                Brush.linearGradient(colorStops = stops, start = Offset.Zero, end = Offset(extent, 0f))
+            } else {
+                // Same vertical axis (the stops flip the mask side).
+                Brush.linearGradient(colorStops = stops, start = Offset.Zero, end = Offset(0f, extent))
+            }
         }
         tile.meltBrush = brush
         return brush
@@ -725,22 +741,26 @@ private fun wrapAngle(a: Float): Float = atan2(sin(a), cos(a))
  * offscreen layer, so the fade reveals what sits UNDER the tile (the TSX
  * mask semantics), not the frame background.
  *
- * ## Covers
- * (a) [pool]'s top library genres → [coversForGenres] (the VM's fetchByGenre
- * mix, 50 covers); (b) empty pool/empty library → [fallbackCovers] (the
- * trending payload). [refreshToken] bumps rebuild the field with a new seed
- * (re-jitter + reshuffled deal queue — no refetch); [paused] freezes the
- * drift but keeps the drag; a tap opens (near center) or glides the tapped
- * cover to center (CENTER-VS-OPEN, [OPEN_RADIUS_FACTOR]).
+ * ## Covers (ROUND 152: hoisted to the ViewModel)
+ * [covers] IS the pool — the VM fetches it once ([HomeViewModel.fieldCovers],
+ * the trending payload as the fallback) and this composable consumes it as a
+ * param; re-entry is instant (no refetch, no cover-flicker). [refreshToken]
+ * bumps rebuild the field with a new seed (re-jitter + reshuffled deal queue
+ * — no refetch); [paused] freezes the drift but keeps the drag; a tap opens
+ * (near center) or glides the tapped cover to center (CENTER-VS-OPEN,
+ * [OPEN_RADIUS_FACTOR]).
+ *
+ * ## The frame (ROUND 152)
+ * NO border — the device report: the drawn outline around the 350×380 frame
+ * read as a hard box; the vignette alone dissolves the edges into the
+ * background (the user's call: no visible border).
  */
 @Composable
 internal fun HomeSuggestionField(
-    pool: HomeSuggestionPool,
+    covers: List<HomeFieldCover>,
     paused: Boolean,
     refreshToken: Int,
-    fallbackCovers: List<AniListAnime>,
     onOpenCover: (Int) -> Unit,
-    coversForGenres: suspend (List<String>) -> List<AniListAnime>,
     modifier: Modifier = Modifier,
 ) {
     val pxPerDp = LocalDensity.current.density
@@ -748,7 +768,6 @@ internal fun HomeSuggestionField(
     var metrics by remember {
         mutableStateOf(FieldFrameMetrics(0f, 0f, 60.dp, 90.dp, TILE_RADIUS_DP.dp))
     }
-    var covers by remember { mutableStateOf<List<HomeFieldCover>>(emptyList()) }
     val fieldIn = remember { Animatable(1f) }
     val onOpenCoverLatest by rememberUpdatedState(onOpenCover)
 
@@ -756,19 +775,6 @@ internal fun HomeSuggestionField(
     LaunchedEffect(paused) { engine.paused = paused }
     LaunchedEffect(refreshToken) { engine.requestedRefresh = refreshToken }
     LaunchedEffect(covers) { engine.setPool(covers.size) }
-
-    // The cover pool: the library-genre affinity fetch, the trending fallback.
-    LaunchedEffect(pool.genres, fallbackCovers) {
-        val base = fallbackCovers.map { HomeFieldCover(it.id, it.coverUrl) }
-        val loaded = if (pool.genres.isEmpty()) {
-            emptyList()
-        } else {
-            runCatching { coversForGenres(pool.genres) }
-                .getOrElse { emptyList() }
-                .map { HomeFieldCover(it.id, it.coverUrl) }
-        }
-        covers = loaded.ifEmpty { base }
-    }
 
     // The ONE frame loop (dt clamped to 50ms — backgrounding pauses, no leap).
     LaunchedEffect(engine) {
@@ -793,6 +799,9 @@ internal fun HomeSuggestionField(
     }
 
     // The near-square frame (the placeholder chrome: 20dp edges, 30dp radius).
+    // ROUND 152: NO border/stroke — the vignette dissolves the edges into the
+    // frame's own background (the device report: the outline read as a hard
+    // box; the user wants no visible border).
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -816,10 +825,6 @@ internal fun HomeSuggestionField(
                 }
             }
             .clip(RoundedCornerShape(30.dp))
-            .border(
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                RoundedCornerShape(30.dp),
-            )
             .background(MaterialTheme.colorScheme.background),
     ) {
         // The pannable field — the tiles + the tap/drag detectors. Drag wins

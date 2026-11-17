@@ -176,6 +176,12 @@ fun DetailsScreen(
     val downloadManager = koinInject<com.confused.anikuta.core.download.DownloadManager>()
     // D-231: Episode list preferences (filters, sort, grouping).
     val episodeListPrefs = koinInject<com.confused.anikuta.core.preferences.EpisodeListPreferences>()
+    // ROUND 152: the playback cache — the auto-play's cache-hit gate reads the
+    // per-identity entries + the enable pref directly (the MainActivity
+    // tap-to-play-from-cache precedent; both are provided by the
+    // playback-cache Koin module).
+    val playbackCacheStore = koinInject<com.confused.anikuta.core.playbackcache.PlaybackCacheStore>()
+    val playbackCachePrefs = koinInject<com.confused.anikuta.core.playbackcache.PlaybackCachePreferences>()
     // D-407 (round 31): the scope for the downloaded-episode subtitle
     // resolution (a suspend call — DB/disk — launched from the episode tap;
     // the navigation fires from the coroutine when it completes).
@@ -576,6 +582,85 @@ fun DetailsScreen(
 
     LaunchedEffect(pendingAutoPlay) {
         if (!pendingAutoPlay) return@LaunchedEffect
+
+        // ── ROUND 152: THE CACHE-HIT AUTOPLAY — the poll's FIRST gate (BEFORE
+        // the network resolver wait) ──
+        // The auto-play flow used to wait for the network resolve even when
+        // this exact episode was already in the video cache. The cache
+        // carries per-identity entries (mainId + episodeNumber + sourceId —
+        // upstreamUrl/headers, the serialized track lists, the quality); the
+        // proven replay precedent is MainActivity.buildWatchKeyFromCacheEntry
+        // (the tap-to-play path). So: when video caching is enabled and a
+        // prior entry exists for THIS identity, navigate DIRECTLY with the
+        // entry's fields — WatchScreen's cachedUrl + knownIdentityFor
+        // re-attach the cache and replay instantly. The network flow stays
+        // the cache-MISS path. The entry whose serverKey matches the series'
+        // remembered playback pin wins (the continuity ask); otherwise the
+        // most recently accessed one (the store returns them newest-first).
+        run {
+            val cachedEpNumber = currentEpisode?.episode_number?.toDouble()
+            val linkedId = effectiveLinkedSource?.sourceId ?: 0L
+            val mid = viewModel.currentMainId
+            if (cachedEpNumber != null && cachedEpNumber > 0 && linkedId > 0L &&
+                !mid.isNullOrBlank()
+            ) {
+                val pin = viewModel.rememberedPlaybackPin()
+                val hit = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        if (!playbackCachePrefs.cacheEnabled) return@runCatching null
+                        val entries =
+                            playbackCacheStore.findByIdentitySync(mid, cachedEpNumber, linkedId)
+                        entries.firstOrNull { it.serverKey == pin } ?: entries.firstOrNull()
+                    }.getOrNull()
+                }
+                if (hit != null) {
+                    val ep = currentEpisode
+                    if (ep != null) {
+                        val epListStr = (episodeState as? EpisodeState.Loaded)?.episodes
+                            ?.let(::buildEpisodeListSerialized) ?: ""
+                        val epMetaStr = buildEpisodeMetadataSerialized(
+                            episodes = (episodeState as? EpisodeState.Loaded)?.episodes ?: emptyList(),
+                            metadata = episodeMetadata,
+                            currentScanlator = ep.scanlator,
+                        )
+                        Logger.i("Anikuta:Feature:Details") {
+                            "Auto-play: CACHE HIT (mainId=$mid, ep=$cachedEpNumber, " +
+                                "source=$linkedId) — navigating directly with the cached " +
+                                "${hit.quality} stream, resolve skipped"
+                        }
+                        pendingAutoPlay = false
+                        onNavigateToWatch(
+                            mid,
+                            hit.upstreamUrl,
+                            (state as? DetailsState.Success)?.anime?.displayName ?: hit.animeTitle,
+                            hit.quality,
+                            ep.url,
+                            ep.episode_number,
+                            ep.name,
+                            epListStr,
+                            hit.upstreamHeaders,
+                            // The registry is EMPTY for a cache replay (the
+                            // MainActivity precedent passes "" too) — the watch
+                            // screen recovers the cache identity via
+                            // PlaybackCacheManager.knownIdentityFor.
+                            "",
+                            hit.sourceId,
+                            hit.subtitleTracks,
+                            hit.audioTracks,
+                            epMetaStr,
+                            // ROUND 101 (WS-D): the details accent rides the nav.
+                            coverAccent?.toLong() ?: 0L,
+                            // ROUND 108 (D-713): the cover rides the nav — the
+                            // player rows' thumbnail fallback.
+                            ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                        )
+                        viewModel.clearResolver()
+                        return@LaunchedEffect
+                    }
+                }
+            }
+        }
+
         // Poll resolverState every 100ms until it's Success or Error.
         // (LaunchedEffect captures the Compose state value at composition time,
         // but `resolverState` is collected via collectAsState() which updates

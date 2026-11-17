@@ -34,8 +34,12 @@ import androidx.compose.material.icons.filled.Lock
 // ROUND 150: ScreenRotation + ScreenLockRotation VERIFIED present in the same
 // pinned 1.7.8 extended artifact (filled/ScreenRotationKt +
 // filled/ScreenLockRotationKt) — the rotation toggle's FREE/LOCK glyphs.
+// ROUND 152: the pair swapped to the cleaner mix — FREE = the OUTLINED
+// ScreenRotation, LOCK = the FILLED ScreenLockRotation (outlined/
+// ScreenRotationKt.class verified in the pinned artifact; the outline/fill
+// contrast now carries the state difference at a glance).
 import androidx.compose.material.icons.filled.ScreenLockRotation
-import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.outlined.ScreenRotation
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -87,6 +91,7 @@ private val ANIM_DURATION = 200
  *  - Top-right: frosted glass row (server, subtitles, audio, quality, more)
  *  - Center: -10s skip + play/pause (themed-dark glass) + +10s skip
  *  - Bottom: Canvas-drawn seekbar + time + speed/rotate/skip/pip/exit
+ *    (ROUND 152: the tray order is zoom → speed → ROTATE → skip)
  *
  * Lock mode: only an unlock button at top-left.
  * Auto-hide: 4s. Animations: slideIn/out (top/bottom rows), fade (center).
@@ -126,6 +131,10 @@ fun FullscreenControls(
     // WatchScreen's fullscreen orientation effect; this button only flips it).
     // The icon reads the state: ScreenLockRotation while locked,
     // ScreenRotation while free.
+    // ROUND 152: the button sits BETWEEN the speed and the skip button (the
+    // user's explicit tray order: zoom → speed → ROTATE → next), and the
+    // glyphs are the cleaner mix — FREE = Icons.Outlined.ScreenRotation,
+    // LOCK = Icons.Filled.ScreenLockRotation.
     onToggleRotationClick: () -> Unit = {},
     rotationLocked: Boolean = false,
     onRetry: () -> Unit = {},
@@ -501,21 +510,26 @@ fun FullscreenControls(
                                             },
                                         )
                                         FSSpeedButton(speed = currentSpeed, onClick = onSpeedClick)
-                                        FSSkipIconButton(onClick = onSkipForward)
-                                        // ROUND 150: the ROTATION FREE/LOCK toggle —
-                                        // LAST in the tray (resize → speed → next →
-                                        // rotate), LEFT of the standalone exit chip.
-                                        // FREE (ScreenRotation): every orientation is
-                                        // allowed (portrait-fullscreen included);
-                                        // LOCK (ScreenLockRotation): the current one
-                                        // is pinned. The orientation writes happen in
+                                        // ROUND 152: the ROTATION FREE/LOCK toggle
+                                        // moved BETWEEN the speed and the skip
+                                        // button — the user's explicit tray order:
+                                        // zoom → speed → ROTATE → next (was LAST
+                                        // in the tray). FREE = the OUTLINED
+                                        // ScreenRotation, LOCK = the FILLED
+                                        // ScreenLockRotation (the outline/fill mix
+                                        // carries the state visually).
+                                        // FREE (ScreenRotation): every orientation
+                                        // is allowed (portrait-fullscreen
+                                        // included); LOCK (ScreenLockRotation):
+                                        // the current one is pinned. The
+                                        // orientation writes happen in
                                         // WatchScreen's fullscreen effect — this is
                                         // only the flip.
                                         FSSmallButton(
                                             icon = if (rotationLocked) {
-                                                Icons.Default.ScreenLockRotation
+                                                Icons.Filled.ScreenLockRotation
                                             } else {
-                                                Icons.Default.ScreenRotation
+                                                Icons.Outlined.ScreenRotation
                                             },
                                             contentDescription = if (rotationLocked) {
                                                 "Rotation locked (tap to free)"
@@ -524,6 +538,7 @@ fun FullscreenControls(
                                             },
                                             onClick = onToggleRotationClick,
                                         )
+                                        FSSkipIconButton(onClick = onSkipForward)
                                     }
                                 }
                                 // D-467: standalone again (NOT inside the

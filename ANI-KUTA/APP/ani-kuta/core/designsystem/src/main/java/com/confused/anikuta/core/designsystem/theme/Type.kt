@@ -1,9 +1,11 @@
 package com.confused.anikuta.core.designsystem.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.confused.anikuta.core.designsystem.R
@@ -25,6 +27,44 @@ val RobotoFamily = FontFamily(
     Font(R.font.roboto_black, FontWeight.ExtraBold),     // 800
     Font(R.font.roboto_black, FontWeight.Black),         // 900
 )
+
+/**
+ * ROUND 152: the handoff's DISPLAY face — Bricolage Grotesque, bundled as the
+ * upstream variable TTF (`BricolageGrotesque[opsz,wdth,wght].ttf`, 408KB raw /
+ * roughly ~170-220KB in the APK after resource compression; the only APK-size
+ * cost of this round). Source: github.com/ateliertriay/bricolage
+ * (fonts/variable — the googlefonts/bricolage-grotesque path 404s).
+ *
+ * The file is a REAL variable font (fvar + gvar tables verified), so each
+ * weight below instantiates the same resource at its `wght` axis value via
+ * [FontVariation.Settings] — no synthetic bold, the ExtraBold wordmark/lockup
+ * render with the true 800 draw.
+ *
+ * Consumers (the handoff's font-display roles): the TopBar wordmark, the
+ * section heads (H2 20sp/700), the hero title lockup, and the browse screen
+ * heads (.browse-title). The BODY face stays [RobotoFamily].
+ */
+@OptIn(ExperimentalTextApi::class)
+val BricolageFamily = FontFamily(
+    Font(
+        R.font.bricolage_grotesque_variable,
+        FontWeight.Normal,
+        variationSettings = FontVariation.Settings(FontVariation.weight(400)),
+    ),
+    Font(
+        R.font.bricolage_grotesque_variable,
+        FontWeight.Bold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(700)),
+    ),
+    Font(
+        R.font.bricolage_grotesque_variable,
+        FontWeight.ExtraBold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(800)),
+    ),
+)
+
+/** ROUND 152: the display-face alias — every handoff `font-display` spot uses this. */
+val DisplayFamily = BricolageFamily
 
 /**
  * ANI-KUTA typography — M3 type scale with bundled Roboto + ExtraBold.

@@ -1,10 +1,17 @@
 package com.confused.anikuta.core.download
 
+// ROUND 152: the HLS audio-variant route — FFmpegKit (bundled via
+// com.github.jmir1:ffmpeg-kit:1.18; see downloadHlsAudioVariantToCache).
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode
+import com.arthenica.ffmpegkit.SessionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 /**
  * The HTTP downloader — the download FACADE (test-feature branch: routing, validation,
@@ -508,6 +515,10 @@ class HttpDownloader(
      * the same MPV-format string the video carries) + the User-Agent fallback,
      * failures logged + skipped (one bad version never fails the download).
      *
+     * ROUND 152: .m3u8/.m3u variants now route to the BUNDLED FFmpegKit
+     * ([downloadHlsAudioVariantToCache]) — the round-150 flat-GET skip
+     * dead-ended every HLS-audio episode with zero published audio files.
+     *
      * Returns the temp files in track order (the publish step numbers them
      * `<videoBase>.audio<N>.mp4` in this order).
      */
@@ -520,24 +531,23 @@ class HttpDownloader(
             }
             val results = mutableListOf<File>()
             for ((index, track) in variants.withIndex()) {
-                // ── ROUND 150: the HLS-manifest SKIP — an .m3u8/.m3u
-                // AUDIO_VARIANT URL flat-GETs as a few-KB TEXT playlist (the
-                // "glitched file" the device round played manually: no
-                // VideoTypeDetector ran on this path, so the playlist bytes
-                // were published + audio-add'ed as a "media file"). A REAL
-                // HLS audio download needs segment fetching (the HlsDownloader
-                // pipeline owns that for videos; the DASH pipeline handles its
-                // own audio groups) — out of scope for this flat progressive
-                // path. The skip is an HONEST GAP: the version is logged +
-                // left unpublished rather than shipping garbage that "plays"
-                // as noise.
                 val urlPath = track.url.substringBefore('?')
                     .substringAfterLast('/', "").lowercase()
                 if (urlPath.endsWith(".m3u8") || urlPath.endsWith(".m3u")) {
-                    DownloadLogger.w {
-                        "Audio version $index (${track.lang}) is an HLS playlist " +
-                            "(${track.url.take(80)}) — a flat audio download cannot " +
-                            "fetch segment streams; SKIPPED (no .audio file published)"
+                    // ── ROUND 152: the HLS AUDIO ROUTE — FFmpegKit ──
+                    // Replaces the round-150 flat-GET SKIP: that skip left
+                    // every HLS-audio episode with ZERO downloadable audio
+                    // versions (the flat GET only ever wrote the few-KB
+                    // TEXT playlist). FFmpegKit IS bundled
+                    // (com.github.jmir1:ffmpeg-kit:1.18) and its ffmpeg
+                    // binary fetches the segments + remuxes the real
+                    // container (`-c copy` — no transcode; a 24-min
+                    // episode's audio remuxes in seconds). The full flow +
+                    // the honest failure shape live in
+                    // [downloadHlsAudioVariantToCache].
+                    val hlsFile = downloadHlsAudioVariantToCache(task.id, index, track)
+                    if (hlsFile != null) {
+                        results.add(hlsFile)
                     }
                     continue
                 }
@@ -589,6 +599,114 @@ class HttpDownloader(
             }
             results
         }
+
+    /**
+     * ROUND 152: the HLS AUDIO_VARIANT route — FFmpegKit. The round-150 skip
+     * was an honest gap with a dead result: an .m3u8/.m3u audio variant
+     * flat-GETs as a few-KB TEXT playlist, so HLS-audio episodes ended up with
+     * ZERO downloadable audio versions. FFmpegKit IS bundled
+     * (com.github.jmir1:ffmpeg-kit:1.18 — `api(libs.ffmpeg.kit)` in
+     * :core:player-mpv-lib, visible app-wide) and its ffmpeg binary handles
+     * the HLS demux + remux natively: `-i <playlist> -c copy -vn` fetches the
+     * segments and writes the real container (temp name audio-<index>.m4a —
+     * ffmpeg picks the actual muxer from the stream; the publish step renames
+     * to `<videoBase>.audio<N>.mp4` regardless). `-c copy` = stream copy, no
+     * transcode — the remux time tracks the stream duration (a 24-min
+     * episode's audio remuxes in seconds).
+     *
+     * The headers: the task carries the MPV format ("Key: Value,Key2: Value2"
+     * — the VideoResolver.formatHeaders shape, see [applyTrackHeaders]);
+     * ffmpeg wants one `Key: Value` line per header terminated by CRLF, so
+     * the string is rebuilt line-per-header + the SAME User-Agent fallback
+     * the flat path adds (protected CDNs 403 a default UA). `-rw_timeout` (30
+     * s, microseconds — the download client's own read-timeout class) bounds a
+     * stalled segment fetch so the session can never hang the await forever.
+     *
+     * Runs INSIDE the caller's Dispatchers.IO context; the async session is
+     * awaited via suspendCoroutine (the FFmpegKit callback thread just resumes
+     * the coroutine).
+     *
+     * @return the temp file when the ffmpeg session COMPLETED with a
+     *   plausible audio payload (the same [MIN_PUBLISHABLE_AUDIO_BYTES] gate
+     *   the flat path enforces); null otherwise — logged + skipped by the
+     *   caller, exactly the honest round-150 failure shape.
+     */
+    private suspend fun downloadHlsAudioVariantToCache(
+        taskId: String,
+        index: Int,
+        track: DownloadTrack,
+    ): File? {
+        val tempFile = tempCache.getTempFile(taskId, "audio-$index.m4a")
+        // ffmpeg asks before overwriting and ffmpeg-kit has no stdin to answer
+        // with — a leftover partial file from a failed attempt would hang the
+        // session forever, so the command always allows the overwrite (-y).
+        val headerString = buildString {
+            val headers = track.headers
+            if (!headers.isNullOrBlank()) {
+                for (pair in headers.split(',')) {
+                    val colonIdx = pair.indexOf(':')
+                    if (colonIdx <= 0) continue
+                    val name = pair.substring(0, colonIdx).trim()
+                    val value = pair.substring(colonIdx + 1).trim()
+                    if (name.isNotEmpty() && value.isNotEmpty()) {
+                        append(name).append(": ").append(value).append("\r\n")
+                    }
+                }
+            }
+            if (headers.isNullOrBlank() || !headers.contains("User-Agent", ignoreCase = true)) {
+                append(
+                    "User-Agent: Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36\r\n",
+                )
+            }
+        }
+        return try {
+            val session = suspendCoroutine { cont ->
+                FFmpegKit.executeWithArgumentsAsync(
+                    arrayOf(
+                        "-y",
+                        "-rw_timeout", "30000000",
+                        "-headers", headerString,
+                        "-i", track.url,
+                        "-c", "copy",
+                        "-vn",
+                        tempFile.absolutePath,
+                    ),
+                    { s -> cont.resume(s) },
+                )
+            }
+            val completed = session.state == SessionState.COMPLETED &&
+                ReturnCode.isSuccess(session.returnCode)
+            if (!completed) {
+                DownloadLogger.w {
+                    "Audio version $index (${track.lang}) FFmpegKit session did not complete " +
+                        "(state=${session.state}, rc=${session.returnCode}) — skipping"
+                }
+                tempFile.delete()
+                return null
+            }
+            if (tempFile.length() < MIN_PUBLISHABLE_AUDIO_BYTES) {
+                DownloadLogger.w {
+                    "Audio version $index (${track.lang}) remuxed only ${tempFile.length()} " +
+                        "bytes (< $MIN_PUBLISHABLE_AUDIO_BYTES) — not a plausible audio " +
+                        "file; skipping"
+                }
+                tempFile.delete()
+                return null
+            }
+            DownloadLogger.i {
+                "Audio version $index (${track.lang}) HLS remux OK — ${tempFile.length()} bytes"
+            }
+            tempFile
+        } catch (e: Exception) {
+            DownloadLogger.w {
+                "Audio version $index (${track.lang}) FFmpegKit download failed — " +
+                    "skipping: ${e.message}"
+            }
+            runCatching { tempFile.delete() }
+            null
+        }
+    }
 
     /**
      * Parses the track's `headers` string (MPV `http-header-fields` format:

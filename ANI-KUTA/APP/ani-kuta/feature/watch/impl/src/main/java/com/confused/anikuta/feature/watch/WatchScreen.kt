@@ -1146,6 +1146,56 @@ fun WatchScreen(
             audioTracksSerialized = currentAudioTracksSerialized,
         )
 
+    // ── ROUND 149: the CURRENT video's external audio versions — deserialized
+    // from the SAME carrier the pendingAudioTracks path consumes (the
+    // watchKey seed → the quality switch → the episode switch all refresh
+    // it), so the AudioSheet's "Audio versions" section always describes
+    // exactly the streams that were audio-add'ed for this video.
+    // ROUND 152: declared EARLY (above the default-audio ladder) — the
+    // ladder's silent-embedded insert consults this list, and Kotlin local
+    // declarations must precede their references.
+    val currentExternalAudioVersions = remember(currentAudioTracksSerialized) {
+        deserializeTracks(currentAudioTracksSerialized).map { (url, lang) ->
+            com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack(url = url, lang = lang)
+        }
+    }
+
+    // ── ROUND 152: the version → registered-mpv-track match — the EXACT
+    // predicate onExternalAudioPicked has always used (lang OR title,
+    // case-insensitive, against the LIVE track list). One helper now feeds
+    // THREE consumers so they can never disagree: the pick path (a registered
+    // match → instant aid, no audio-add), the default-audio ladder's
+    // silent-embedded insert (is the live aid an external?), and the
+    // AudioSheet's state derivation (the ACTIVE version's url → the row's
+    // check glyph).
+    fun registeredAudioTrackFor(
+        version: com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack,
+    ): com.confused.anikuta.core.player.VideoTrack? =
+        stateHolder.audioTracks.value.firstOrNull { track ->
+            version.lang.isNotBlank() && (
+                track.lang?.equals(version.lang, ignoreCase = true) == true ||
+                    track.name.equals(version.lang, ignoreCase = true)
+                )
+        }
+
+    // ── ROUND 152: the per-series PLAYBACK-CONTINUITY PIN — the WRITE side ──
+    // Every playback start persists the CURRENT video's "server|audio|quality"
+    // triple (the ResolverVideo.videoTitle shape — serverKeyFromVideoTitle
+    // strips the url-hash tail) under the series' mainId. The details'
+    // auto-select (DetailsViewModel.tryAutoSelect) consults it as a SOFT
+    // preference when the next episode of the SAME series auto-plays, so the
+    // pick lands on the server/audio/quality the user last watched — the
+    // in-player episode-switch continuity pin (round 122), now durable across
+    // sessions. Offline fd:// loads (no pin-shaped title) leave it untouched.
+    fun rememberPlaybackPin() {
+        if (watchKey.mainId.isBlank()) return
+        val title = currentVideoTitle
+        // buildVideoTitle = "server|audio|quality|urlHash" — 3 pipes exactly;
+        // anything else (an offline title, blank) carries no pin.
+        if (title.count { it == '|' } < 3) return
+        playerPreferences.setRememberedPlayback(watchKey.mainId, serverKeyFromVideoTitle(title))
+    }
+
     // D-247: push playback progress (~1 Hz from the position/duration state) to the
     // cache manager — drives the progress-window policy (tee ceiling + window fill).
     LaunchedEffect(position, duration) {
@@ -1250,8 +1300,13 @@ fun WatchScreen(
     // audio track whenever mpv reports any:
     //
     //  a. The user's pick already active (currentAudioTrack is a live track
-    //     id) → respect it, done. mpv's own default selection and the user's
-    //     sheet taps land here.
+    //     id) → respect it — UNLESS the round-152 insert fires (mpv's own
+    //     default landed on the file's embedded-but-silent track while the
+    //     current episode has external versions; the insert then continues
+    //     the ladder preferring the EXTERNAL tracks. The user's rule: "auto
+    //     select any of the available audio versions if a predetermined one
+    //     is not handled"). mpv's own default selection and the user's sheet
+    //     taps land here.
     //  b. The remembered label (the per-series memory — name OR lang,
     //     case-insensitive; the round-149 behavior unchanged).
     //  c. The VARIANT-BASED match — parseAudioAvailability over the CURRENT
@@ -1272,20 +1327,83 @@ fun WatchScreen(
             if (audios.isNotEmpty()) {
                 val current = stateHolder.currentAudioTrack.value
                 val currentActive = audios.any { it.id == current }
+                // The remembered label — hoisted ABOVE the rungs (the round-152
+                // silent-embedded insert consults it inside rung (a) too).
+                val mainId = watchKey.mainId
+                val remembered = if (mainId.isNotBlank()) {
+                    playerPreferences.getPreferredAudioTrack(mainId)
+                } else ""
+                val rememberedMatch = if (remembered.isNotBlank()) {
+                    audios.firstOrNull {
+                        it.name == remembered ||
+                            it.lang?.equals(remembered, ignoreCase = true) == true
+                    }
+                } else null
                 if (currentActive) {
                     // (a) A live aid — mpv (or the user) already owns the pick.
-                } else {
-                    // (b) The remembered label match (the round-149 rung).
-                    val mainId = watchKey.mainId
-                    val remembered = if (mainId.isNotBlank()) {
-                        playerPreferences.getPreferredAudioTrack(mainId)
-                    } else ""
-                    val rememberedMatch = if (remembered.isNotBlank()) {
-                        audios.firstOrNull {
-                            it.name == remembered ||
-                                it.lang?.equals(remembered, ignoreCase = true) == true
+                    // ── ROUND 152: the SILENT-LADDER INSERT ──
+                    // mpv's OWN default (alang) can land the live aid on the
+                    // file's embedded-but-silent track — and rung (a) respected
+                    // ANY live aid, so the episode stayed silent even with the
+                    // external versions registered. When the current episode
+                    // HAS external audio versions and the live aid is NOT one
+                    // of them (an embedded track matching no version's lang,
+                    // and not the remembered pick either) → do NOT stop here:
+                    // prefer the EXTERNAL tracks — the remembered choice when
+                    // it is an external, then the variant tokens (DUB →
+                    // eng/english, SUB/HSUB → jpn/japanese) matched against the
+                    // external tracks, then ANY external — falling back to the
+                    // embedded track (i.e. staying put) only when no external
+                    // matches. The user's rule: "auto select any of the
+                    // available audio versions if a predetermined one is not
+                    // handled". Rung (a) stays intact when the active track IS
+                    // a registered external or the remembered choice.
+                    val activeTrack = audios.first { it.id == current }
+                    val activeIsExternal = currentExternalAudioVersions.any { version ->
+                        registeredAudioTrackFor(version)?.id == activeTrack.id
+                    }
+                    val rememberedMatchesActive = rememberedMatch?.id == current
+                    if (currentExternalAudioVersions.isNotEmpty() &&
+                        !activeIsExternal && !rememberedMatchesActive
+                    ) {
+                        val externalTracks = audios.filter { track ->
+                            currentExternalAudioVersions.any { version ->
+                                registeredAudioTrackFor(version)?.id == track.id
+                            }
                         }
-                    } else null
+                        val variant = parseAudioAvailability(
+                            episodeMetadata[stateHolder.currentEpisodeNumber.value.toInt()]?.scanlator,
+                            stateHolder.currentEpisodeTitle.value,
+                        )
+                        val langTokens = if (variant.hasDub) {
+                            listOf("eng", "english")
+                        } else {
+                            listOf("jpn", "japanese")
+                        }
+                        val variantExternal = externalTracks.firstOrNull { track ->
+                            val haystack = ((track.lang ?: "") + " " + track.name).lowercase()
+                            langTokens.any { haystack.contains(it) }
+                        }
+                        // The remembered choice when it IS one of the external
+                        // tracks (the "predetermined" pick outranks the variant
+                        // guess), then the variant match, then any external.
+                        val rememberedExternal = rememberedMatch?.takeIf { rm ->
+                            externalTracks.any { it.id == rm.id }
+                        }
+                        val target = rememberedExternal ?: variantExternal
+                            ?: externalTracks.firstOrNull()
+                        if (target != null && target.id != current) {
+                            runCatching { MPVLib.setPropertyInt("aid", target.id) }
+                            Logger.i(TAG) {
+                                "Default-audio ladder (a-insert) → live aid $current is an " +
+                                    "embedded track while external versions exist — switched to " +
+                                    "external track id ${target.id} ('${target.lang ?: target.name}')"
+                            }
+                        }
+                        // No external match → stay on the embedded track (the
+                        // documented fallback; the aid never moves).
+                    }
+                } else {
                     // (c) The variant-based match (DUB → eng, SUB/HSUB → jpn).
                     val variantMatch = if (rememberedMatch == null) {
                         val currentEpNum = stateHolder.currentEpisodeNumber.value.toInt()
@@ -1550,6 +1668,10 @@ fun WatchScreen(
                 // switch path already resets; the initial open now does too.
                 stateHolder.resetPlaybackMetrics()
                 Logger.i(TAG) { "Initial load — playback metrics reset" }
+                // ROUND 152: the per-series playback pin — written on EVERY
+                // playback start (see rememberPlaybackPin; no-op when the
+                // title carries no server|audio|quality shape, e.g. offline).
+                rememberPlaybackPin()
                 Logger.i(TAG) { "Sending loadfile command to MPV..." }
                 // D.FIX: For fd:// URLs (offline playback), delay 500ms so the
                 // SurfaceView's surfaceCreated fires first. Without this delay, MPV
@@ -1698,16 +1820,10 @@ fun WatchScreen(
     var showAudioSheet by remember { mutableStateOf(false) }
     var showQualitySheet by remember { mutableStateOf(false) }
 
-    // ROUND 149: the CURRENT video's external audio versions — deserialized
-    // from the SAME carrier the pendingAudioTracks path consumes (the
-    // watchKey seed → the quality switch → the episode switch all refresh
-    // it), so the AudioSheet's "Audio versions" section always describes
-    // exactly the streams that were audio-add'ed for this video.
-    val currentExternalAudioVersions = remember(currentAudioTracksSerialized) {
-        deserializeTracks(currentAudioTracksSerialized).map { (url, lang) ->
-            com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack(url = url, lang = lang)
-        }
-    }
+    // ROUND 152: currentExternalAudioVersions + registeredAudioTrackFor now
+    // live EARLY in the body (right after the cache-proxy block) — the
+    // default-audio ladder's silent-embedded insert consults them, and Kotlin
+    // local declarations must precede their references.
     var showSubtitleSettingsSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
 
@@ -1725,16 +1841,42 @@ fun WatchScreen(
     var audioSwitchWaiting by remember { mutableStateOf(false) }
     var audioSwitchBaselineAid by remember { mutableStateOf(-1) }
     var audioSwitchWasPlaying by remember { mutableStateOf(false) }
+    // ROUND 152: the sheet's WAIT/FAIL feedback — the picked version's url
+    // (the row identity the AudioSheet keys on) while its audio-add "select"
+    // is in flight (the row spins), and the url whose 12s wait TIMED OUT (the
+    // row shows the error state ~3s, or until the next pick clears it). The
+    // failure is NEVER cached — re-picking the same version honestly retries
+    // the whole audio-add + wait cycle.
+    var audioSwitchPendingUrl by remember { mutableStateOf<String?>(null) }
+    var audioSwitchFailedUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(audioSwitchWaiting) {
         if (!audioSwitchWaiting) return@LaunchedEffect
         // ANY aid change from the pre-pick value resolves the wait — mpv's
         // audio-add "select" sets aid itself once the stream registers, and
         // the round-150 default-audio ladder may race it to the same track.
-        withTimeoutOrNull(12_000L) {
+        val landed = withTimeoutOrNull(12_000L) {
             stateHolder.currentAudioTrack.first { it != audioSwitchBaselineAid }
         }
         if (audioSwitchWaiting) {
+            val pickedUrl = audioSwitchPendingUrl
             audioSwitchWaiting = false
+            audioSwitchPendingUrl = null
+            if (landed == null) {
+                // ROUND 152: the wait TIMED OUT — the picked version's stream
+                // never landed (a dead/slow URL, an HLS probe mpv gave up on).
+                // Surface it on the picked row (the error state, auto-cleared
+                // after ~3s) instead of failing silently; the resume below is
+                // the round-150 timeout behavior, kept as-is.
+                audioSwitchFailedUrl = pickedUrl
+                delay(3_000L)
+                // Auto-clear unless a NEW failure took the slot (the next
+                // pick overwrites the string, so only the matching one clears;
+                // a mid-delay new pick also restarts this effect, cancelling
+                // the stale auto-clear before it runs).
+                if (audioSwitchFailedUrl == pickedUrl) {
+                    audioSwitchFailedUrl = null
+                }
+            }
             // A deliberately-paused user (already paused when picking) keeps
             // their pause — "pause-UNTIL-PLAYING" only applies to playback
             // that was actually running when the switch started.
@@ -1743,8 +1885,14 @@ fun WatchScreen(
                 stateHolder.updateUserPaused(false)
             }
             Logger.i(TAG) {
-                "Audio-switch wait resolved — aid moved from $audioSwitchBaselineAid, " +
-                    "playback resumed"
+                if (landed == null) {
+                    "Audio-switch wait TIMED OUT after 12s — aid never moved from " +
+                        "$audioSwitchBaselineAid; failure surfaced on the picked row, " +
+                        "playback resumed"
+                } else {
+                    "Audio-switch wait resolved — aid moved from $audioSwitchBaselineAid, " +
+                        "playback resumed"
+                }
             }
         }
     }
@@ -1952,6 +2100,9 @@ fun WatchScreen(
             currentServerName = p.getOrElse(0) { "" }
             currentAudioVersion = p.getOrElse(1) { "" }
         }
+        // ROUND 152: the same pin, now DURABLE per series — the details'
+        // auto-select consults it for the next episode's playback.
+        rememberPlaybackPin()
         // Video caching: new identity for the new video (live episode state — NOT the frozen watchKey).
         currentCacheId = buildCacheId(
             mainId = watchKey.mainId,
@@ -2048,15 +2199,17 @@ val onAudioSelected: (Int) -> Unit = { trackId ->
 // ROUND 150: path 2 now PAUSES until the stream lands (the pause-until-
 // playing wait — see the state block by the sheet flags); path 1 stays
 // instant.
+// ROUND 152: path 2's audio-add is dispatched to Dispatchers.IO — the ANR
+// fix (see the dispatch comment below) — and a new pick always clears the
+// previous row's failure state (the honest-retry rule: a failed version is
+// NEVER cached; re-picking it re-runs the whole wait).
 val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubtitleTrack) -> Unit =
     { version ->
         try {
-            val registered = stateHolder.audioTracks.value.firstOrNull { track ->
-                version.lang.isNotBlank() && (
-                    track.lang?.equals(version.lang, ignoreCase = true) == true ||
-                        track.name.equals(version.lang, ignoreCase = true)
-                    )
-            }
+            // ROUND 152: a fresh pick wipes any lingering failure row (the
+            // sheet's error state is transient feedback, not a verdict).
+            audioSwitchFailedUrl = null
+            val registered = registeredAudioTrackFor(version)
             if (registered != null) {
                 MPVLib.setPropertyInt("aid", registered.id)
                 if (watchKey.mainId.isNotBlank()) {
@@ -2088,16 +2241,40 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
                         "Audio version '${version.lang}' not registered — paused until the stream lands"
                     }
                 }
-                MPVLib.command(
-                    arrayOf("audio-add", version.url, "select", version.lang, version.lang),
-                )
+                // ROUND 152 (THE ANR FIX): this audio-add used to run ON THE
+                // MAIN THREAD inside this click callback — MPVLib.command is a
+                // SYNCHRONOUS JNI mpv_command, and `audio-add` opens the
+                // external demuxer INSIDE the command (a network fetch + a
+                // probe of the stream) → the UI thread blocked for the whole
+                // fetch+probe → the round-152 ANR. v1.1.90 was instant because
+                // its only audio-add ran on PlayerObserver's IO scope
+                // (loadExternalTracks). The command now rides Dispatchers.IO;
+                // mpv commands are thread-safe (the observer's scope has
+                // always sent them off-main). The pause + the wait machinery
+                // are unchanged — the wait effect outlives this dispatch and
+                // resolves the moment the aid lands (12s timeout otherwise),
+                // and the sheet's picked row spins until then
+                // (audioSwitchPendingUrl).
+                audioSwitchPendingUrl = version.url
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        MPVLib.command(
+                            arrayOf("audio-add", version.url, "select", version.lang, version.lang),
+                        )
+                    }.onFailure { e ->
+                        Logger.w(TAG) {
+                            "audio-add failed for '${version.lang}' — the wait's 12s " +
+                                "timeout will surface the failure: ${e.message}"
+                        }
+                    }
+                }
                 audioSwitchWaiting = true
                 if (watchKey.mainId.isNotBlank()) {
                     playerPreferences.setPreferredAudioTrack(watchKey.mainId, version.lang)
                 }
                 Logger.i(TAG) {
-                    "Audio version '${version.lang}' not registered yet — audio-add (select) sent; " +
-                        "the sheet stays open until the track lands"
+                    "Audio version '${version.lang}' not registered yet — audio-add (select) " +
+                        "dispatched to IO; the sheet stays open until the track lands"
                 }
             }
         } catch (e: Exception) {
@@ -2496,6 +2673,10 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
                                     currentVideoUrl = video.url
                                     currentVideoTitle = pickedResolverVideo?.videoTitle ?: ""
                                     currentVideoHeaders = video.headers
+                                    // ROUND 152: the per-series playback pin — the
+                                    // episode-switch's new playback start (see
+                                    // rememberPlaybackPin).
+                                    rememberPlaybackPin()
 
                                     // Update the state holder's current-episode state
                                     // so the episode list highlight + "now playing" card
@@ -2939,12 +3120,26 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
     // every track-list/count change (audio-add → observer reload), so a
     // just-registered version lights up while the sheet is open.
     if (showAudioSheet) {
+        // ROUND 152: the version-row state derivation — the ACTIVE version is
+        // the one whose REGISTERED mpv track owns the live aid (the same
+        // registeredAudioTrackFor match the pick handler uses, so the sheet's
+        // highlight can never disagree with the pick behavior); the switching
+        // + failed urls ride the round-152 wait machinery (the picked row
+        // spins while the audio-add "select" is in flight; the 12s timeout
+        // flips it to the failure state). This also fixes the round-152
+        // report that re-opening the sheet showed NOTHING picked.
+        val liveAudioTrackId = stateHolder.currentAudioTrack.collectAsState().value
+        val activeExternalVersionUrl = currentExternalAudioVersions
+            .firstOrNull { registeredAudioTrackFor(it)?.id == liveAudioTrackId }?.url
         AudioSheet(
             audioTracks = stateHolder.audioTracks.collectAsState().value,
-            currentAudioTrackId = stateHolder.currentAudioTrack.collectAsState().value,
+            currentAudioTrackId = liveAudioTrackId,
             onSelectTrack = onAudioSelected,
             externalVersions = currentExternalAudioVersions,
             onPickExternal = onExternalAudioPicked,
+            activeVersionUrl = activeExternalVersionUrl,
+            switchingVersionUrl = audioSwitchPendingUrl,
+            switchFailedVersionUrl = audioSwitchFailedUrl,
             onDismiss = { showAudioSheet = false },
             asDrawer = playerMode == PlayerMode.FULLSCREEN,
         )

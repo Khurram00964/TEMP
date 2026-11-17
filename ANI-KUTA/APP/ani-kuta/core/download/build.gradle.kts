@@ -28,6 +28,10 @@ dependencies {
     // (media3-datasource) + StandaloneDatabaseProvider (media3-database) +
     // the OkHttp-backed upstream DataSource for provider-header'd segment fetches.
     implementation(libs.media3.datasource.okhttp)
+    // ROUND 152: the bundled FFmpegKit — the HLS AUDIO_VARIANT download route
+    // (HttpDownloader.downloadHlsAudioVariantToCache): a flat GET cannot fetch
+    // segment streams, ffmpeg can (demux + remux, -c copy).
+    implementation(libs.ffmpeg.kit)
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.core)
     implementation(libs.koin.android)

@@ -18,6 +18,17 @@ import kotlinx.coroutines.flow.asStateFlow
  *   Global = AniList's global airing data. The Settings hub's "Home feed"
  *   group cycles it.
  *
+ * ## The popular-tags cache (ROUND 152)
+ * The "All genres" index's popular tags come from ONE AniList round trip
+ * (fetchPopularTags). A rate-limit blip or an offline moment must not blank
+ * the index, so the FIRST successful fetch persists and every later entry
+ * reads the cache before the network (refresh in the background past the 7-day
+ * TTL). Stored under `popular_tags_json` (the round-152 key name); the payload
+ * is newline-joined tag names — tag names never contain newlines and this
+ * module has no kotlinx-serialization serializer on its classpath. Plain
+ * read-through getters (not a StateFlow) on purpose: a cache, not a setting —
+ * the index screen reads on entry and writes on success.
+ *
  * CORE_RULES §20: logged with tag "Anikuta:Core:Preferences:Home".
  * CORE_RULES §23: reactive via StateFlow.
  */
@@ -28,6 +39,13 @@ class HomePreferences(
     companion object {
         // CORE_RULES §20 tag when logging lands: "Anikuta:Core:Preferences:Home".
         private const val KEY_AIRS_SOURCE = "home_airs_source"
+
+        // ROUND 152: the popular-tags cache keys + the 7-day TTL.
+        private const val KEY_POPULAR_TAGS = "popular_tags_json"
+        private const val KEY_POPULAR_TAGS_AT = "popular_tags_fetched_at"
+
+        /** The popular-tags cache TTL — 7 days, then a background refresh. */
+        const val POPULAR_TAGS_TTL_MS = 7L * 24 * 60 * 60 * 1000
     }
 
     private val _airsSource = MutableStateFlow(getAirsSource())
@@ -46,6 +64,34 @@ class HomePreferences(
         val next = if (_airsSource.value == HomeAirsSource.LIBRARY) HomeAirsSource.GLOBAL else HomeAirsSource.LIBRARY
         setAirsSource(next)
         return next
+    }
+
+    // ── The popular-tags cache (ROUND 152) ───────────────────────────────────
+
+    /** The cached popular tags, or null when the index has never fetched successfully. */
+    fun getPopularTags(): List<String>? {
+        val payload = store.getString(KEY_POPULAR_TAGS, "")
+        if (payload.isBlank()) return null
+        return payload.split('\n')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .ifEmpty { null }
+    }
+
+    /** When the tags cache was written (epoch millis; 0 = never). */
+    fun getPopularTagsFetchedAt(): Long = store.getLong(KEY_POPULAR_TAGS_AT, 0L)
+
+    /** True when the tags cache is absent or past [POPULAR_TAGS_TTL_MS]. */
+    fun isPopularTagsStale(now: Long = System.currentTimeMillis()): Boolean {
+        val at = getPopularTagsFetchedAt()
+        if (at <= 0L) return true
+        return now - at > POPULAR_TAGS_TTL_MS
+    }
+
+    /** Persists a successful fetch (the write-through half of the cache). */
+    fun setPopularTags(tags: List<String>) {
+        store.putString(KEY_POPULAR_TAGS, tags.joinToString("\n"))
+        store.putLong(KEY_POPULAR_TAGS_AT, System.currentTimeMillis())
     }
 }
 

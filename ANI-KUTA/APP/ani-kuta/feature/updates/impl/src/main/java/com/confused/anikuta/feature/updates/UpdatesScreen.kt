@@ -29,7 +29,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,11 +58,15 @@ private const val TAG = "Anikuta:Feature:Updates"
  *
  * @param onBack Navigate back.
  * @param onNavigateToDetails Navigate to the anime's details page (mainId).
+ * @param initialTab ROUND 152: the tab the screen lands on (0 = Updates,
+ *   1 = Schedule) — the home's "Airs today" → Schedule push carries 1
+ *   (UpdatesKey.initialTab); every other entry point keeps the default 0.
  */
 @Composable
 fun UpdatesScreen(
     onBack: () -> Unit,
     onNavigateToDetails: (String) -> Unit = {},
+    initialTab: Int = 0,
     viewModel: UpdatesViewModel = koinViewModel(),
     scheduleViewModel: ScheduleViewModel = koinViewModel(),
 ) {
@@ -82,7 +85,11 @@ fun UpdatesScreen(
     val listState = rememberLazyListState()
     val collapsed = listState.firstVisibleItemIndex > 0 ||
         listState.firstVisibleItemScrollOffset > 20
-    var selectedTab by remember { androidx.compose.runtime.mutableStateOf(0) } // 0 = Updates, 1 = Schedule
+    // ROUND 152: the landing tab rides the nav key (home "Schedule" → 1);
+    // rememberSaveable so a config change keeps the user's pick afterwards.
+    var selectedTab by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableIntStateOf(initialTab.coerceIn(0, 1))
+    } // 0 = Updates, 1 = Schedule
 
     Box(
         modifier = Modifier

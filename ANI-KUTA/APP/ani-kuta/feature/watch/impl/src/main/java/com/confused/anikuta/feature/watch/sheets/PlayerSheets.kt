@@ -39,6 +39,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+// ROUND 152: the audio-version rows' failure glyph (VERIFIED in the pinned
+// material-icons-extended 1.7.8 artifact — filled/ErrorOutlineKt.class).
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
@@ -46,6 +49,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -567,6 +571,19 @@ private fun TrackRow(
  * @param externalVersions The current video's external audio versions
  *   (url + lang) from the resolver. Empty when the stream has none.
  * @param onPickExternal Called when the user taps an audio version row.
+ * @param activeVersionUrl ROUND 152: the url of the audio version whose
+ *   REGISTERED mpv track owns the live aid — the sheet's "selected" row (the
+ *   primary check glyph). The host resolves the version → registered-track
+ *   mapping (the SAME lang/title match the pick handler uses) and passes the
+ *   ACTIVE one; null = none active / no versions registered. This fixes the
+ *   round-152 report: re-opening the sheet used to show NOTHING picked (the
+ *   only highlight lived in the debug-gated track list).
+ * @param switchingVersionUrl ROUND 152: the url of the version currently
+ *   going through the audio-add "select" wait (the picked row shows the
+ *   spinner until the aid lands or the 12s timeout fails it). Null when idle.
+ * @param switchFailedVersionUrl ROUND 152: the url of the version whose wait
+ *   TIMED OUT — the row shows the error tint + glyph (the host auto-clears
+ *   it after ~3s or on the next pick). Null when idle.
  * @param onDismiss Close the sheet.
  * @param debugPreferences The shared debug gates (koinInject default — the
  *   host passes nothing new; mirrors the QualitySheet's parameter).
@@ -579,6 +596,11 @@ fun AudioSheet(
     onSelectTrack: (Int) -> Unit,
     externalVersions: List<ResolverSubtitleTrack> = emptyList(),
     onPickExternal: (ResolverSubtitleTrack) -> Unit = {},
+    // ROUND 152: the version-row STATE trio. Row identity = the version's url
+    // (the stable half of the rows' LazyColumn keys).
+    activeVersionUrl: String? = null,
+    switchingVersionUrl: String? = null,
+    switchFailedVersionUrl: String? = null,
     onDismiss: () -> Unit,
     // ROUND 149: the same presentation split as SubtitleTracksSheet — the
     // fullscreen drawer only in landscape; portrait keeps the bottom-up sheet.
@@ -698,8 +720,29 @@ fun AudioSheet(
                         externalVersions,
                         key = { index, version -> "audio-version-${version.url}|$index" },
                     ) { index, version ->
+                        // ── ROUND 152: the per-row STATE (replaces the round-149
+                        // unconditional plus icon — it read as an action on EVERY
+                        // row). Identity = the version's url:
+                        //  ACTIVE  (its registered mpv track owns the live aid) →
+                        //          the primary check glyph (the row's highlight).
+                        //  SWITCHING (an audio-add "select" is in flight after
+                        //          this row was tapped) → the spinner.
+                        //  FAILED  (the 12s wait timed out — the host clears it
+                        //          after ~3s or on the next pick) → the error
+                        //          tint + glyph.
+                        //  idle (registered-but-not-playing, or not yet
+                        //          registered) → NO trailing glyph.
+                        val rowActive = version.url == activeVersionUrl
+                        val rowSwitching = version.url == switchingVersionUrl
+                        val rowFailed = version.url == switchFailedVersionUrl
                         Surface(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.04f),
+                            color = when {
+                                rowFailed ->
+                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.30f)
+                                rowActive ->
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.04f)
+                            },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -741,17 +784,34 @@ fun AudioSheet(
                                     fontFamily = RobotoFamily,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = if (rowFailed) MaterialTheme.colorScheme.error
+                                            else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Load audio",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp),
-                                )
+                                when {
+                                    rowSwitching -> CircularProgressIndicator(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(15.dp),
+                                    )
+                                    rowFailed -> Icon(
+                                        imageVector = Icons.Default.ErrorOutline,
+                                        contentDescription = "Couldn't load this audio",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    rowActive -> Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    // Registered-but-idle + unregistered-idle →
+                                    // nothing (the sheet's only loud glyph is the
+                                    // state that actually needs eyes).
+                                }
                             }
                         }
                     }

@@ -1083,6 +1083,18 @@ class DetailsViewModel(
     /** Whether auto-select video is enabled (for the UI to decide flow). */
     fun isAutoSelectEnabled(): Boolean = playerPreferences.autoSelectVideo.get()
 
+    /**
+     * ROUND 152: the series' remembered playback pin — the
+     * `"serverKey|audio|quality"` triple the player persists on every
+     * playback start (PlayerPreferences.setRememberedPlayback, written by
+     * WatchScreen.rememberPlaybackPin). The details screen consults it in
+     * TWO places: tryAutoSelect (below — a soft auto-select preference) and
+     * the cache-hit autoplay pick (the entry whose serverKey matches the pin
+     * wins, else the most recent).
+     */
+    fun rememberedPlaybackPin(): String =
+        playerPreferences.getRememberedPlayback(currentMainId ?: "")
+
     fun tryAutoSelect(success: ResolverState.Success? = null): com.confused.anikuta.core.videoresolver.ResolvedVideo? {
         if (!playerPreferences.autoSelectVideo.get()) {
             Logger.w(TAG) { "tryAutoSelect: autoSelectVideo is OFF" }
@@ -1099,6 +1111,50 @@ class DetailsViewModel(
             return null
         }
         Logger.i(TAG) { "tryAutoSelect: ${successState.servers.size} servers, ${successState.videos.size} videos — running engine..." }
+
+        // ── ROUND 152: the REMEMBERED-PLAYBACK PIN — the soft preference ──
+        // When the SAME series was watched before, the player persisted the
+        // exact server/audio/quality it ended up playing. If the fresh
+        // resolve carries that exact combination, take it (the user's
+        // continuity ask: the next episode lands where the last one left
+        // off); otherwise fall through to the configured-preference engine
+        // unchanged — the pin is a preference, NEVER a hard filter.
+        val pin = rememberedPlaybackPin()
+        if (pin.isNotBlank()) {
+            val parts = pin.split('|')
+            val pinServer = parts.getOrElse(0) { "" }
+            val pinAudio = parts.getOrElse(1) { "" }
+            val pinQuality = parts.getOrElse(2) { "" }
+            if (pinServer.isNotBlank() || pinAudio.isNotBlank() || pinQuality.isNotBlank()) {
+                val pinned = successState.servers.asSequence()
+                    .flatMap { s ->
+                        s.audioVersions.flatMap { av -> av.videos.map { Triple(s.name, av.label, it) } }
+                    }
+                    .firstOrNull { (server, audio, video) ->
+                        (pinServer.isBlank() || server.equals(pinServer, ignoreCase = true)) &&
+                            (pinAudio.isBlank() || audio.equals(pinAudio, ignoreCase = true)) &&
+                            (pinQuality.isBlank() || video.quality.equals(pinQuality, ignoreCase = true))
+                    }
+                if (pinned != null) {
+                    val v = pinned.third
+                    Logger.i(TAG) {
+                        "tryAutoSelect: remembered-pin hit (server='$pinServer' audio='$pinAudio' " +
+                            "quality='$pinQuality') — picked ${v.quality} on ${pinned.first}"
+                    }
+                    return com.confused.anikuta.core.videoresolver.ResolvedVideo(
+                        url = v.url,
+                        quality = v.quality,
+                        directUrl = v.directUrl,
+                        headers = v.videoHeaders ?: "",
+                        subtitleTracks = v.subtitleTracks,
+                        audioTracks = v.audioTracks,
+                    )
+                }
+                Logger.i(TAG) {
+                    "tryAutoSelect: remembered-pin miss — falling through to the configured-preference engine"
+                }
+            }
+        }
 
         return try {
             val selection = com.confused.anikuta.core.download.AutoDownloadEngine.selectBestVideo(

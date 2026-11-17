@@ -950,7 +950,7 @@ fun AppRoot() {
             // Round 143: the check-RESULT card opens the UPDATES screen (the
             // found-episodes list) — the history page stays for the failure card.
             if (request.openUpdates && backstack.lastOrNull() !is com.confused.anikuta.feature.updates.UpdatesKey) {
-                pushKey(com.confused.anikuta.feature.updates.UpdatesKey)
+                pushKey(com.confused.anikuta.feature.updates.UpdatesKey())
             }
             // The deep link wins when both markers are present (a share link
             // IS the user's explicit destination); either way it's the same
@@ -1223,6 +1223,10 @@ fun AppRoot() {
                 onOpenDetailsByMainId = { mainId, episodeNumber, autoplay ->
                     openDetailsByMainId(mainId, episodeNumber, autoplay)
                 },
+                // ROUND 152: the brand chip carries the APP'S REAL LOGO ART
+                // (288×288 icon_current) instead of the play glyph; the home
+                // also reads profile_avatar_url itself for the TopBar avatar.
+                homeLogoRes = R.drawable.icon_current,
             )
             // ROUND 152: the home's browse destinations — the "All genres"
             // index, one genre/tag's title grid, and the catalog page behind
@@ -1592,7 +1596,7 @@ fun AppRoot() {
                 onOpenSettings = { pushKey(SettingsKey) },
                 onOpenDownloads = { pushKey(DownloadsKey) },
                 onOpenHistory = { pushKey(com.confused.anikuta.feature.animehistory.HistoryKey) },
-                onOpenUpdates = { pushKey(com.confused.anikuta.feature.updates.UpdatesKey) },
+                onOpenUpdates = { pushKey(com.confused.anikuta.feature.updates.UpdatesKey()) },
                 onOpenProfile = { pushKey(ProfileKey) },
                 onOpenAbout = { pushKey(AboutKey) },
                 onOpenTrackers = { pushKey(TrackersKey) },
@@ -1758,7 +1762,7 @@ fun AppRoot() {
                         SettingsSearchPage.HISTORY ->
                             pushKey(com.confused.anikuta.feature.animehistory.HistoryKey)
                         SettingsSearchPage.UPDATES_PAGE ->
-                            pushKey(com.confused.anikuta.feature.updates.UpdatesKey)
+                            pushKey(com.confused.anikuta.feature.updates.UpdatesKey())
                         SettingsSearchPage.PROFILE -> pushKey(ProfileKey)
                         SettingsSearchPage.TORRENT -> pushKey(TorrentKey)
                         SettingsSearchPage.PERMISSIONS -> pushKey(PermissionsKey)
@@ -2078,6 +2082,9 @@ fun AppRoot() {
             is com.confused.anikuta.feature.updates.UpdatesKey -> {
                 com.confused.anikuta.feature.updates.UpdatesScreen(
                     onBack = pop,
+                    // ROUND 152: the landing tab rides the key — the home's
+                    // "Airs today" → Schedule push opens on the Schedule tab.
+                    initialTab = currentKey.initialTab,
                     onNavigateToDetails = { mainId ->
                         val content = contentRepository.getMainEntryByMainId(mainId)
                         if (content != null) {

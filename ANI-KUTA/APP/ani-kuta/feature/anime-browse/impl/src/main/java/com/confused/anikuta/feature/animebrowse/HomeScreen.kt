@@ -10,6 +10,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +63,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,8 +86,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -92,6 +99,7 @@ import com.confused.anikuta.core.anilist.model.AniListAnime
 import com.confused.anikuta.core.common.HapticHelper
 import com.confused.anikuta.core.designsystem.component.EmptyState
 import com.confused.anikuta.core.designsystem.component.bottomBarClearance // round 151
+import com.confused.anikuta.core.designsystem.theme.DisplayFamily // ROUND 152: the handoff's display face
 import com.confused.anikuta.core.designsystem.theme.LocalCardDescriptionColor
 import com.confused.anikuta.core.designsystem.theme.LocalCardHeadingColor
 import com.confused.anikuta.core.designsystem.theme.Motion
@@ -99,11 +107,13 @@ import com.confused.anikuta.core.designsystem.theme.RobotoFamily
 import com.confused.anikuta.core.debugapi.DebugContext
 import com.confused.anikuta.core.debugapi.LocalDebugContextUpdater
 import com.confused.anikuta.core.navigation.NavKey
+import com.confused.anikuta.core.preferences.PreferenceStore
 import com.confused.anikuta.feature.animedetails.AnimeDetailsKey
 import com.confused.anikuta.feature.animehistory.HistoryKey
 import com.confused.anikuta.feature.updates.UpdatesKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import java.time.Instant
 import java.time.ZoneId
@@ -144,6 +154,13 @@ private val ThumbShape = RoundedCornerShape(12.dp)
 private val ThumbTightShape = RoundedCornerShape(6.dp)
 private val PillShape = RoundedCornerShape(50)
 
+/** ROUND 152: the airs timeline row cell (.t-row border-radius: 14px) — the
+ * pulsing NEXT-row outline rides this shape. */
+private val AirsRowShape = RoundedCornerShape(14.dp)
+
+/** ROUND 152: the always-on mood chip — "Surprise me" is the ACTIVE chip on entry. */
+private const val MOOD_SURPRISE = "Surprise me"
+
 // ── Motion constants (Hero.tsx) ──────────────────────────────────────────────
 
 /** The hero auto-advance cycle (5.5s) + the hold-off after ANY manual touch. */
@@ -171,11 +188,12 @@ private val MOOD_GENRES = listOf(
  * ## The token mapping
  * The handoff's tokens map onto the app theme: --bg→background, --surface→
  * surface, --primary→primary, --outline→outlineVariant, --on-surface-variant→
- * onSurfaceVariant. The fonts stay [RobotoFamily] (the handoff's Bricolage/
- * Manrope aren't bundled). The on-scrim whites are LITERAL colors above.
- * The radii: hero 28dp / card 24dp / thumb 12dp / pill 999. The content edge
- * is 20dp on EVERY rail. The body background draws the handoff's subtle
- * radial primary-tint at the top (~7% primary mix into background).
+ * onSurfaceVariant. ROUND 152: the DISPLAY face is BUNDLED — [DisplayFamily]
+ * (Bricolage Grotesque variable) carries the wordmark, the section heads and
+ * the hero lockup; the BODY stays [RobotoFamily]. The on-scrim whites are
+ * LITERAL colors above. The radii: hero 28dp / card 24dp / thumb 12dp /
+ * pill 999. The content edge is 20dp on EVERY rail. The body background draws
+ * the handoff's subtle radial primary-tint at the top (~7% primary mix).
  *
  * ## The Hero (Hero.tsx mechanics, ported)
  * A LazyRow of 3 copies × 5 slides, re-anchored to the middle copy when it
@@ -208,6 +226,9 @@ fun HomeScreen(
     // ProfileKey (it lives app-side), so the host hands the click down.
     onProfileClick: () -> Unit = {},
     onOpenDetailsByMainId: (String, Int?, Boolean) -> Unit = { _, _, _ -> },
+    // ROUND 152: the brand chip's art — the APP's real logo (app-side drawable
+    // res id; this module can't see app resources). Null = the glyph fallback.
+    homeLogoRes: Int? = null,
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -215,8 +236,8 @@ fun HomeScreen(
     val trending by viewModel.trending.collectAsState()
     val continueWatching by viewModel.continueWatching.collectAsState()
     val airsToday by viewModel.airsToday.collectAsState()
-    val suggestedPool by viewModel.suggestedPool.collectAsState()
     val suggestedToken by viewModel.suggestedRefreshToken.collectAsState()
+    val fieldCovers by viewModel.fieldCovers.collectAsState()
 
     val heroSlides = remember(trending) { trending.take(HomeViewModel.HERO_COUNT) }
     val trendingRanked = remember(trending) {
@@ -227,7 +248,7 @@ fun HomeScreen(
     val updateDebugContext = LocalDebugContextUpdater.current
     val homeCtx = remember(
         state, trending.size, continueWatching.size, airsToday.size,
-        suggestedPool.genres.size, isRefreshing,
+        fieldCovers.size, isRefreshing,
     ) {
         DebugContext(
             screenName = "Home",
@@ -236,7 +257,7 @@ fun HomeScreen(
                 "trendingCount" to trending.size.toString(),
                 "continueCount" to continueWatching.size.toString(),
                 "airsCount" to airsToday.size.toString(),
-                "suggestedGenres" to suggestedPool.genres.joinToString(","),
+                "fieldCovers" to fieldCovers.size.toString(),
                 "isRefreshing" to isRefreshing.toString(),
             ),
         )
@@ -293,10 +314,41 @@ fun HomeScreen(
                 )
                 HomeState.Content -> {
                     val listState = rememberLazyListState()
+                    val scope = rememberCoroutineScope()
+                    // ── ROUND 152: the profile avatar + display initial, read
+                    // from the SAME prefs the Profile page writes (the home
+                    // re-enters composition on every back-navigation, so a
+                    // remember read picks up avatar/name changes). ──
+                    val preferenceStore = koinInject<PreferenceStore>()
+                    val profileAvatarUrl = remember {
+                        preferenceStore.getString("profile_avatar_url", "").takeIf { it.isNotBlank() }
+                    }
+                    val profileInitial = remember {
+                        preferenceStore.getString("profile_display_name", "").trim()
+                            .firstOrNull()?.uppercaseChar()?.toString()
+                    }
+                    // ── ROUND 152: the mood state lives at the HOME level so
+                    // the rail survives the LazyColumn disposing the moods item
+                    // on a far scroll — and "Surprise me" is the ACTIVE chip on
+                    // entry ("" = the rail hidden; the seed reshuffles per tap). ──
+                    var activeMood by remember { mutableStateOf(MOOD_SURPRISE) }
+                    var surpriseSeed by remember { mutableIntStateOf(0) }
+                    // The mounted clock driving the 1s countdown chips; the VM's
+                    // per-minute ticker recomputes the released flags + the row
+                    // identities, so the release transition fires on its own.
+                    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            now = System.currentTimeMillis()
+                            delay(1000)
+                        }
+                    }
                     // ── Coil warm-up — the SectionPreloader contract (exact
                     // render sizes + no transformations → memory-cache hits
                     // on first compose): the hero cards, the trending posters,
-                    // the 16:9 continue art, and the timeline thumbs. ──
+                    // the 16:9 continue art, the timeline thumbs, and ROUND
+                    // 152's field covers at the EXACT tile size (the pool is
+                    // hoisted to the VM, so re-entry composes instantly). ──
                     SectionPreloader(
                         urls = heroSlides.map { it.coverUrl },
                         width = 340.dp,
@@ -305,6 +357,12 @@ fun HomeScreen(
                     SectionPreloader(urls = trending.map { it.coverUrl }, width = 104.dp, height = 156.dp)
                     SectionPreloader(urls = continueWatching.map { it.artUrl }, width = 188.dp, height = 106.dp)
                     SectionPreloader(urls = airsToday.map { it.thumbUrl }, width = 48.dp, height = 68.dp)
+                    SectionPreloader(urls = fieldCovers.map { it.url }, width = 60.dp, height = 90.dp)
+                    // ROUND 152: the mood chip tap auto-scrolls the feed so the
+                    // moods section (chips + rail) is fully visible. The item
+                    // order below is FIXED: topbar, hero, continue, airs head,
+                    // airs rows…, trending, suggested, moods.
+                    val moodsIndex = 6 + airsToday.size
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -312,7 +370,12 @@ fun HomeScreen(
                     ) {
                         // ── TopBar (the CollapsingHeader is SCRAPPED) ──
                         item(key = "topbar") {
-                            HomeTopBar(onProfileClick = onProfileClick)
+                            HomeTopBar(
+                                onProfileClick = onProfileClick,
+                                logoRes = homeLogoRes,
+                                avatarUrl = profileAvatarUrl,
+                                avatarInitial = profileInitial,
+                            )
                         }
 
                         // ── Hero — the one moving thing (5.5s auto-advance) ──
@@ -341,12 +404,31 @@ fun HomeScreen(
                             )
                         }
 
-                        // ── Airs today ──
-                        item(key = "airs_today") {
-                            HomeAirsSection(
-                                items = airsToday,
-                                onSchedule = { onNavigate(UpdatesKey) },
-                                onOpenDetails = { item ->
+                        // ── Airs today — the head + ONE list item per row, keyed
+                        // by the episode identity, so the release transition
+                        // (Modifier.animateItem) plays at the home-list level:
+                        // the released top row fades out, the rest glide up, the
+                        // bottom gains the next episode. ──
+                        item(key = "airs_head") {
+                            HomeSectionHead(
+                                title = "Airs today",
+                                actionLabel = "Schedule",
+                                // ROUND 152: the Schedule push LANDS on the updates
+                                // screen's Schedule tab (the key carries the tab).
+                                onAction = { onNavigate(UpdatesKey(initialTab = 1)) },
+                            )
+                        }
+                        itemsIndexed(
+                            airsToday,
+                            key = { _, item -> "airs_row_${item.episodeKey}" },
+                        ) { index, item ->
+                            HomeAirsRow(
+                                item = item,
+                                now = now,
+                                isFirst = index == 0,
+                                isLast = index == airsToday.lastIndex,
+                                isNext = !item.released && index == airsToday.indexOfFirst { !it.released },
+                                onClick = {
                                     // ROUND 152: GLOBAL-source rows carry an AniList
                                     // id (no library mainId) — they open the details
                                     // page directly; library rows keep the mainId path.
@@ -363,6 +445,9 @@ fun HomeScreen(
                                         onOpenDetailsByMainId(item.mainId, item.episodeNumber, false)
                                     }
                                 },
+                                modifier = Modifier
+                                    .animateItem()
+                                    .padding(horizontal = 20.dp),
                             )
                         }
 
@@ -393,14 +478,12 @@ fun HomeScreen(
                         // ── Suggested for you (the honeycomb cover field) ──
                         item(key = "suggested") {
                             HomeSuggestedSection(
-                                pool = suggestedPool,
+                                covers = fieldCovers,
                                 refreshToken = suggestedToken,
-                                fallbackCovers = trending,
                                 onRefresh = { viewModel.refreshSuggestions() },
                                 onOpenCover = { anilistId ->
                                     onNavigate(AnimeDetailsKey.AniList(anilistId))
                                 },
-                                coversForGenres = { genres -> viewModel.suggestionCovers(genres) },
                             )
                         }
 
@@ -408,6 +491,18 @@ fun HomeScreen(
                         item(key = "moods") {
                             HomeMoodChips(
                                 trending = trending,
+                                activeMood = activeMood,
+                                surpriseSeed = surpriseSeed,
+                                onSelect = { mood ->
+                                    // The active chip tapped again hides its rail;
+                                    // a fresh Surprise tap reshuffles (seed bump).
+                                    val wasActive = mood == activeMood
+                                    activeMood = if (wasActive) "" else mood
+                                    if (!wasActive && mood == MOOD_SURPRISE) surpriseSeed += 1
+                                    // The chip tap scrolls the feed so the section
+                                    // lands at the viewport top.
+                                    scope.launch { listState.animateScrollToItem(moodsIndex) }
+                                },
                                 onBrowseAll = { onNavigate(HomeGenresKey) },
                                 onOpen = { anime ->
                                     onNavigate(
@@ -449,7 +544,9 @@ private fun HomeSectionHead(
     ) {
         Text(
             text = title,
-            fontFamily = RobotoFamily,
+            // ROUND 152: the section heads ride the handoff's DISPLAY face
+            // (the CSS .section-head h2 is font-display 20px/700).
+            fontFamily = DisplayFamily,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
@@ -481,12 +578,25 @@ private fun HomeSectionHead(
 // ── TopBar (TopBar.tsx) ──────────────────────────────────────────────────────
 
 /**
- * The brand row: the wordmark + the coral play-mark chip (theme-adapting: the
- * chip bg is primary@0.14 and the glyph is primary — the user's logo spec)
- * on the left, the 44dp round profile button on the right.
+ * The brand row: the wordmark + the brand chip on the left, the 44dp round
+ * profile button on the right.
+ *
+ * ROUND 152: the chip carries the APP'S REAL LOGO ART ([logoRes] — the
+ * host passes `R.drawable.icon_current`; the module can't see app resources)
+ * instead of the play glyph, and the wordmark rides the handoff's DISPLAY
+ * face ([DisplayFamily] ExtraBold). The profile button shows the USER'S
+ * SAVED AVATAR ([avatarUrl] — `profile_avatar_url`, the same pref the
+ * Profile page writes; AsyncImage handles both http(s) and the crop flow's
+ * file:// paths) and falls back to the display name's first letter
+ * ([avatarInitial] — the handoff's TopBar fallback), then the Person glyph.
  */
 @Composable
-private fun HomeTopBar(onProfileClick: () -> Unit) {
+private fun HomeTopBar(
+    onProfileClick: () -> Unit,
+    logoRes: Int? = null,
+    avatarUrl: String? = null,
+    avatarInitial: String? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -498,8 +608,9 @@ private fun HomeTopBar(onProfileClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // The play-mark chip: rounded square with a tightened bottom-left
-            // corner (the wordmark's speech-bubble read).
+            // The brand chip: rounded square with a tightened bottom-left
+            // corner (the wordmark's speech-bubble read); the bg stays
+            // primary@0.14 and the art fills the chip.
             val chipShape = RoundedCornerShape(
                 topStart = 10.dp, topEnd = 10.dp, bottomEnd = 10.dp, bottomStart = 5.dp,
             )
@@ -510,16 +621,25 @@ private fun HomeTopBar(onProfileClick: () -> Unit) {
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(12.dp),
-                )
+                if (logoRes != null) {
+                    Image(
+                        painter = painterResource(logoRes),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
             }
             Text(
                 text = "Ani-Kuta",
-                fontFamily = RobotoFamily,
+                // ROUND 152: the wordmark is a font-display spot — Bricolage.
+                fontFamily = DisplayFamily,
                 fontSize = 23.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.2).sp,
@@ -536,12 +656,29 @@ private fun HomeTopBar(onProfileClick: () -> Unit) {
                 .clickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = Icons.Filled.Person,
-                contentDescription = "Profile",
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(20.dp),
-            )
+            when {
+                // The user's saved avatar — the Profile page's display precedent.
+                avatarUrl != null -> AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = "Profile",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // The handoff's fallback: the display name's first letter.
+                avatarInitial != null -> Text(
+                    text = avatarInitial,
+                    fontFamily = DisplayFamily,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                else -> Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = "Profile",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }
@@ -641,15 +778,27 @@ private fun HomeHero(
             }
         }
 
-        // Auto-advance forever: waits through any remaining manual hold-off,
-        // then steps forward one slide (the fill-in-dot stays in sync).
-        LaunchedEffect(active, cycleId) {
-            val holdOff = (manualUntil - System.currentTimeMillis()).coerceAtLeast(0L)
-            delay(holdOff + HERO_CYCLE_MS)
-            if (listState.isScrollInProgress) return@LaunchedEffect
-            dir = 1
-            val current = fractionalPos.roundToInt()
-            listState.animateScrollToItem(current + 1)
+        // Auto-advance forever — ROUND 152 (the SNAP fix): ONE never-cancelled
+        // loop. The old effect keyed on `active`: while animateScrollToItem
+        // flew one stride, fractionalPos crossed the halfway mark → active
+        // flipped → the effect was CANCELLED mid-flight → the row parked
+        // between covers for a whole cycle. Keyed on Unit it survives the
+        // whole animation; the target is computed AT FIRE TIME from the
+        // settled position, and the manual hold-off (dots/swipes/taps) is
+        // re-read each pass.
+        LaunchedEffect(Unit) {
+            while (true) {
+                val holdOff = (manualUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+                delay(holdOff + HERO_CYCLE_MS)
+                // A touch DURING the wait re-armed the hold-off (the old effect
+                // restarted on the cycle bump) — respect it: loop back and
+                // re-arm instead of firing under the user's finger.
+                if (System.currentTimeMillis() < manualUntil) continue
+                if (listState.isScrollInProgress) continue
+                dir = 1
+                val current = fractionalPos.roundToInt()
+                listState.animateScrollToItem(current + 1)
+            }
         }
 
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -835,9 +984,11 @@ private fun HeroCard(
                         Text(
                             text = "$score%",
                             fontFamily = RobotoFamily,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.22.sp,
                             color = OnScrim,
+                            maxLines = 1,
                         )
                     }
                 }
@@ -846,8 +997,9 @@ private fun HeroCard(
                         Text(
                             text = genres.take(2).joinToString(" · "),
                             fontFamily = RobotoFamily,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.22.sp,
                             color = OnScrim,
                             maxLines = 1,
                         )
@@ -916,8 +1068,9 @@ private fun HeroNoteChip(anime: AniListAnime) {
         Text(
             text = note,
             fontFamily = RobotoFamily,
-            fontSize = 10.5.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
+            letterSpacing = 0.22.sp,
             color = OnScrim,
             maxLines = 1,
         )
@@ -942,69 +1095,100 @@ private fun GlassChip(content: @Composable () -> Unit) {
 }
 
 /**
- * The DYNAMIC title lockup — a two-line treatment generated from the title
- * (no per-show SVG): the small tracked eyebrow line + the big ExtraBold line
- * with the accent segment on the trailing season token ("DIARIES · 3").
+ * The DYNAMIC title lockup — ROUND 152's restructure (the device report: the
+ * old one-line tail ELLIPSIZED; ugly). The handoff's pattern, generated for
+ * ANY title: the small tracked EYEBROW line (the words before the last 1-2),
+ * then the BIG main line — the remaining words + the season token rendered in
+ * the ACCENT (primary-text) at its end, flowing INLINE via one
+ * AnnotatedString. NOTHING ellipsizes: the eyebrow clips to one line, the
+ * main SOFT-WRAPS to two (the handoff lockups wrap, never dot).
  */
 @Composable
 private fun HeroTitleLockup(title: String) {
-    val (head, tail, accent) = remember(title) { splitHeroTitle(title) }
+    val parts = remember(title) { splitHeroTitle(title) }
     Column {
-        if (head.isNotBlank()) {
+        if (parts.eyebrow.isNotBlank()) {
             Text(
-                text = head.uppercase(),
-                fontFamily = RobotoFamily,
-                fontSize = 12.sp,
+                text = parts.eyebrow.uppercase(Locale.US),
+                fontFamily = DisplayFamily,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 4.sp,
+                letterSpacing = 2.2.sp, // the handoff's 0.2em tracked eyebrow
+                lineHeight = 14.sp,
                 color = OnScrimTint,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
             )
         }
-        Row {
-            Text(
-                text = tail.uppercase(),
-                fontFamily = RobotoFamily,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.5.sp,
-                color = OnScrim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            if (accent != null) {
-                Text(
-                    text = " · ${accent.uppercase()}",
-                    fontFamily = RobotoFamily,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-            }
-        }
+        Text(
+            text = buildAnnotatedString {
+                if (parts.main.isNotBlank()) {
+                    withStyle(SpanStyle(color = OnScrim)) {
+                        append(parts.main.uppercase(Locale.US))
+                    }
+                }
+                if (parts.accent != null) {
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                        append(" · ${parts.accent.uppercase(Locale.US)}")
+                    }
+                }
+            },
+            fontFamily = DisplayFamily,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.1).sp,
+            lineHeight = 34.sp,
+            color = OnScrim,
+            maxLines = 2,
+            softWrap = true,
+        )
     }
 }
 
-/** Trailing season token ("3", "II") → the accent segment of the lockup. */
-private val TRAILING_SEASON = Regex("""\s+(\d+|[IVX]+)$""")
+/** The lockup's split — eyebrow words / main words / the accent numeral. */
+internal data class HeroTitleParts(
+    val eyebrow: String,
+    val main: String,
+    val accent: String?,
+)
 
-/** Splits "The Apothecary Diaries Season 3" → ("THE APOTHECARY", "DIARIES", "3"). */
-internal fun splitHeroTitle(title: String): Triple<String, String, String?> {
-    val accent = TRAILING_SEASON.find(title)?.groupValues?.get(1)
-    val base = if (accent != null) title.removeSuffix(accent).trim() else title
+/**
+ * The trailing season/volume token: "Season 3", "S3", "Part 2", "Vol 2",
+ * "Volume 4", "Cour 2", a bare trailing "3", a roman "II", and the "· 3"
+ * separator form — case-insensitive, anchored at the title's end.
+ */
+private val TRAILING_SEASON = Regex(
+    pattern = """(?:[·•\-–—]\s*)?\b(?:(?:season|part|vol(?:ume)?|cour)s?\.?\s*)?(\d{1,4}|[IVXivx]{1,5})\s*$""",
+    options = setOf(RegexOption.IGNORE_CASE),
+)
+
+/**
+ * Splits the title into the eyebrow (the words BEFORE the last 1-2) + the
+ * main (the last 1-2 words — 2 when there are 4+, else 1) + the season token
+ * ("The Apothecary Diaries Season 3" → "The Apothecary" / "Diaries" / "3",
+ * i.e. the handoff's "DIARIES · 3" read).
+ */
+internal fun splitHeroTitle(title: String): HeroTitleParts {
+    val match = TRAILING_SEASON.find(title)
+    val accent = match?.groupValues?.get(1)
+    val base = if (match != null) {
+        title.removeRange(match.range).trimEnd(' ', '·', '•', '-', '–', '—')
+    } else {
+        title
+    }
     val words = base.split(' ').filter { it.isNotBlank() }
     return when {
-        words.isEmpty() -> Triple("", title, null)
-        words.size == 1 -> Triple("", words[0], accent)
+        // A pure-token title ("86") would leave an empty main — keep the whole
+        // title and drop the accent rather than rendering a bare " · N".
+        base.isBlank() -> HeroTitleParts(eyebrow = "", main = title, accent = null)
+        words.isEmpty() -> HeroTitleParts(eyebrow = "", main = base, accent = accent)
+        words.size == 1 -> HeroTitleParts(eyebrow = "", main = words[0], accent = accent)
         else -> {
-            val headCount = (words.size + 1) / 2
-            Triple(
-                words.take(headCount).joinToString(" "),
-                words.drop(headCount).joinToString(" "),
-                accent,
+            val mainCount = if (words.size >= 4) 2 else 1
+            HeroTitleParts(
+                eyebrow = words.dropLast(mainCount).joinToString(" "),
+                main = words.takeLast(mainCount).joinToString(" "),
+                accent = accent,
             )
         }
     }
@@ -1249,42 +1433,29 @@ private fun HomeContinueCard(
  * the NEXT episode) + the 48×68 thumb + the 2-line title + the state chip
  * (Watch / Aired / the countdown "in Xh Ym"). The VM guarantees EXACTLY 6
  * rows (2 released + next + 3 after). Tap a row → the details.
+ *
+ * ROUND 152: the section head + the rows render as separate HOME-list items
+ * (keyed by the episode identity) so [Modifier.animateItem] animates the
+ * release transition — the released top row fades out, the rest glide up, the
+ * bottom gains the next episode. The VM re-emits the rows every minute (its
+ * ticker recomputes the released flags), so the transition fires while the
+ * user watches.
  */
+
+/** The 1200ms reverse pulse the NEXT row shares — the outline's alpha and the node halo ride one transition. */
 @Composable
-private fun HomeAirsSection(
-    items: List<HomeAirsItem>,
-    onSchedule: () -> Unit,
-    onOpenDetails: (HomeAirsItem) -> Unit,
-) {
-    if (items.isEmpty()) return
-    Column(modifier = Modifier.fillMaxWidth()) {
-        HomeSectionHead(
-            title = "Airs today",
-            actionLabel = "Schedule",
-            onAction = onSchedule,
-        )
-        // The mounted clock — the countdown chips tick every second (the
-        // prerender-safe pattern from the TSX: only the countdown waits).
-        var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-        LaunchedEffect(items) {
-            while (true) {
-                now = System.currentTimeMillis()
-                delay(1000)
-            }
-        }
-        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-            items.forEachIndexed { index, item ->
-                HomeAirsRow(
-                    item = item,
-                    now = now,
-                    isFirst = index == 0,
-                    isLast = index == items.lastIndex,
-                    isNext = !item.released && index == items.indexOfFirst { !it.released },
-                    onClick = { onOpenDetails(item) },
-                )
-            }
-        }
-    }
+private fun nodePulseAlpha(): Float {
+    val transition = rememberInfiniteTransition(label = "airsNodePulse")
+    val alpha by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(1200, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse,
+        ),
+        label = "airsNodePulseAlpha",
+    )
+    return alpha
 }
 
 @Composable
@@ -1295,24 +1466,45 @@ private fun HomeAirsRow(
     isLast: Boolean,
     isNext: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     // The rail trims to the node centers on the timeline's first/last rows.
     val railColor = MaterialTheme.colorScheme.outlineVariant
     val railWidthPx = with(density) { 2.dp.toPx() }
     val railEndInsetPx = with(density) { 20.dp.toPx() }
+    // ROUND 152: the NEXT row's animated outline — a 1.5dp primary border whose
+    // alpha rides the SAME 1200ms pulse as the node halo (the device report:
+    // the next row was not highlighted properly). The halo keeps its glow.
+    val pulsing = isNext && !item.released
+    val pulse = if (pulsing) nodePulseAlpha() else 0f
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .defaultMinSize(minHeight = 44.dp)
+            .then(
+                if (pulsing) {
+                    Modifier.border(
+                        BorderStroke(
+                            1.5.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f + 0.35f * pulse),
+                        ),
+                        AirsRowShape,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .clip(AirsRowShape)
             .clickable(onClick = onClick)
             .padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         // The node column: the 2dp rail segment + the dot-and-time pill.
-        Box(modifier = Modifier.width(68.dp).fillMaxHeight()) {
+        // ROUND 152: 68 → 78dp so "10:05 PM" NEVER wraps.
+        Box(modifier = Modifier.width(78.dp).fillMaxHeight()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -1336,23 +1528,13 @@ private fun HomeAirsRow(
                     .offset(y = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                // The pulsing halo on the NEXT episode (node-pulse 2.4s).
-                if (isNext && !released) {
-                    val pulse = rememberInfiniteTransition(label = "nodePulse")
-                    val pulseAlpha by pulse.animateFloat(
-                        initialValue = 0f,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(
-                            tween(1200, easing = FastOutSlowInEasing),
-                            RepeatMode.Reverse,
-                        ),
-                        label = "nodePulseAlpha",
-                    )
+                // The pulsing halo on the NEXT episode (node-pulse, shared alpha).
+                if (pulsing) {
                     Box(
                         modifier = Modifier
-                            .size(width = 76.dp, height = 28.dp)
+                            .size(width = 80.dp, height = 28.dp)
                             .clip(PillShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f * pulseAlpha)),
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f * pulse)),
                     )
                 }
                 Row(
@@ -1389,7 +1571,9 @@ private fun HomeAirsRow(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
+                        // nowrap enforced — the 78dp column guarantees the fit.
                         maxLines = 1,
+                        softWrap = false,
                     )
                 }
             }
@@ -1456,19 +1640,25 @@ private fun HomeAirsRow(
                         leadingIcon = Icons.Filled.Check,
                     )
                 } else {
+                    // ROUND 152: the countdown chip on the glass-chip metrics —
+                    // 26dp min-height, 10/4 padding, 11sp/700 + 0.02em (the
+                    // report: the chips rendered too tall/thick).
                     Surface(
                         shape = PillShape,
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                        modifier = Modifier.defaultMinSize(minWidth = 74.dp, minHeight = 32.dp),
+                        modifier = Modifier.defaultMinSize(minWidth = 74.dp, minHeight = 26.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = "in ${countdownLabel(item.scheduledAt, now)}",
                                 fontFamily = RobotoFamily,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.22.sp,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 6.dp),
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             )
                         }
                     }
@@ -1478,7 +1668,8 @@ private fun HomeAirsRow(
     }
 }
 
-/** The Watch/Aired chip (secondary-container pill, 12sp bold, 32dp tall). */
+/** The Watch/Aired chip (secondary-container pill; ROUND 152: 26dp min-height,
+ * 10/4 padding, 11sp/700 + 0.02em — the glass-chip metrics). */
 @Composable
 private fun StateChip(
     background: Color,
@@ -1489,12 +1680,12 @@ private fun StateChip(
     Surface(
         shape = PillShape,
         color = background,
-        modifier = Modifier.defaultMinSize(minHeight = 32.dp),
+        modifier = Modifier.defaultMinSize(minHeight = 26.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         ) {
             if (leadingIcon != null) {
                 Icon(
@@ -1507,9 +1698,12 @@ private fun StateChip(
             Text(
                 text = label,
                 fontFamily = RobotoFamily,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
+                letterSpacing = 0.22.sp,
                 color = contentColor,
+                maxLines = 1,
+                softWrap = false,
             )
         }
     }
@@ -1644,7 +1838,9 @@ private fun HomePosterCard(
                 ?: MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
+            // ROUND 152: the report — the title sat too far under the cover.
+            // 6 → 4dp (the score keeps its 2dp gap).
+            modifier = Modifier.padding(top = 4.dp),
         )
         anime.averageScore?.let { score ->
             Row(
@@ -1674,20 +1870,18 @@ private fun HomePosterCard(
 
 /**
  * The suggestion head (refresh + pause icon buttons) + the [HomeSuggestionField]
- * honeycomb. ROUND 152: the field carries its cover sourcing — the library's
- * top-genre fetch through [coversForGenres], falling back to [fallbackCovers]
- * (the trending payload) when the library is empty — and its tap routing
- * through [onOpenCover] (an AniList id that rides the home's [onNavigate]
+ * honeycomb. ROUND 152: the cover pool is HOISTED to the ViewModel
+ * ([covers] — [HomeViewModel.fieldCovers], fetched once, surviving re-entry);
+ * the field takes it as a param instead of refetching. Tap routing rides
+ * [onOpenCover] (an AniList id that goes through the home's [onNavigate]
  * details path, ad gate included).
  */
 @Composable
 private fun HomeSuggestedSection(
-    pool: HomeSuggestionPool,
+    covers: List<HomeFieldCover>,
     refreshToken: Int,
-    fallbackCovers: List<AniListAnime>,
     onRefresh: () -> Unit,
     onOpenCover: (Int) -> Unit,
-    coversForGenres: suspend (List<String>) -> List<AniListAnime>,
 ) {
     var paused by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1715,12 +1909,10 @@ private fun HomeSuggestedSection(
             },
         )
         HomeSuggestionField(
-            pool = pool,
+            covers = covers,
             paused = paused,
             refreshToken = refreshToken,
-            fallbackCovers = fallbackCovers,
             onOpenCover = onOpenCover,
-            coversForGenres = coversForGenres,
         )
     }
 }
@@ -1779,12 +1971,6 @@ private fun IconActionButton(
 
 // ── Browse by mood (MoodChips.tsx) ───────────────────────────────────────────
 
-/** The mood rail the active chip loads: a genre filter or the surprise shuffle. */
-private data class HomeMoodRail(
-    val title: String,
-    val items: List<AniListAnime>,
-)
-
 /**
  * "Surprise me" (the dice icon — a COMPLETELY random shuffle of the trending
  * payload, NOT genre-based) + the genre chips (v1: the chip filters the
@@ -1792,38 +1978,46 @@ private data class HomeMoodRail(
  * action opens the category index ([HomeGenresKey] → HomeGenresScreen). The
  * mood-chip GENRE taps keep the local trending filter; the FULL genre browse
  * lives on the index. Tapping the active chip again hides the rail.
+ *
+ * ROUND 152 behavior fixes (the device report):
+ * - "Surprise me" is the ACTIVE chip on entry ([activeMood] initializes to
+ *   it at the HOME level, so the rail also survives far-scroll disposal).
+ * - a chip tap auto-scrolls the feed (the home list) so the section lands
+ *   at the viewport top — the caller's [onSelect] handles that.
+ * - the chip rail re-anchors to its START whenever the active chip changes
+ *   (and on section re-entry — the fresh composition starts at 0 anyway).
  */
 @Composable
 private fun HomeMoodChips(
     trending: List<AniListAnime>,
+    activeMood: String,
+    surpriseSeed: Int,
+    onSelect: (String) -> Unit,
     onBrowseAll: () -> Unit,
     onOpen: (AniListAnime) -> Unit,
 ) {
-    var rail by remember { mutableStateOf<HomeMoodRail?>(null) }
     Column(modifier = Modifier.fillMaxWidth()) {
         HomeSectionHead(
             title = "Browse by mood",
             actionLabel = "All genres",
             onAction = onBrowseAll,
         )
+        val chipListState = rememberLazyListState()
+        // The chip rail resets to the start on every active-chip change.
+        LaunchedEffect(activeMood) {
+            chipListState.scrollToItem(0)
+        }
         LazyRow(
+            state = chipListState,
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 MoodChip(
-                    label = "Surprise me",
+                    label = MOOD_SURPRISE,
                     icon = Icons.Filled.Casino,
-                    active = rail?.title == "Surprise me",
-                    onClick = {
-                        rail = if (rail?.title == "Surprise me") {
-                            null
-                        } else {
-                            // The completely random set — the trending payload
-                            // shuffled fresh on every tap.
-                            HomeMoodRail("Surprise me", trending.shuffled(Random(System.nanoTime())))
-                        }
-                    },
+                    active = activeMood == MOOD_SURPRISE,
+                    onClick = { onSelect(MOOD_SURPRISE) },
                 )
             }
             items(MOOD_GENRES.size) { index ->
@@ -1831,50 +2025,69 @@ private fun HomeMoodChips(
                 MoodChip(
                     label = genre,
                     icon = null,
-                    active = rail?.title == genre,
-                    onClick = {
-                        rail = if (rail?.title == genre) {
-                            null
-                        } else {
-                            // v1: the local trending-pool filter (the payload
-                            // carries genres). The LIVE genre query lands with
-                            // the catalog agent's HomeCatalogKey work.
-                            HomeMoodRail(
-                                genre,
-                                trending.filter { current -> current.genres?.contains(genre) == true },
-                            )
-                        }
-                    },
+                    active = activeMood == genre,
+                    onClick = { onSelect(genre) },
                 )
             }
         }
-        rail?.let { active ->
-            if (active.items.isEmpty()) {
-                Text(
-                    text = "No ${active.title} titles trending right now.",
-                    fontFamily = RobotoFamily,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = LocalCardDescriptionColor.current.takeIf { it != Color.Unspecified }
-                        ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 10.dp),
+        // Keyed on the active chip so switching rebuilds the rail fresh (the
+        // poster rail's scroll resets with the chip rail's).
+        key(activeMood) {
+            when (activeMood) {
+                "" -> Unit
+                // The completely random set — reshuffled per fresh Surprise tap.
+                MOOD_SURPRISE -> HomeMoodRail(
+                    title = MOOD_SURPRISE,
+                    items = remember(trending, surpriseSeed) {
+                        trending.shuffled(Random(surpriseSeed))
+                    },
+                    onOpen = onOpen,
                 )
-            } else {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    HomeSectionHead(title = active.title)
-                    LazyRow(
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(active.items.size) { index ->
-                            val anime = active.items[index]
-                            HomePosterCard(
-                                anime = anime,
-                                rank = null,
-                                onClick = { onOpen(anime) },
-                            )
-                        }
-                    }
+                // v1: the local trending-pool filter (the payload carries genres).
+                // The LIVE genre query lands with the catalog agent's work.
+                else -> HomeMoodRail(
+                    title = activeMood,
+                    items = remember(activeMood, trending) {
+                        trending.filter { current -> current.genres?.contains(activeMood) == true }
+                    },
+                    onOpen = onOpen,
+                )
+            }
+        }
+    }
+}
+
+/** One active mood's poster rail — keyed so switching chips rebuilds fresh. */
+@Composable
+private fun HomeMoodRail(
+    title: String,
+    items: List<AniListAnime>,
+    onOpen: (AniListAnime) -> Unit,
+) {
+    if (items.isEmpty()) {
+        Text(
+            text = "No $title titles trending right now.",
+            fontFamily = RobotoFamily,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = LocalCardDescriptionColor.current.takeIf { it != Color.Unspecified }
+                ?: MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 10.dp),
+        )
+    } else {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HomeSectionHead(title = title)
+            LazyRow(
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(items.size) { index ->
+                    val anime = items[index]
+                    HomePosterCard(
+                        anime = anime,
+                        rank = null,
+                        onClick = { onOpen(anime) },
+                    )
                 }
             }
         }

@@ -337,6 +337,35 @@ class PlayerPreferences(private val store: PreferenceStore) {
         if (label.isBlank()) store.delete(key) else store.putString(key, label)
     }
 
+    // ── ROUND 152: the per-series PLAYBACK-CONTINUITY PIN (the "remembered
+    // server/audio/quality") ──
+    // The player writes "serverKey|audio|quality" on every playback start
+    // (WatchScreen.rememberPlaybackPin — the ResolverVideo.videoTitle shape,
+    // minus the url-hash tail); the details' auto-select consults it as a SOFT
+    // preference when the next episode of the SAME series auto-plays (a pin
+    // match is preferred, never a hard filter — the configured server/audio/
+    // quality preferences still decide when the pin doesn't match anything).
+    // Keyed by mainId like the track memories above — one small string per
+    // series ever watched. Preference-backed by design: no DB change rides
+    // along.
+
+    /**
+     * The remembered playback pin for a series: `"serverKey|audio|quality"`
+     * (blank = nothing remembered).
+     */
+    fun getRememberedPlayback(mainId: String): String =
+        if (mainId.isBlank()) "" else store.getString(KEY_PREFIX_REMEMBERED_PLAYBACK + mainId, "")
+
+    /**
+     * Persists the series' playback pin. [pin] = `"serverKey|audio|quality"`,
+     * blank to CLEAR the memory.
+     */
+    fun setRememberedPlayback(mainId: String, pin: String) {
+        if (mainId.isBlank()) return
+        val key = KEY_PREFIX_REMEMBERED_PLAYBACK + mainId
+        if (pin.isBlank()) store.delete(key) else store.putString(key, pin)
+    }
+
     // ── Round 120 (D-747): playback behavior (the Player settings hub) ───────
     //
     // The round-120 order: the player needed REAL settings beyond auto-select
@@ -572,6 +601,8 @@ class PlayerPreferences(private val store: PreferenceStore) {
         private const val KEY_PREFIX_SUB_TRACK_MEMORY = "pref_sub_track_memory_"
         // ROUND 149: the audio twin of the subtitle memory prefix.
         private const val KEY_PREFIX_AUDIO_TRACK_MEMORY = "pref_audio_track_memory_"
+        // ROUND 152: the per-series playback-continuity pin prefix.
+        private const val KEY_PREFIX_REMEMBERED_PLAYBACK = "pref_playback_pin_"
         private const val KEY_PREFIX_SKIP_TIMESTAMPS = "pref_skip_timestamps_"
         private const val KEY_PREFIX_EPISODE_SKIP = "pref_episode_skip_"
         // ROUND 123 (R5): the "_v2" suffix ONE-TIME invalidates every latch the

@@ -60,10 +60,12 @@ import com.confused.anikuta.core.anilist.api.AniListApi
 import com.confused.anikuta.core.anilist.model.AniListAnime
 import com.confused.anikuta.core.anilist.model.AniListMediaPage
 import com.confused.anikuta.core.common.Logger
+import com.confused.anikuta.core.designsystem.theme.DisplayFamily // ROUND 152: the handoff's display face
 import com.confused.anikuta.core.designsystem.theme.LocalCardDescriptionColor
 import com.confused.anikuta.core.designsystem.theme.LocalCardHeadingColor
 import com.confused.anikuta.core.designsystem.theme.Motion
 import com.confused.anikuta.core.designsystem.theme.RobotoFamily
+import com.confused.anikuta.core.preferences.HomePreferences
 import com.confused.anikuta.feature.animedetails.AnimeDetailsKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -136,7 +138,9 @@ private fun HomeBrowseHead(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontFamily = RobotoFamily,
+                // ROUND 152: the CSS .browse-title is a font-display spot —
+                // Bricolage ExtraBold.
+                fontFamily = DisplayFamily,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.2).sp,
@@ -238,14 +242,37 @@ sealed interface HomeGenresUiState {
 }
 
 /**
- * The "All genres" index ViewModel — one [AniListApi.fetchPopularTags] round
- * trip (GenreCollection + the top-50 tags aggregated in the API layer).
- * Idempotent per successful load; Retry forces it.
+ * The "All genres" index ViewModel. ROUND 152 (the "couldn't reach AniList"
+ * report): the GENRES are a fixed 19-name AniList set (served instantly,
+ * never fetched) and the TAGS cache PERSISTENTLY — the first successful
+ * [AniListApi.fetchPopularTags] write-through to [HomePreferences]
+ * (`popular_tags_json`, 7-day TTL), every entry reads the cache first, a
+ * stale cache refreshes in the BACKGROUND and a failing refresh keeps the
+ * served cache. The screen only errors on the very first run (no cache AND
+ * no network). The fetch itself is a single round trip; the observed device
+ * failures were transient network / rate-limit blips — they now log their
+ * real cause and can no longer blank the index.
  */
-class HomeGenresViewModel(private val anilistApi: AniListApi) : ViewModel() {
+class HomeGenresViewModel(
+    private val anilistApi: AniListApi,
+    private val homePreferences: HomePreferences, // ROUND 152: the tags cache
+) : ViewModel() {
 
     companion object {
         private const val TAG = "Anikuta:Feature:Browse:Genres"
+
+        /**
+         * ROUND 152: the 19 AniList genres are a FIXED set (Hentai pinned
+         * last — the API layer's rule) — served INSTANTLY, never fetched.
+         */
+        private val STATIC_GENRES = listOf(
+            "Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy",
+            "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery",
+            "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports",
+            "Supernatural", "Thriller",
+            // Hentai — pinned last (the handoff's GenresScreen rule).
+            "Hentai",
+        )
     }
 
     private val _state = MutableStateFlow<HomeGenresUiState>(HomeGenresUiState.Loading)
@@ -258,17 +285,36 @@ class HomeGenresViewModel(private val anilistApi: AniListApi) : ViewModel() {
     /** Idempotent per successful load — recomposition can call it freely. */
     fun load(force: Boolean = false) {
         if (!force && _state.value is HomeGenresUiState.Content) return
-        _state.value = HomeGenresUiState.Loading
+        val cachedTags = homePreferences.getPopularTags()
+        if (cachedTags != null) {
+            _state.value = HomeGenresUiState.Content(STATIC_GENRES, cachedTags)
+            if (homePreferences.isPopularTagsStale()) fetchTags()
+        } else {
+            _state.value = HomeGenresUiState.Loading
+            fetchTags()
+        }
+    }
+
+    /** The ONE tags fetch (the genres are static) + the write-through cache. */
+    private fun fetchTags() {
         viewModelScope.launch {
             runCatching { anilistApi.fetchPopularTags() }
                 .onSuccess { result ->
-                    Logger.i(TAG) { "browse categories: ${result.genres.size} genres, ${result.tags.size} tags" }
-                    _state.value = HomeGenresUiState.Content(result.genres, result.tags)
+                    Logger.i(TAG) { "browse categories: ${result.tags.size} tags fetched" }
+                    // Write-through: the next entry — and every offline one —
+                    // serves from the cache.
+                    homePreferences.setPopularTags(result.tags)
+                    _state.value = HomeGenresUiState.Content(STATIC_GENRES, result.tags)
                 }
                 .onFailure { e ->
                     if (e is CancellationException) throw e
                     Logger.e(TAG, e) { "browse categories failed: ${e.message}" }
-                    _state.value = HomeGenresUiState.Error(e.message ?: "Couldn't reach AniList.")
+                    // A served cache keeps the screen on Content (the failure
+                    // logs for diagnosis); only an EMPTY cache surfaces the
+                    // retry row (first-ever run, offline).
+                    if (_state.value is HomeGenresUiState.Loading) {
+                        _state.value = HomeGenresUiState.Error(e.message ?: "Couldn't reach AniList.")
+                    }
                 }
         }
     }
@@ -731,7 +777,9 @@ private fun HomeCategoryPosterCard(
                 ?: MaterialTheme.colorScheme.onBackground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
+            // ROUND 152: the report — the title sat too far under the cover.
+            // 6 → 4dp (the score keeps its 2dp gap).
+            modifier = Modifier.padding(top = 4.dp),
         )
         anime.averageScore?.let { score ->
             Row(

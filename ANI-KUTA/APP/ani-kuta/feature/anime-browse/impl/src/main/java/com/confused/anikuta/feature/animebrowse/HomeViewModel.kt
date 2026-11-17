@@ -17,13 +17,14 @@ import com.confused.anikuta.core.watchprogress.WatchProgressStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -120,6 +121,14 @@ class HomeViewModel(
         /** ROUND 152: the field's cover pool — per-genre pages merged to 50. */
         private const val SUGGESTED_COVERS_PER_GENRE = 25
         private const val SUGGESTED_COVER_POOL = 50
+
+        /**
+         * ROUND 152: the airs recompute cadence — every minute the timeline
+         * re-derives its released flags + row identities from the same data,
+         * so a release that happens while the user WATCHES actually plays the
+         * release transition (top row fades, the rest glide up).
+         */
+        private const val AIRS_RECOMPUTE_INTERVAL_MS = 60_000L
     }
 
     private val _state = MutableStateFlow<HomeState>(HomeState.Loading)
@@ -153,6 +162,21 @@ class HomeViewModel(
 
     private val _suggestedRefreshToken = MutableStateFlow(0)
     val suggestedRefreshToken: StateFlow<Int> = _suggestedRefreshToken.asStateFlow()
+
+    /**
+     * ROUND 152: the suggestion field's cover pool — HOISTED out of the field
+     * composable so it survives home re-entry (fetched once; the UI reads it
+     * as a param). Empty until the first successful fetch, then the trending
+     * payload serves as the fallback when the genre fetch lands nothing.
+     */
+    private val _fieldCovers = MutableStateFlow<List<HomeFieldCover>>(emptyList())
+    val fieldCovers: StateFlow<List<HomeFieldCover>> = _fieldCovers.asStateFlow()
+
+    /** The fetch-once guard for [loadFieldCovers]. */
+    private var fieldCoversFetched = false
+
+    /** The GLOBAL airing feed's last fetch (the per-minute recompute reads it). */
+    private var globalAiringCache: List<AniListAnime> = emptyList()
 
     /**
      * ROUND 152: the GLOBAL airs branch's reload trigger — pull-to-refresh
@@ -226,6 +250,10 @@ class HomeViewModel(
         _trending.value = anime
         if (_state.value is HomeState.Loading && anime.isNotEmpty()) _state.value = HomeState.Content
         promoteOutOfError()
+        // ROUND 152: the field's covers fall back to the trending payload —
+        // when a cold-start warm-up landed nothing, retry once the payload
+        // exists (the fetch-once guard only holds on a non-empty result).
+        if (anime.isNotEmpty() && _fieldCovers.value.isEmpty()) loadFieldCovers()
     }
 
     /**
@@ -335,14 +363,24 @@ class HomeViewModel(
             // the RELEASING shows' nextAiringEpisode clocks. LIBRARY keeps the
             // reactive schedule store. The reload token re-opens the GLOBAL
             // fetch on pull-to-refresh (the library source re-emits on its own).
+            // ROUND 152: BOTH branches ride a per-minute ticker so the released
+            // flags + countdown anchors recompute while the user watches — a
+            // release fires the timeline's release transition without any data
+            // write landing first.
             homePreferences.airsSource.flatMapLatest { source ->
                 if (source == HomeAirsSource.GLOBAL) {
                     _airsReloadToken.flatMapLatest { fetchGlobalAirsItems() }
                 } else {
-                    val now = System.currentTimeMillis()
-                    scheduleStore
-                        .observeUpcoming(from = now - SCHEDULE_WINDOW_MS, to = now + SCHEDULE_WINDOW_MS)
-                        .map { entries -> composeAirsToday(entries, System.currentTimeMillis()) }
+                    val windowStart = System.currentTimeMillis()
+                    combine(
+                        scheduleStore.observeUpcoming(
+                            from = windowStart - SCHEDULE_WINDOW_MS,
+                            to = windowStart + SCHEDULE_WINDOW_MS,
+                        ),
+                        minuteTicker(),
+                    ) { entries, tick ->
+                        composeAirsToday(entries, tick)
+                    }
                 }
             }.collect { items ->
                 _airsToday.value = items
@@ -351,22 +389,40 @@ class HomeViewModel(
         }
     }
 
+    /** Emits the current wall clock every [AIRS_RECOMPUTE_INTERVAL_MS]. */
+    private fun minuteTicker(): Flow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(AIRS_RECOMPUTE_INTERVAL_MS)
+        }
+    }
+
     /**
-     * The GLOBAL "Airs today" feed: one [AniListApi.fetchGlobalAiringSchedule]
-     * fetch per activation (the flatMapLatest re-run), soft-failing to an
-     * empty list (the section hides — home stays Content on a network miss).
+     * The GLOBAL "Airs today" feed (ROUND 152): ONE fetch per activation
+     * (the flatMapLatest re-run), then the per-minute loop re-composes the
+     * released flags from the CACHED payload — no refetch, the countdown
+     * chips tick client-side from the air times. A network miss soft-fails
+     * to an empty list (the section hides — home stays Content) and RETRIES
+     * on the next minute tick.
      */
     private fun fetchGlobalAirsItems(): Flow<List<HomeAirsItem>> = flow {
-        val items = runCatching {
-            val airing = anilistApi.fetchGlobalAiringSchedule()
-            Logger.i(TAG) { "global airing schedule fetched: ${airing.size} RELEASING shows" }
-            composeGlobalAirs(airing, System.currentTimeMillis())
-        }.getOrElse { e ->
-            if (e is CancellationException) throw e
-            Logger.e(TAG, e) { "global airing schedule failed: ${e.message}" }
-            emptyList()
+        var fetched = false
+        while (true) {
+            if (!fetched) {
+                runCatching { anilistApi.fetchGlobalAiringSchedule() }
+                    .onSuccess { airing ->
+                        globalAiringCache = airing
+                        fetched = true
+                        Logger.i(TAG) { "global airing schedule fetched: ${airing.size} RELEASING shows" }
+                    }
+                    .onFailure { e ->
+                        if (e is CancellationException) throw e
+                        Logger.e(TAG, e) { "global airing schedule failed: ${e.message}" }
+                    }
+            }
+            emit(composeGlobalAirs(globalAiringCache, System.currentTimeMillis()))
+            delay(AIRS_RECOMPUTE_INTERVAL_MS)
         }
-        emit(items)
     }
 
     /**
@@ -477,6 +533,9 @@ class HomeViewModel(
     private fun observeSuggestedPool() {
         viewModelScope.launch {
             _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
+            // ROUND 152: the field covers warm up AFTER the pool lands (the
+            // fetch-once guard makes later triggers a no-op).
+            loadFieldCovers()
         }
     }
 
@@ -510,16 +569,50 @@ class HomeViewModel(
         }
     }
 
-    // ── The field's cover pool (ROUND 152) ───────────────────────────────────
+    // ── The field's cover pool (ROUND 152: hoisted out of the UI) ────────────
+
+    /**
+     * Fetches the field's covers ONCE (guarded): the library's top genres
+     * through [suggestionCovers], falling back to the trending payload when
+     * the fetch lands empty. The guard only HOLDS on a non-empty result, so
+     * a cold start (nothing fetched AND no trending yet) retries on the next
+     * trigger (refresh / trending arrival / pool rebuild) instead of parking
+     * an empty field forever. Survives home re-entry — the UI reads the pool
+     * as a param, no refetch on the way back.
+     */
+    private fun loadFieldCovers() {
+        if (fieldCoversFetched) return
+        fieldCoversFetched = true
+        viewModelScope.launch {
+            val genres = _suggestedPool.value.genres
+            val fetched = if (genres.isEmpty()) {
+                emptyList()
+            } else {
+                runCatching { suggestionCovers(genres) }
+                    .onFailure { e -> Logger.w(TAG) { "field covers fetch failed: ${e.message}" } }
+                    .getOrElse { emptyList() }
+            }
+            val covers = (fetched.ifEmpty { _trending.value })
+                .map { HomeFieldCover(anilistId = it.id, url = it.coverUrl) }
+            if (covers.isEmpty()) {
+                // Nothing to serve yet (no library genres AND no trending) —
+                // un-mark so the next trigger retries.
+                fieldCoversFetched = false
+            } else {
+                Logger.i(TAG) { "field covers ready: ${covers.size}" }
+                _fieldCovers.value = covers
+            }
+        }
+    }
 
     /**
      * The suggestion field's covers for the library's top genres: a
      * [AniListApi.fetchByGenre] page per genre (popularity order), merged
      * round-robin-style and deduped to a 50-cover pool. A failing genre
-     * fetch skips itself (the field falls back to the trending covers when
+     * fetch skips itself (the pool falls back to the trending covers when
      * the merge lands empty).
      */
-    suspend fun suggestionCovers(genres: List<String>): List<AniListAnime> =
+    private suspend fun suggestionCovers(genres: List<String>): List<AniListAnime> =
         withContext(Dispatchers.IO) {
             val merged = ArrayList<AniListAnime>()
             val seen = HashSet<Int>()
@@ -548,6 +641,9 @@ class HomeViewModel(
         viewModelScope.launch {
             _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
             _suggestedRefreshToken.value += 1
+            // ROUND 152: retries only when the fetch-once guard is open (a
+            // cold-start warm-up that landed nothing) — a served pool is kept.
+            loadFieldCovers()
         }
         viewModelScope.launch { _airsReloadToken.value += 1 }
     }
@@ -592,7 +688,15 @@ data class HomeAirsItem(
      * details page; library rows leave it null and keep the mainId path.
      */
     val anilistId: Int? = null,
-)
+) {
+    /**
+     * ROUND 152: the home list's item key for the airs rows — stable across
+     * the per-minute recompute (same episode = same key, so the release
+     * transition ANIMATES instead of resetting) and unique per episode slot
+     * (mainId + episode + air time disambiguates the 2-released window).
+     */
+    val episodeKey: String get() = "$mainId|${episodeNumber}|$scheduledAt"
+}
 
 /**
  * The suggestion field's data pool (ROUND 152: the [HomeSuggestionField]
