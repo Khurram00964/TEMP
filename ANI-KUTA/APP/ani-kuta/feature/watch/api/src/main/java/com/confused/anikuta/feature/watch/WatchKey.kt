@@ -15,15 +15,6 @@ data class WatchKey(
     val episodeUrl: String = "",
     val episodeNumber: Float = 0f,
     val episodeTitle: String = "",
-    /**
-     * ROUND 153: the clicked episode's AUDIO VARIANT — "dub" / "sub" / "" (unknown),
-     * computed by the details page from the clicked row's own scanlator + name. The
-     * watch screen's default-audio ladder consumes it FIRST: the per-number metadata
-     * map collapses dual-variant rows (sub + dub share an episode number), so the
-     * map's scanlator can carry the OTHER variant's label — a dub episode opened
-     * through the key then auto-picked Japanese. Empty = fall back to the map.
-     */
-    val episodeAudioVariant: String = "",
     /** Serialized episode list for episode switching in the watch screen.
      *  Each entry is "url\u001FepisodeNumber\u001Fname" separated by newlines.
      *
@@ -116,90 +107,8 @@ data class WatchKey(
      * working; the rows treat a blank as "no fallback."
      */
     val coverUrl: String = "",
-) : NavKey {
-
-    /**
-     * Parse the serialized episode list into a list of SimpleEpisode.
-     * Format: "url\u001FepisodeNumber\u001Fname" per line.
-     */
-    fun parseEpisodeList(): List<SimpleEpisode> {
-        if (episodeListSerialized.isBlank()) return emptyList()
-        val delim = com.confused.anikuta.core.common.EpisodeTitleParser.EPISODE_FIELD_DELIMITER
-        return episodeListSerialized.split("\n").mapNotNull { line ->
-            val parts = line.split(delim, limit = 3)
-            if (parts.size == 3) {
-                SimpleEpisode(
-                    url = parts[0],
-                    episodeNumber = parts[1].toFloatOrNull() ?: 0f,
-                    name = parts[2],
-                )
-            } else null
-        }
-    }
-
-    /**
-     * Parse the serialized subtitle tracks into a list of (url, lang) pairs.
-     * Format: "url\u001Flang" per line.
-     */
-    fun parseSubtitleTracks(): List<Pair<String, String>> {
-        if (subtitleTracksSerialized.isBlank()) return emptyList()
-        val delim = com.confused.anikuta.core.common.EpisodeTitleParser.EPISODE_FIELD_DELIMITER
-        return subtitleTracksSerialized.split("\n").mapNotNull { line ->
-            val parts = line.split(delim, limit = 2)
-            if (parts.size == 2) Pair(parts[0], parts[1]) else null
-        }
-    }
-
-    /**
-     * Parse the serialized audio tracks into a list of (url, lang) pairs.
-     * Format: "url\u001Flang" per line.
-     */
-    fun parseAudioTracks(): List<Pair<String, String>> {
-        if (audioTracksSerialized.isBlank()) return emptyList()
-        val delim = com.confused.anikuta.core.common.EpisodeTitleParser.EPISODE_FIELD_DELIMITER
-        return audioTracksSerialized.split("\n").mapNotNull { line ->
-            val parts = line.split(delim, limit = 2)
-            if (parts.size == 2) Pair(parts[0], parts[1]) else null
-        }
-    }
-
-    /**
-     * Parse the serialized episode metadata into a map keyed by episode number.
-     * Format: "epNum\u001Ftitle\u001FthumbnailUrl\u001FairDateMillis\u001Fdescription\u001Fscanlator" per line.
-     */
-    fun parseEpisodeMetadata(): Map<Int, WatchEpisodeMeta> {
-        if (episodeMetadataSerialized.isBlank()) return emptyMap()
-        val delim = com.confused.anikuta.core.common.EpisodeTitleParser.EPISODE_FIELD_DELIMITER
-        return episodeMetadataSerialized.split("\n").mapNotNull { line ->
-            val parts = line.split(delim, limit = 6)
-            if (parts.size >= 5) {
-                val epNum = parts[0].toIntOrNull() ?: return@mapNotNull null
-                WatchEpisodeMeta(
-                    episodeNumber = epNum,
-                    title = parts[1].ifBlank { null },
-                    thumbnailUrl = parts[2].ifBlank { null },
-                    airDateMillis = parts[3].toLongOrNull() ?: 0L,
-                    description = parts[4].ifBlank { null },
-                    scanlator = if (parts.size > 5) parts[5] else "",
-                )
-            } else null
-        }.associateBy { it.episodeNumber }
-    }
-}
-
-/** Lightweight episode info for the watch screen's episode list. */
-data class SimpleEpisode(
-    val url: String,
-    val episodeNumber: Float,
-    val name: String,
-)
-
-/** Episode metadata for the watch page (passed from DetailsScreen via WatchKey). */
-data class WatchEpisodeMeta(
-    val episodeNumber: Int,
-    val title: String?,
-    val thumbnailUrl: String?,
-    val airDateMillis: Long,
-    val description: String?,
-    val scanlator: String,
-)
+    // ROUND 153: the clicked episode's AUDIO VARIANT ("dub"/"sub"/"") — the
+    // ladder's truth (the metadata map collapses dual-variant rows).
+    val episodeAudioVariant: String = "",
+)   /** ROUND 153: the clicked episode's AUDIO VARIANT ("dub"/"sub"/"") — the
+     * ladder's truth (the metadata map collapses dual-variant rows). */
