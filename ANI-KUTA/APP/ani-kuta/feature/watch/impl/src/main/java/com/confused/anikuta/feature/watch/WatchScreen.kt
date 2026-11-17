@@ -3036,6 +3036,10 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             // update the top-left details (watchKey is frozen at navigation).
             episodeInfoOverride = "EP ${formatEpisodeNumber(currentEpisodeNumber)}",
             flipScale = flipScale,
+            // ROUND 154: the audio-version switch wait — the player is
+            // deliberately paused while the new external audio fetches; the
+            // pill says so (the sheet can be dismissed mid-wait).
+            audioSwitching = audioSwitchPendingUrl != null,
             // ROUND 132: swipe DOWN from the center third = back to portrait;
             // the pinch zoom is a fullscreen-only capability.
             gestureConfig = gestureConfig.copy(
@@ -3090,6 +3094,9 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             cinema = cinemaMode,
             cinemaOled = cinemaOled,
             flipScale = flipScale,
+            // ROUND 154: the audio-version switch wait (the sheet can be
+            // dismissed mid-wait — the wait is visible on the player).
+            audioSwitching = audioSwitchPendingUrl != null,
             // ROUND 132: the center-third vertical swipes — UP exits cinema
             // (or goes fullscreen from the normal state), DOWN enters cinema.
             gestureConfig = gestureConfig.copy(
@@ -3323,6 +3330,9 @@ private fun MinimizedMode(
     cinemaOled: Boolean = true,
     // ROUND 134: the orientation-flip transition's scale (driven by WatchScreen).
     flipScale: Float = 1f,
+    // ROUND 154: the audio-version switch wait — the player is deliberately
+    // paused while mpv fetches the new external audio; the pill says so.
+    audioSwitching: Boolean = false,
 ) {
     val listState = rememberLazyListState()
 
@@ -3739,6 +3749,22 @@ private fun MinimizedMode(
                     modifier = Modifier.fillMaxSize(),
                 )
 
+                // ROUND 154: the first-frame cover placeholder — the initial
+                // stream fetch shows the cover + the spinner instead of black.
+                val pLoadingState by stateHolder.loadingState.collectAsState()
+                val pBuffering by stateHolder.buffering.collectAsState()
+                val pIsSwitching by stateHolder.isSwitching.collectAsState()
+                val pDuration by stateHolder.duration.collectAsState()
+                PlayerCoverLoadingOverlay(
+                    coverUrl = watchKey.coverUrl,
+                    loadingState = pLoadingState,
+                    buffering = pBuffering,
+                    isSwitching = pIsSwitching,
+                    bufferedEnough = stateHolder.bufferedEnough,
+                    duration = pDuration,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
                 // Ported MinimizedControls — handles all gestures, overlay, seekbar, etc.
                 com.confused.anikuta.core.player.controls.MinimizedControls(
                     stateHolder = stateHolder,
@@ -3766,6 +3792,13 @@ private fun MinimizedMode(
                         onCancel = onCancelSwitch,
                     )
                 }
+
+                // ROUND 154: the audio-version switch wait pill (the sheet can
+                // be dismissed mid-wait — the wait is visible on the player).
+                AudioSwitchingPill(
+                    visible = audioSwitching,
+                    modifier = Modifier.align(Alignment.Center),
+                )
 
                 // Round 120 overlays: skip pill + resume pill ONLY — the Up Next
                 // card is NOT hosted inside the portrait player box anymore

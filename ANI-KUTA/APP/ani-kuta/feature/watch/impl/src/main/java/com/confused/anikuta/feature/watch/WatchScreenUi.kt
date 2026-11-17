@@ -21,6 +21,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
@@ -85,6 +87,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -175,6 +179,9 @@ internal fun FullscreenMode(
     // ROUND 134: the orientation-flip transition's scale (WatchScreen drives
     // it — the player box expands from ~0.93 to full as the flip settles).
     flipScale: Float = 1f,
+    // ROUND 154: the audio-version switch wait — the player is deliberately
+    // paused while mpv fetches the new external audio; the pill says so.
+    audioSwitching: Boolean = false,
 ) {
     Box(
         modifier = Modifier
@@ -192,6 +199,22 @@ internal fun FullscreenMode(
             mpvView = mpvView,
             initMpv = initMpv,
             onMpvViewCreated = onMpvViewCreated,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // ROUND 154: the first-frame cover placeholder — the initial stream
+        // fetch shows the cover + the spinner instead of black.
+        val fsLoadingState by stateHolder.loadingState.collectAsState()
+        val fsBuffering by stateHolder.buffering.collectAsState()
+        val fsIsSwitching by stateHolder.isSwitching.collectAsState()
+        val fsDuration by stateHolder.duration.collectAsState()
+        PlayerCoverLoadingOverlay(
+            coverUrl = watchKey.coverUrl,
+            loadingState = fsLoadingState,
+            buffering = fsBuffering,
+            isSwitching = fsIsSwitching,
+            bufferedEnough = stateHolder.bufferedEnough,
+            duration = fsDuration,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -239,6 +262,12 @@ internal fun FullscreenMode(
             )
         }
 
+        // ROUND 154: the audio-version switch wait pill (above the controls).
+        AudioSwitchingPill(
+            visible = audioSwitching,
+            modifier = Modifier.align(Alignment.Center),
+        )
+
         // Round 120 overlays: Up Next card, skip pill, resume pill.
         PlayerRound120Overlays(
             upNext = upNext,
@@ -277,6 +306,107 @@ internal fun PlayerSurface(
         },
         modifier = modifier,
     )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  ROUND 154: the first-frame cover placeholder + the audio-switch pill
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ROUND 154 (the v1.1.93 device round — "show the first frame + the loading
+ * animation"): the player used to sit pure black for the whole initial stream
+ * fetch. While mpv has no frames yet (LOADING with no duration, or an
+ * in-flight stream switch that hasn't buffered), the episode's cover fills
+ * the player under a scrim with a centered spinner, then crossfades out the
+ * moment real frames are visible. Draws ABOVE the mpv surface but BELOW the
+ * controls; no click consumption, so gestures pass straight through.
+ * Condition mirrors FullscreenControls' spinner gate (minus gestureSeeking —
+ * a seek gesture drives playback and must not flash the cover).
+ */
+@Composable
+internal fun PlayerCoverLoadingOverlay(
+    coverUrl: String,
+    loadingState: PlayerLoadingState,
+    buffering: Boolean,
+    isSwitching: Boolean,
+    bufferedEnough: Boolean,
+    duration: Int,
+    modifier: Modifier = Modifier,
+) {
+    val show = coverUrl.isNotBlank() && (
+        (loadingState == PlayerLoadingState.LOADING && duration == 0) ||
+            (isSwitching && !bufferedEnough)
+        )
+    AnimatedVisibility(
+        visible = show,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(450)),
+        modifier = modifier,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f)),
+            )
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.dp,
+                modifier = Modifier
+                    .size(44.dp)
+                    .align(Alignment.Center),
+            )
+        }
+    }
+}
+
+/**
+ * ROUND 154 (the v1.1.93 device round — "no loading shown when switching
+ * between audios"): picking an external audio version deliberately PAUSES the
+ * player until mpv fetches + demuxes the new stream (up to the 12s timeout) —
+ * which read as a frozen app. The sheet's picked row spins, but the sheet can
+ * be dismissed; this pill rides the PLAYER so the wait is visible from
+ * anywhere. Centered, glass-dark, never click-consuming.
+ */
+@Composable
+internal fun AudioSwitchingPill(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.9f),
+        exit = fadeOut(tween(250)) + scaleOut(targetScale = 0.9f),
+        modifier = modifier,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color.Black.copy(alpha = 0.62f),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    "Switching audio…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                )
+            }
+        }
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
