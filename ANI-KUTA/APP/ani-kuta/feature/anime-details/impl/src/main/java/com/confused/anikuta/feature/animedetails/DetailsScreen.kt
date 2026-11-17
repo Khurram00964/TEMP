@@ -579,7 +579,11 @@ fun DetailsScreen(
             null
         }
     }
-    var hasAutoPlayed by remember { mutableStateOf(false) }
+    // ROUND 153: rememberSaveable — plain remember RESET on back-navigation from
+    // the player (the SaveableStateProvider re-composes this screen fresh), so
+    // the autoplay re-fired, the cache-hit re-pushed the player, and the user
+    // was trapped in the 'never closes' loop (a double-back was the only exit).
+    var hasAutoPlayed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(pendingAutoPlay) {
         if (!pendingAutoPlay) return@LaunchedEffect
