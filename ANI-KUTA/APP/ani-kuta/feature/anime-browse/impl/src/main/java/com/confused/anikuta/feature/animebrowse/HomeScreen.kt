@@ -494,14 +494,26 @@ fun HomeScreen(
                                 activeMood = activeMood,
                                 surpriseSeed = surpriseSeed,
                                 onSelect = { mood ->
-                                    // The active chip tapped again hides its rail;
-                                    // a fresh Surprise tap reshuffles (seed bump).
-                                    val wasActive = mood == activeMood
-                                    activeMood = if (wasActive) "" else mood
-                                    if (!wasActive && mood == MOOD_SURPRISE) surpriseSeed += 1
-                                    // The chip tap scrolls the feed so the section
-                                    // lands at the viewport top.
-                                    scope.launch { listState.animateScrollToItem(moodsIndex) }
+                                    // ROUND 153 (the device round): Surprise me is the
+                                    // ALWAYS-HIGHLIGHTED brand button — tapping it keeps
+                                    // it lit, shows its rail, and RESHUFFLES every time.
+                                    // The genre chips keep the toggle semantics (the
+                                    // active genre chip tapped again hides its rail).
+                                    if (mood == MOOD_SURPRISE) {
+                                        surpriseSeed += 1
+                                        activeMood = MOOD_SURPRISE
+                                    } else {
+                                        val wasActive = mood == activeMood
+                                        activeMood = if (wasActive) "" else mood
+                                    }
+                                    // The chip tap scrolls the feed SMOOTHLY to the
+                                    // bottom — the rail is the feed's tail, so the
+                                    // section + the rail land fully in view ("it will
+                                    // smoothly scroll to the very bottom").
+                                    val last = listState.layoutInfo.totalItemsCount - 1
+                                    scope.launch {
+                                        listState.animateScrollToItem(last.coerceAtLeast(0))
+                                    }
                                 },
                                 onBrowseAll = { onNavigate(HomeGenresKey) },
                                 onOpen = { anime ->
@@ -593,7 +605,6 @@ private fun HomeSectionHead(
 @Composable
 private fun HomeTopBar(
     onProfileClick: () -> Unit,
-    logoRes: Int? = null,
     avatarUrl: String? = null,
     avatarInitial: String? = null,
 ) {
@@ -604,48 +615,17 @@ private fun HomeTopBar(
             .padding(horizontal = 20.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // The brand chip: rounded square with a tightened bottom-left
-            // corner (the wordmark's speech-bubble read); the bg stays
-            // primary@0.14 and the art fills the chip.
-            val chipShape = RoundedCornerShape(
-                topStart = 10.dp, topEnd = 10.dp, bottomEnd = 10.dp, bottomStart = 5.dp,
-            )
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(chipShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (logoRes != null) {
-                    Image(
-                        painter = painterResource(logoRes),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(12.dp),
-                    )
-                }
-            }
             Text(
                 text = "Ani-Kuta",
                 // ROUND 152: the wordmark is a font-display spot — Bricolage.
+                // ROUND 153: the logo chip is GONE (the user's order — the icon
+                // fought the wordmark) and the name grew to carry the brand alone.
                 fontFamily = DisplayFamily,
-                fontSize = 23.sp,
+                fontSize = 27.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.2).sp,
+                letterSpacing = (-0.3).sp,
                 color = MaterialTheme.colorScheme.onBackground,
             )
-        }
         Spacer(Modifier.weight(1f))
         // The 44dp round profile button → ProfileKey (pushed by MainActivity).
         Box(
@@ -714,7 +694,10 @@ private fun HomeHero(
     // ── The stride: card width (container − 48dp edges) + the 10dp gap ──
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val density = LocalDensity.current
-        val cardWidth = maxWidth - 48.dp
+        // ROUND 153 (the device round): the center card narrows (100% - 88dp —
+        // the user: the main cover "should not take up way too much space") so
+        // the neighbours' corners peek properly on both sides.
+        val cardWidth = maxWidth - 88.dp
         val stridePx = with(density) { (cardWidth + 10.dp).toPx() }
 
         // The fractional absolute position (items) — round() = the settled card.
@@ -805,7 +788,9 @@ private fun HomeHero(
             LazyRow(
                 state = listState,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+                // ROUND 153: re-derived for the narrower card — (width − card)/2
+                // keeps the snap dead-centered on the active cover.
+                contentPadding = PaddingValues(horizontal = (maxWidth - (maxWidth - 88.dp)) / 2, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1069,6 +1054,7 @@ private fun HeroNoteChip(anime: AniListAnime) {
             text = note,
             fontFamily = RobotoFamily,
             fontSize = 11.sp,
+            lineHeight = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.22.sp,
             color = OnScrim,
@@ -1088,7 +1074,10 @@ private fun GlassChip(content: @Composable () -> Unit) {
             .clip(PillShape)
             .border(BorderStroke(1.dp, GlassBorder), PillShape)
             .background(GlassBg)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            // ROUND 153: the SQUISHED pill — the vertical padding 4→2dp (the
+            // user: "a squished kind of pill, not a thick one"; the height drops,
+            // the width keeps).
+            .padding(horizontal = 10.dp, vertical = 2.dp),
     ) {
         content()
     }
@@ -1399,27 +1388,33 @@ private fun HomeContinueCard(
         // (no autoplay) exactly like tapping the row in History.
         Column(
             modifier = Modifier
-                .padding(top = 8.dp)
+                // ROUND 153: the top gap 8→4dp — the user: the card-to-text
+                // spacing "was taking up way too much space".
+                .padding(top = 4.dp)
                 .clickable(onClick = onOpenDetails),
         ) {
             Text(
                 text = item.title,
                 fontFamily = RobotoFamily,
                 fontSize = 12.5.sp,
+                lineHeight = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
                     ?: MaterialTheme.colorScheme.onBackground,
-                maxLines = 2,
+                // ROUND 153 (the user's explicit rule): ONE line, no more.
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = "${item.minutesLeft} min left",
                 fontFamily = RobotoFamily,
                 fontSize = 11.sp,
+                lineHeight = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = LocalCardDescriptionColor.current.takeIf { it != Color.Unspecified }
                     ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
+                // ROUND 153: the title→time gap 2→1dp (the two lines hug).
+                modifier = Modifier.padding(top = 1.dp),
             )
         }
     }
@@ -1478,48 +1473,46 @@ private fun HomeAirsRow(
     // the next row was not highlighted properly). The halo keeps its glow.
     val pulsing = isNext && !item.released
     val pulse = if (pulsing) nodePulseAlpha() else 0f
-    Row(
+    // ROUND 153 (the device round): the row outline is GONE — the user: the
+    // highlight belongs ONLY to the release-time node (the pulsing halo stays).
+    // THE RAIL CONTINUITY: the old segment drew INSIDE the 7dp-padded row (the
+    // paddings gapped the line). The rail now draws on the UNPADDED outer Box —
+    // one continuous line across the rows (the first/last insets still trim
+    // the ends), with the padded content inside.
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .defaultMinSize(minHeight = 44.dp)
-            .then(
-                if (pulsing) {
-                    Modifier.border(
-                        BorderStroke(
-                            1.5.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f + 0.35f * pulse),
-                        ),
-                        AirsRowShape,
-                    )
-                } else {
-                    Modifier
-                },
-            )
             .clip(AirsRowShape)
-            .clickable(onClick = onClick)
-            .padding(vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .clickable(onClick = onClick),
     ) {
-        // The node column: the 2dp rail segment + the dot-and-time pill.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .width(78.dp)
+                .fillMaxHeight()
+                .drawBehind {
+                    val top = if (isFirst) railEndInsetPx else 0f
+                    val bottom = if (isLast) size.height - railEndInsetPx else size.height
+                    drawRect(
+                        color = railColor,
+                        topLeft = Offset(size.width / 2f - railWidthPx / 2f, top),
+                        size = Size(railWidthPx, (bottom - top).coerceAtLeast(0f)),
+                    )
+                },
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 7.dp)
+                .padding(start = 0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+        // The node column: the dot-and-time pill rides the continuous rail.
         // ROUND 152: 68 → 78dp so "10:05 PM" NEVER wraps.
         Box(modifier = Modifier.width(78.dp).fillMaxHeight()) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .width(2.dp)
-                    .fillMaxHeight()
-                    .drawBehind {
-                        val top = if (isFirst) railEndInsetPx else 0f
-                        val bottom = if (isLast) size.height - railEndInsetPx else size.height
-                        drawRect(
-                            color = railColor,
-                            topLeft = Offset(size.width / 2f - railWidthPx / 2f, top),
-                            size = Size(railWidthPx, (bottom - top).coerceAtLeast(0f)),
-                        )
-                    },
-            )
             val released = item.released
             val (hm, ampm) = remember(item.scheduledAt) { formatClock(item.scheduledAt) }
             Box(
@@ -1664,6 +1657,7 @@ private fun HomeAirsRow(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -2003,6 +1997,9 @@ private fun HomeMoodChips(
             onAction = onBrowseAll,
         )
         val chipListState = rememberLazyListState()
+        // ROUND 153: the tapped chip CENTERS itself in the rail (the smooth
+        // scroll needs a scope in this composable).
+        val scope = rememberCoroutineScope()
         // The chip rail resets to the start on every active-chip change.
         LaunchedEffect(activeMood) {
             chipListState.scrollToItem(0)
@@ -2012,21 +2009,30 @@ private fun HomeMoodChips(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
+            item(key = MOOD_SURPRISE) {
                 MoodChip(
                     label = MOOD_SURPRISE,
                     icon = Icons.Filled.Casino,
-                    active = activeMood == MOOD_SURPRISE,
+                    // ROUND 153: Surprise me is the ALWAYS-HIGHLIGHTED brand
+                    // button (its own active style never turns off).
+                    active = true,
                     onClick = { onSelect(MOOD_SURPRISE) },
                 )
             }
-            items(MOOD_GENRES.size) { index ->
-                val genre = MOOD_GENRES[index]
+            itemsIndexed(MOOD_GENRES, key = { _, genre -> genre }) { index, genre ->
+                val chipIndex = index + 1 // after the Surprise item
                 MoodChip(
                     label = genre,
                     icon = null,
                     active = activeMood == genre,
-                    onClick = { onSelect(genre) },
+                    onClick = {
+                        onSelect(genre)
+                        // ROUND 153 (the device round): the tapped chip CENTERS in
+                        // the rail — the old behavior scrolled to the first genre.
+                        scope.launch {
+                            chipListState.animateScrollToItem(chipIndex)
+                        }
+                    },
                 )
             }
         }

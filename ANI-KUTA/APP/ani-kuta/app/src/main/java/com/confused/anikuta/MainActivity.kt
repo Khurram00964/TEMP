@@ -1223,10 +1223,8 @@ fun AppRoot() {
                 onOpenDetailsByMainId = { mainId, episodeNumber, autoplay ->
                     openDetailsByMainId(mainId, episodeNumber, autoplay)
                 },
-                // ROUND 152: the brand chip carries the APP'S REAL LOGO ART
-                // (288×288 icon_current) instead of the play glyph; the home
-                // also reads profile_avatar_url itself for the TopBar avatar.
-                homeLogoRes = R.drawable.icon_current,
+                // ROUND 152/153: the home reads profile_avatar_url itself for
+                // the TopBar avatar (the logo chip was removed in ROUND 153).
             )
             // ROUND 152: the home's browse destinations — the "All genres"
             // index, one genre/tag's title grid, and the catalog page behind
