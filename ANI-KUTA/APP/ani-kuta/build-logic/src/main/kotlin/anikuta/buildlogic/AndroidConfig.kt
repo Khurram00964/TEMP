@@ -544,8 +544,22 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10193
+    const val versionName = "1.1.93"
+    // ROUND 153 (v1.1.93): release/1.1.93 — cut from the round-153 head 878acaa1
+    // (the code tree of CI-green fd883fa8 / run 44150435946): THE VARIANT TRUTH
+    // (a dub episode no longer auto-picks Japanese — the clicked row's variant
+    // rides the nav into the ladder), the cache-hit back-loop dead
+    // (hasAutoPlayed rememberSaveable), ADD AUDIO FILE (the SAF picker → fd://
+    // audio-add select), the offline audio langs (Japanese/English through
+    // data.json → the resolve chain), and THE HOME FEEL (the topbar wordmark +
+    // the real avatar, the hero card narrowed with the corners peeking + the
+    // snap never stuck, the never-ellipsizing lockup, the squished pills, the
+    // continue one-line + the tight spacing, the airs release-time-only
+    // highlight + the CONTINUOUS rail + the release animation, the mood
+    // behaviors, the genres/tags cached app-side). Carries rounds 147-153 on
+    // top of v1.1.89. Released on the TEMP mirror while testplay-byte is
+    // flagged.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
