@@ -172,12 +172,6 @@ class HttpDownloader(
             // (the data.json parallel to audioUris) — the offline sheet shows the
             // REAL names ("Japanese"/"English"), not "Audio 1"/"Audio 2".
             val audioLangs = audioVariants.map { variant -> variant.lang }
-            val audioFiles = audioVariants.map { it.file }
-            // ROUND 153: the extension's language labels ride beside the
-            // files (the data.json parallel to audioUris) — the offline
-            // sheet shows the real names ("Japanese"/"English"), not
-            // "Audio 1"/"Audio 2".
-            val audioLangs = audioVariants.map { it.lang }
             emitPhaseProgress(onProgress, downloadedBytes, 97)
 
             // 5. Publish to SAF (atomic). Returns the content:// URI + subtitle URIs.
@@ -546,7 +540,7 @@ class HttpDownloader(
             DownloadLogger.i {
                 "Downloading ${variants.size} audio version(s) for EP ${task.episode.episodeNumber}"
             }
-            val results = mutableListOf<File>()
+            val results = mutableListOf<DownloadedAudioVariant>()
             for ((index, track) in variants.withIndex()) {
                 val urlPath = track.url.substringBefore('?')
                     .substringAfterLast('/', "").lowercase()
