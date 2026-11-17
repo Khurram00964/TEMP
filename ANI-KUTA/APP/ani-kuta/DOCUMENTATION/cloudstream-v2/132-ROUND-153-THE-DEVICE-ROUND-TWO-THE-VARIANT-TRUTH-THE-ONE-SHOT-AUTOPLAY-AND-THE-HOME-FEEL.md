@@ -94,4 +94,12 @@
 - **The subagent context answer** (the user's question): the subagents do NOT share
   my context — each starts fresh with only the brief I write and must re-read the
   targeted files themselves. That is why the briefs carry the recon facts inline.
-- Next decision: D-890; next record: 133.
+- **THE RELEASE (D-893)**: the user's explicit order — testplay-byte STILL flagged
+  (404 unauthenticated), so Routine A adapted to the TEMP mirror: release/1.1.93 + ONE
+  bump commit 3bb68f0c (10120/1.1.20 → **10193/1.1.93**) + the annotated tag v1.1.93 ON
+  THE BUMP COMMIT → the Release APK run **44153597596 GREEN** (dispatched on TEMP);
+  verified live: stable + latest, ani-kuta-v1.1.93-debug-arm64-v8a.apk (76,620,144
+  bytes) + SHA256SUMS.txt; the downloaded SHA (6df50dc2…) MATCHES. Sideloads over
+  v1.1.92 (10193 > 10192). The testplay-byte release stays pending the unflag + the
+  order.
+- Next decision: D-894; next record: 133.
