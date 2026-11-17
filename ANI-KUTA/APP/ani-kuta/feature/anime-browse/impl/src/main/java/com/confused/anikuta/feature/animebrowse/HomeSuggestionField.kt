@@ -143,7 +143,7 @@ private const val MELT_TOP = 3
  * One suggestion-field cover — the AniList id (the tap-to-open routing) and
  * the poster URL.
  */
-internal data class HomeFieldCover(
+data class HomeFieldCover(
     val anilistId: Int,
     val url: String?,
 )

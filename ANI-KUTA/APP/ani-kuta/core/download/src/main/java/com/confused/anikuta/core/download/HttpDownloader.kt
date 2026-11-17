@@ -632,7 +632,7 @@ class HttpDownloader(
      *   caller, exactly the honest round-150 failure shape.
      */
     private suspend fun downloadHlsAudioVariantToCache(
-        taskId: String,
+        taskId: Long,
         index: Int,
         track: DownloadTrack,
     ): File? {
