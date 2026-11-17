@@ -1827,20 +1827,22 @@ private fun HomePosterCard(
             text = anime.displayName,
             fontFamily = RobotoFamily,
             fontSize = 12.sp,
+            // ROUND 153: the explicit tight line-height kills the font's built-in
+            // descent gap (the report: the title-rating distance "feels like a
+            // glitch"); the title hugs the cover and the score hugs the title.
+            lineHeight = 13.sp,
             fontWeight = FontWeight.Bold,
             color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
                 ?: MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // ROUND 152: the report — the title sat too far under the cover.
-            // 6 → 4dp (the score keeps its 2dp gap).
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 3.dp),
         )
         anime.averageScore?.let { score ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = 0.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Star,

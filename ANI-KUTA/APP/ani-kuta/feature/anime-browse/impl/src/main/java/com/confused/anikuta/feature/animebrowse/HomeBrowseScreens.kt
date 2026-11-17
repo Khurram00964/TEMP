@@ -273,6 +273,23 @@ class HomeGenresViewModel(
             // Hentai — pinned last (the handoff's GenresScreen rule).
             "Hentai",
         )
+
+        /**
+         * ROUND 153 (the device round: the index said "couldn't reach AniList"):
+         * the 30 most-common non-adult AniList tags, CURATED APP-SIDE — the
+         * index NEVER fetches to render. The live fetchPopularTags stays as a
+         * background freshness pass (its result swaps the list when it lands
+         * and writes the cache); a failure can no longer blank or gate the
+         * screen — the built-in list is always there.
+         */
+        private val STATIC_POPULAR_TAGS = listOf(
+            "Time Travel", "Isekai", "School", "Military", "Mecha", "Space",
+            "Super Power", "Supernatural", "Sword Play", "Vampire", "Demons",
+            "Robots", "Post-Apocalyptic", "Magic", "Assassins", "Aliens",
+            "Dragons", "Zombies", "Otaku Culture", "Idol", "Cooking",
+            "Gore", "Psychological", "School Life", "Shounen Ai", "Shoujo Ai",
+            "Battle Royale", "Survival", "Tragedy", "Workplace",
+        )
     }
 
     private val _state = MutableStateFlow<HomeGenresUiState>(HomeGenresUiState.Loading)
@@ -285,14 +302,12 @@ class HomeGenresViewModel(
     /** Idempotent per successful load — recomposition can call it freely. */
     fun load(force: Boolean = false) {
         if (!force && _state.value is HomeGenresUiState.Content) return
-        val cachedTags = homePreferences.getPopularTags()
-        if (cachedTags != null) {
-            _state.value = HomeGenresUiState.Content(STATIC_GENRES, cachedTags)
-            if (homePreferences.isPopularTagsStale()) fetchTags()
-        } else {
-            _state.value = HomeGenresUiState.Loading
-            fetchTags()
-        }
+        // ROUND 153: the built-in list SERVES FIRST (the screen can never say
+        // "couldn't reach AniList" on entry — the cached tags refine it when
+        // present, the live fetch is a background freshness pass only).
+        val cachedTags = homePreferences.getPopularTags() ?: STATIC_POPULAR_TAGS
+        _state.value = HomeGenresUiState.Content(STATIC_GENRES, cachedTags)
+        if (homePreferences.isPopularTagsStale()) fetchTags()
     }
 
     /** The ONE tags fetch (the genres are static) + the write-through cache. */
@@ -772,20 +787,20 @@ private fun HomeCategoryPosterCard(
             fontFamily = RobotoFamily,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            lineHeight = 15.sp,
+            // ROUND 153: the tight line-height + the hugged score row (the
+            // report: the title-rating distance "feels like a glitch").
+            lineHeight = 13.sp,
             color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
                 ?: MaterialTheme.colorScheme.onBackground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            // ROUND 152: the report — the title sat too far under the cover.
-            // 6 → 4dp (the score keeps its 2dp gap).
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 3.dp),
         )
         anime.averageScore?.let { score ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = 0.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Star,
