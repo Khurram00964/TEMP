@@ -1359,6 +1359,34 @@ fun WatchScreen(
     // onExternalAudioPicked). Idempotent: it only sets aid when the current
     // selection differs, and it rides the same MPVLib.setPropertyInt("aid", …)
     // path the sheet handlers use.
+    // ROUND 153 (the device round): the variant resolver — the override chain
+    // shared by both ladder rungs. currentEpisodeAudioVariant = the key's
+    // variant (the clicked episode row); currentAudioVersion = the CURRENT
+    // video's parsed flavor (the resolver-sheet pick + the quality-sheet picks
+    // write it) — when it carries DUB/SUB/HSUB it IS the user's choice.
+    val resolveAudioVariant: () -> com.confused.anikuta.core.common.AudioAvailability = {
+        // The override chain (the newest intent first):
+        //   1. currentAudioVersion — the CURRENT video's parsed flavor (the
+        //      resolver-sheet pick + the quality-sheet picks write it; also the
+        //      continuity pin's audio on the initial open).
+        //   2. currentEpisodeAudioVariant — the key's variant (the clicked
+        //      episode row).
+        //   3. The metadata map + the title parse (the fallback).
+        val live = currentAudioVersion.uppercase()
+        when {
+            live.contains("DUB") -> parseAudioAvailability("DUB", "")
+            live.contains("SUB") || live.contains("HSUB") -> parseAudioAvailability("SUB", "")
+            else -> when (stateHolder.currentEpisodeAudioVariant.value.lowercase()) {
+                "dub" -> parseAudioAvailability("DUB", "")
+                "sub" -> parseAudioAvailability("SUB", "")
+                else -> parseAudioAvailability(
+                    episodeMetadata[stateHolder.currentEpisodeNumber.value.toInt()]?.scanlator,
+                    stateHolder.currentEpisodeTitle.value,
+                )
+            }
+        }
+    }
+
     val applyRememberedAudio: (List<com.confused.anikuta.core.player.VideoTrack>) -> Unit =
         { audios ->
             if (audios.isNotEmpty()) {
@@ -1410,16 +1438,7 @@ fun WatchScreen(
                         }
                         // ROUND 153: the key/state variant (the clicked row's
                         // own truth) OVERRIDES the collapsed metadata map.
-                        val variant = when (
-                            stateHolder.currentEpisodeAudioVariant.value.lowercase()
-                        ) {
-                            "dub" -> parseAudioAvailability("DUB", "")
-                            "sub" -> parseAudioAvailability("SUB", "")
-                            else -> parseAudioAvailability(
-                                episodeMetadata[stateHolder.currentEpisodeNumber.value.toInt()]?.scanlator,
-                                stateHolder.currentEpisodeTitle.value,
-                            )
-                        }
+                        val variant = resolveAudioVariant()
                         val langTokens = if (variant.hasDub) {
                             listOf("eng", "english")
                         } else {
@@ -1452,16 +1471,7 @@ fun WatchScreen(
                     // (c) The variant-based match (DUB → eng, SUB/HSUB → jpn).
                     val variantMatch = if (rememberedMatch == null) {
                         val currentEpNum = stateHolder.currentEpisodeNumber.value.toInt()
-                        val variant = when (
-                            stateHolder.currentEpisodeAudioVariant.value.lowercase()
-                        ) {
-                            "dub" -> parseAudioAvailability("DUB", "")
-                            "sub" -> parseAudioAvailability("SUB", "")
-                            else -> parseAudioAvailability(
-                                episodeMetadata[currentEpNum]?.scanlator,
-                                stateHolder.currentEpisodeTitle.value,
-                            )
-                        }
+                        val variant = resolveAudioVariant()
                         val langTokens = if (variant.hasDub) {
                             listOf("eng", "english")
                         } else {

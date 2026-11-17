@@ -560,6 +560,12 @@ fun DetailsScreen(
     // when it becomes Success, tries auto-select. If a video is picked → navigate to
     // watch directly (skip the ResolverSheet). If no match → show the ResolverSheet.
     var pendingAutoPlay by remember { mutableStateOf(false) }
+    // ROUND 153: the clicked episode's AUDIO VARIANT — stashed at the click
+    // (from the row's OWN scanlator + name) and consumed by tryAutoSelect (the
+    // variant-steered group preference) + the resolver-sheet pick's key. The
+    // per-number metadata map collapses dual-variant rows — the click-time
+    // parse is the only truth.
+    var pendingEpisodeVariant by remember { mutableStateOf("") }
 
     // Phase 3: Auto-play from Continue Watching — if autoPlayEpisode is set on the key,
     // auto-trigger the episode click when episodes are loaded. Uses the Phase 2
@@ -681,7 +687,7 @@ fun DetailsScreen(
                     kotlinx.coroutines.delay(2000)
                     pendingAutoPlay = false
                     Logger.i("Anikuta:Feature:Details") { "Auto-play: resolverState is Success — trying auto-select..." }
-                    val autoVideo = viewModel.tryAutoSelect(rs)
+                    val autoVideo = viewModel.tryAutoSelect(rs, pendingEpisodeVariant)
                     if (autoVideo != null) {
                         val anime = (state as? DetailsState.Success)?.anime
                         val linked = effectiveLinkedSource
@@ -847,6 +853,10 @@ fun DetailsScreen(
     // auto-navigates (the isAutoSelectEnabled gate is a tap-time preference)
     // and skips the downloaded-file branch (the old flow resolved ONLINE).
     val onEpisodeClick: (eu.kanade.tachiyomi.animesource.model.SEpisode, Boolean) -> Unit = onEpisodeClick@{ episode, fromAutoPlay ->
+        // ROUND 153: stash the clicked row's audio variant (the ladder's truth).
+        pendingEpisodeVariant = com.confused.anikuta.core.common.parseAudioAvailability(
+            episode.scanlator, episode.name,
+        ).let { av -> when { av.hasDub -> "dub"; av.hasSub -> "sub"; else -> "" } }
         currentEpisode = episode
         resolverDownloadMode = false
         // ROUND 140 (D-849): the FALLBACK-aware state (exact URL key first, the
@@ -1979,8 +1989,11 @@ fun DetailsScreen(
                         // ROUND 108 (D-713): the cover rides the nav — the player
                         // rows' thumbnail fallback.
                         ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
-                        // ROUND 153: the clicked episode's audio variant (the ladder's truth).
-                        episodeAudioVariantOf(ep.scanlator, ep.name),
+                        // ROUND 153: the picked video's OWN title flavor — the
+                        // resolver sheet's SUB/DUB chips grouped these videos by
+                        // parseAudioVersion, so the title IS the user's picked
+                        // variant (the episode row's scanlator can be variant-less).
+                        episodeAudioVariantOf("", video.title),
                     )
                 }
                 showResolverSheet = false

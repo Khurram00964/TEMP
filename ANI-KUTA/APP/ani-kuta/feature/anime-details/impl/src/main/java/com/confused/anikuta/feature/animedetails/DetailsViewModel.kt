@@ -1095,7 +1095,10 @@ class DetailsViewModel(
     fun rememberedPlaybackPin(): String =
         playerPreferences.getRememberedPlayback(currentMainId ?: "")
 
-    fun tryAutoSelect(success: ResolverState.Success? = null): com.confused.anikuta.core.videoresolver.ResolvedVideo? {
+    fun tryAutoSelect(
+        success: ResolverState.Success? = null,
+        episodeVariant: String = "",
+    ): com.confused.anikuta.core.videoresolver.ResolvedVideo? {
         if (!playerPreferences.autoSelectVideo.get()) {
             Logger.w(TAG) { "tryAutoSelect: autoSelectVideo is OFF" }
             return null
@@ -1119,6 +1122,36 @@ class DetailsViewModel(
         // continuity ask: the next episode lands where the last one left
         // off); otherwise fall through to the configured-preference engine
         // unchanged — the pin is a preference, NEVER a hard filter.
+        // ── ROUND 153: THE EPISODE-VARIANT STEERING — the clicked row's flavor
+        // outranks the continuity pin AND the configured engine. The user's
+        // report: a dub-row click landed on the Japanese (SUB) audio because
+        // the pin/engine preferred SUB. The resolver's audio-version labels
+        // (DUB/SUB parsed from the video titles) ARE the flavor truth — the
+        // variant-steered pick is a soft preference (the best-quality video in
+        // the matching group; an empty group falls through to the pin/engine).
+        if (episodeVariant == "dub" || episodeVariant == "sub") {
+            val wanted = if (episodeVariant == "dub") "DUB" else "SUB"
+            val variantVideo = successState.servers.asSequence()
+                .flatMap { s ->
+                    s.audioVersions.filter { av ->
+                        av.label.equals(wanted, ignoreCase = true) ||
+                            (wanted == "SUB" && av.label.equals("HSUB", ignoreCase = true))
+                    }.flatMap { av -> av.videos.map { it } }
+                }
+                .maxByOrNull { it.quality?.toIntOrNull() ?: 0 }
+            if (variantVideo != null) {
+                Logger.i(TAG) {
+                    "tryAutoSelect: episode-variant steered → $wanted group " +
+                        "(${variantVideo.quality} on ${variantVideo.url.take(50)})"
+                }
+                return com.confused.anikuta.core.videoresolver.ResolvedVideo(
+                    url = variantVideo.url,
+                    quality = variantVideo.quality ?: variantVideo.videoTitle,
+                    headers = variantVideo.headers,
+                )
+            }
+        }
+
         val pin = rememberedPlaybackPin()
         if (pin.isNotBlank()) {
             val parts = pin.split('|')
