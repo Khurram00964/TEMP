@@ -254,6 +254,37 @@ fun WatchScreen(
     // subtitles/ folder (+ DB + .data.json) when the CURRENT episode is a
     // download, staged into the player cache, and sub-add'ed with the "select"
     // flag — it activates immediately and appears in the refreshed track list.
+    // ROUND 153: the SAF picker for "Add audio file" — the user's own audio
+    // file joins the current stream as an external mpv track (registered AND
+    // selected in one command). content:// never reaches mpv — the video's
+    // proven route (openFileDescriptor → fd://) with the descriptor kept open
+    // in mpvAudioPfds for the session (closed on dispose), exactly the video
+    // pfd's discipline.
+    val addAudioFilePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    if (pfd != null) {
+                        mpvAudioPfds.add(pfd)
+                        val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                            ?.substringBefore('.') ?: "external audio"
+                        MPVLib.command(
+                            arrayOf("audio-add", "fd://${pfd.fd}", "select", fileName, fileName),
+                        )
+                        Logger.i(TAG) {
+                            "Add audio file: attached '$fileName' as fd://${pfd.fd} — mpv registered + selected"
+                        }
+                    }
+                }.onFailure {
+                    Logger.w(TAG) { "Add audio file: failed — ${it.message}" }
+                }
+            }
+        }
+    }
+
     val subtitleFilePicker = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = PickSubtitleFiles(),
     ) { uris ->
@@ -3155,6 +3186,10 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             onSelectTrack = onAudioSelected,
             externalVersions = currentExternalAudioVersions,
             onPickExternal = onExternalAudioPicked,
+            // ROUND 153: the user's own audio file — the SAF picker opens, the
+            // file fd://-attaches as a selected mpv track, and the refreshed
+            // track list shows it (the debug list or the ladder's highlight).
+            onAddExternalAudio = { addAudioFilePicker.launch(arrayOf("audio/*", "application/octet-stream")) },
             activeVersionUrl = activeExternalVersionUrl,
             switchingVersionUrl = audioSwitchPendingUrl,
             switchFailedVersionUrl = audioSwitchFailedUrl,

@@ -596,6 +596,9 @@ fun AudioSheet(
     onSelectTrack: (Int) -> Unit,
     externalVersions: List<ResolverSubtitleTrack> = emptyList(),
     onPickExternal: (ResolverSubtitleTrack) -> Unit = {},
+    // ROUND 153: "Add audio file" — the user's own audio file joins the
+    // current stream as an external track (the host opens the SAF picker).
+    onAddExternalAudio: () -> Unit = {},
     // ROUND 152: the version-row STATE trio. Row identity = the version's url
     // (the stable half of the rows' LazyColumn keys).
     activeVersionUrl: String? = null,
@@ -865,6 +868,41 @@ fun AudioSheet(
                 // debug surface is on, its own "no tracks" message speaks
                 // above). Nothing fabricated — the stream genuinely has no
                 // audio versions.
+                // ROUND 153: "Add audio file" — ALWAYS available (even when the
+                // stream carries no versions — that's exactly when the user
+                // brings their own). One row, the handoff's glass-row anatomy.
+                item(key = "add-audio-file") {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onAddExternalAudio),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = "Add audio file…",
+                                fontFamily = RobotoFamily,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
                 if (externalVersions.isEmpty() && !debugShowMpvTracks) {
                     item(key = "empty-audio-msg") {
                         Text(
