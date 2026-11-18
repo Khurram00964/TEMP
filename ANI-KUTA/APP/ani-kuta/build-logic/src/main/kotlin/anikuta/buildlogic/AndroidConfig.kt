@@ -544,8 +544,21 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10195
+    const val versionName = "1.1.95"
+    // ROUND 155 (v1.1.95): release/1.1.95 — cut from the round-155 head
+    // d904c19f (CI green — run 44341513087 on TEMP): THE VARIANT HONEST
+    // CASCADE (the episode variant OUTRANKS the remembered per-series audio —
+    // the stale memory gated the variant match out entirely; a variant-LESS
+    // episode no longer hunts Japanese — mpv's alang default IS the
+    // extension's recommendation; the terminal first-track stomp retired; the
+    // steering matches the DUB/SUB groups by token; the pin's audio component
+    // demotes under a known variant), THE TOP-BAR WASH (the hero's cover
+    // gradient now underlies the app name + the profile icon — the topbar
+    // merged into the hero item, one wash, still fading clean by the hero's
+    // bottom), and THE HERO DOTS BELOW the carousel (the round-154 wash
+    // wrapper Box had stranded them as a sibling overlaying the cards' top).
+    // The debug release rides the TEMP mirror while testplay-byte is flagged.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
