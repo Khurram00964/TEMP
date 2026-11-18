@@ -17,6 +17,11 @@
 ## Round 155 (released — carried by v1.1.95)
 - THE VARIANT BUG: the thorough trace — three stacked ladder bugs (the remembered audio gating out the variant; the forced Japanese hunt on variant-less episodes; the first-track stomp) all fixed into one honest cascade.
 - The hero: the cover wash behind the top bar, the dots below the carousel.
+## 1.1.8 / 10108 — PROFESSIONAL RELEASE (round 156 — ON THE OFFICIAL REPOSITORY)
+- RELEASED on **Confused-Creature-180/ANI-KUTA**: stable + latest, 11 assets (Ani-Kuta-<abi>.apk x5 + .zip x5 + SHA256SUMS.txt), all checksums + the ABI audit verified. release/1.1.8 + the bump 6fdf7a96 (10108/1.1.8; 10108 > 10107 updates in place) built all-ABI via release-build-once on TEMP (run 44355252757 GREEN, after the signing-secrets incident — the delivery keystore verified the professional key by the v1.1.7 fingerprint). The website chip + the README links re-pointed to v1.1.8. Carries EVERYTHING since v1.1.7: the home redo, the multi-audio system + the variant honest cascade, the 6-hour home cache, the player feedback, the offline audio langs, the download/notifications/restore fixes.
+## Round 156 (the smooth wash + the 6h cache — carried by the professional v1.1.8 and the next debug release)
+- The hero wash crossfades cover-to-cover (fraction-driven, symmetric both directions, seamless wrap).
+- The 6-hour home cache completed: home_airs + home_field_covers join home_trending; fresh caches serve with zero network; pull-to-refresh resets the timer.
 ## 1.1.94 / 10194 — RELEASE (round 154 — ON THE TEMP MIRROR; the LAST debug build)
 - RELEASED on **Khurram00964/TEMP**: stable, ani-kuta-v1.1.94-debug-arm64-v8a.apk (76,620,144 bytes, checksum b7aedf27... verified). release/1.1.94 + the bump 5c5a77f4 + the tag v1.1.94 on the bump; the Release APK run 44176156508 GREEN (dispatched). Carries round 154 on top of v1.1.93: the variant truth FINAL (the sheet pick's own label rides the key + the group steering + the live-flavor ladder), the first-frame cover placeholder (no more black on open), the audio-switch pill, and the home polish part two (the hero wash, the airs highlight, the mood collapse + the chip centering).
 ## Round 154 (released — carried by v1.1.94)
