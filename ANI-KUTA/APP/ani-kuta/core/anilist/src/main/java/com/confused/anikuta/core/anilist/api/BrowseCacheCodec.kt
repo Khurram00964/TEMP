@@ -1,6 +1,7 @@
 package com.confused.anikuta.core.anilist.api
 
 import com.confused.anikuta.core.anilist.model.AniListAnime
+import com.confused.anikuta.core.anilist.model.AniListAiringEpisode
 import com.confused.anikuta.core.anilist.model.AnimeTitle
 import com.confused.anikuta.core.anilist.model.CoverImage
 import kotlinx.serialization.json.Json
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -56,6 +58,17 @@ object BrowseCacheCodec {
     const val SECTION_HOME_TOP_RATED = "home_top_rated"
 
     /**
+     * ROUND 156: the home's 6-hour cache extends to EVERY network section —
+     * the GLOBAL "Airs today" schedule (its airing times ride the payload, so
+     * the countdown chips keep ticking client-side from a cached feed) and
+     * the suggestion field's cover pool. The trending payload (the hero, the
+     * rail, the mood rails) was already cache-first. Same table, same 6h
+     * TTL, same codec — zero schema change.
+     */
+    const val SECTION_HOME_AIRS = "home_airs"
+    const val SECTION_HOME_FIELD_COVERS = "home_field_covers"
+
+    /**
      * Serializes a list of anime into the stable browse-cache JSON format.
      * Omitting null fields keeps the payload compact + lets old decoders
      * default them to null on read.
@@ -73,6 +86,15 @@ object BrowseCacheCodec {
                     a.bannerImage?.let { put("banner", it) }
                     a.genres?.takeIf { it.isNotEmpty() }?.let { put("genres", it.joinToString(",")) }
                     a.status?.let { put("status", it) }
+                    // ROUND 156: the airing schedule rides the cache — the
+                    // home's "Airs today" composes its rows + countdown chips
+                    // from these times client-side.
+                    a.nextAiringEpisode?.let { n ->
+                        put("nextAiring", buildJsonObject {
+                            put("at", n.airingAt)
+                            put("ep", n.episode)
+                        })
+                    }
                 })
             }
         }
@@ -109,6 +131,12 @@ object BrowseCacheCodec {
                     ?.takeIf { it != "null" && it.isNotBlank() }
                     ?.split(","),
                 status = obj["status"]?.jsonPrimitive?.toString()?.trim('"')?.takeIf { it != "null" },
+                nextAiringEpisode = obj["nextAiring"]?.jsonObject?.let { n ->
+                    AniListAiringEpisode(
+                        airingAt = n["at"]?.jsonPrimitive?.longOrNull ?: 0L,
+                        episode = n["ep"]?.jsonPrimitive?.intOrNull ?: 0,
+                    )
+                },
             )
         }
     }

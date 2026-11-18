@@ -39,6 +39,24 @@ import kotlin.math.roundToInt
  * | Section (home)        | Source                                                            |
  * |-----------------------|-------------------------------------------------------------------|
  * | Hero                  | trending top-5 (the SAME home_trending payload the rail ranks)    |
+ *
+ * ## The 6-hour home cache (ROUND 156 — the user's contract)
+ *
+ * EVERY network-fed section is 6-hour cache-first, under the SAME
+ * `browse_cache` table + TTL (`DataCacheRepository.BROWSE_CACHE_TTL_MS`):
+ * `home_trending` (the hero + the trending rail + the mood rails + the field
+ * fallback), `home_airs` (the GLOBAL "Airs today" schedule — the airing
+ * times ride the payload, so the countdown chips keep ticking client-side
+ * from a cached feed), and `home_field_covers` (the suggestion field's cover
+ * pool). On entry a FRESH cache serves with ZERO network; a fetch happens
+ * ONLY when the section's cache is expired/missing. The user can always
+ * refresh manually by dragging from the top — pull-to-refresh force-fetches
+ * every network section and REWRITES the caches, which resets the 6-hour
+ * timer. Nothing else ever auto-refreshes. The personal rails (continue
+ * watching, the library-schedule airs) are reactive device-data store flows
+ * — always live, no cache layer needed. The suggested pool itself is local
+ * (the library's genre affinity); its COVERS are the cached network piece.
+ *
  * | Continue watching     | [WatchProgressStore.observeContinueWatching] + the user's rules   |
  * | Airs today            | [HomePreferences.airsSource] toggle → [ScheduleStore.observeUpcoming] (see below) |
  * | Trending rail         | the home_trending payload, ranked (the rail shows the rank badge) |
@@ -92,6 +110,9 @@ class HomeViewModel(
         // Search co-owns those (D-278); home_popular / home_top_rated are
         // retired with the round-148 sections.
         private const val SECTION_TRENDING = BrowseCacheCodec.SECTION_HOME_TRENDING
+    // ROUND 156: the remaining network sections join the same 6h cache.
+    private const val SECTION_AIRS = BrowseCacheCodec.SECTION_HOME_AIRS
+    private const val SECTION_FIELD_COVERS = BrowseCacheCodec.SECTION_HOME_FIELD_COVERS
 
         private const val TRENDING_SORT = "TRENDING_DESC"
 
@@ -369,7 +390,10 @@ class HomeViewModel(
             // write landing first.
             homePreferences.airsSource.flatMapLatest { source ->
                 if (source == HomeAirsSource.GLOBAL) {
-                    _airsReloadToken.flatMapLatest { fetchGlobalAirsItems() }
+                    // ROUND 156: the token carries the force flag — 0 is the
+                    // initial (cache-first) run; every refresh() bump forces
+                    // the fetch + the cache rewrite (the 6h timer resets).
+                    _airsReloadToken.flatMapLatest { fetchGlobalAirsItems(force = it > 0) }
                 } else {
                     val windowStart = System.currentTimeMillis()
                     combine(
@@ -405,21 +429,47 @@ class HomeViewModel(
      * to an empty list (the section hides — home stays Content) and RETRIES
      * on the next minute tick.
      */
-    private fun fetchGlobalAirsItems(): Flow<List<HomeAirsItem>> = flow {
-        var fetched = false
-        while (true) {
-            if (!fetched) {
-                runCatching { anilistApi.fetchGlobalAiringSchedule() }
-                    .onSuccess { airing ->
-                        globalAiringCache = airing
-                        fetched = true
-                        Logger.i(TAG) { "global airing schedule fetched: ${airing.size} RELEASING shows" }
-                    }
-                    .onFailure { e ->
-                        if (e is CancellationException) throw e
-                        Logger.e(TAG, e) { "global airing schedule failed: ${e.message}" }
-                    }
+    private fun fetchGlobalAirsItems(force: Boolean): Flow<List<HomeAirsItem>> = flow {
+        // ROUND 156: 6-hour cache-first (home_airs). The round-152 flow
+        // fetched from the network on EVERY activation — exactly what the
+        // user's caching contract forbids. Now: a fresh cache serves with
+        // ZERO network (the airing times ride the payload, so the countdown
+        // chips keep ticking client-side); a fetch happens ONLY when the
+        // cache is expired/missing — or when [force] (pull-to-refresh),
+        // which rewrites the cache and resets the 6h timer. A network miss
+        // soft-fails to an empty list (the section hides) and RETRIES on the
+        // next minute tick — unchanged.
+        val cached = if (!force) {
+            withContext(Dispatchers.IO) { dataCacheRepository.getBrowseCache(SECTION_AIRS) }
+        } else null
+        val cachedAnime = cached?.takeUnless { it.isExpired }?.let { c ->
+            withContext(Dispatchers.IO) {
+                runCatching { BrowseCacheCodec.decode(c.dataJson) }
+                    .onFailure { e -> Logger.w(TAG) { "Failed to parse $SECTION_AIRS cache: ${e.message}" } }
+                    .getOrDefault(emptyList())
             }
+        }.orEmpty()
+        if (cachedAnime.isNotEmpty()) {
+            globalAiringCache = cachedAnime
+            Logger.i(TAG) { "global airing schedule served from cache: ${cachedAnime.size} RELEASING shows" }
+        } else {
+            runCatching { anilistApi.fetchGlobalAiringSchedule() }
+                .onSuccess { airing ->
+                    globalAiringCache = airing
+                    if (airing.isNotEmpty()) {
+                        val json = withContext(Dispatchers.IO) { BrowseCacheCodec.encode(airing) }
+                        withContext(Dispatchers.IO) {
+                            dataCacheRepository.upsertBrowseCache(SECTION_AIRS, json)
+                        }
+                        Logger.i(TAG) { "global airing schedule fetched + cached: ${airing.size} RELEASING shows" }
+                    }
+                }
+                .onFailure { e ->
+                    if (e is CancellationException) throw e
+                    Logger.e(TAG, e) { "global airing schedule failed: ${e.message}" }
+                }
+        }
+        while (true) {
             emit(composeGlobalAirs(globalAiringCache, System.currentTimeMillis()))
             delay(AIRS_RECOMPUTE_INTERVAL_MS)
         }
@@ -580,20 +630,50 @@ class HomeViewModel(
      * an empty field forever. Survives home re-entry — the UI reads the pool
      * as a param, no refetch on the way back.
      */
-    private fun loadFieldCovers() {
-        if (fieldCoversFetched) return
+    private fun loadFieldCovers(force: Boolean = false) {
+        if (fieldCoversFetched && !force) return
         fieldCoversFetched = true
         viewModelScope.launch {
-            val genres = _suggestedPool.value.genres
-            val fetched = if (genres.isEmpty()) {
-                emptyList()
+            // ROUND 156: the covers pool is 6-hour cache-first
+            // (home_field_covers) — a fresh cache serves with ZERO network;
+            // only an expired/missing pool reaches the per-genre fetch (or a
+            // pull-to-refresh, which rewrites + resets the timer). The
+            // trending-fallback covers are NOT cached — the trending payload
+            // owns its own cache, and the next trigger re-attempts the real
+            // genre fetch.
+            val cachedCovers = if (!force) {
+                val c = withContext(Dispatchers.IO) {
+                    dataCacheRepository.getBrowseCache(SECTION_FIELD_COVERS)
+                }
+                c?.takeUnless { it.isExpired }?.let { entry ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { BrowseCacheCodec.decode(entry.dataJson) }
+                            .onFailure { e -> Logger.w(TAG) { "Failed to parse $SECTION_FIELD_COVERS cache: ${e.message}" } }
+                            .getOrDefault(emptyList())
+                    }
+                }.orEmpty()
+            } else emptyList()
+            val covers = if (cachedCovers.isNotEmpty()) {
+                cachedCovers.map { HomeFieldCover(anilistId = it.id, url = it.coverUrl) }
             } else {
-                runCatching { suggestionCovers(genres) }
-                    .onFailure { e -> Logger.w(TAG) { "field covers fetch failed: ${e.message}" } }
-                    .getOrElse { emptyList() }
+                val genres = _suggestedPool.value.genres
+                val fetched = if (genres.isEmpty()) {
+                    emptyList()
+                } else {
+                    runCatching { suggestionCovers(genres) }
+                        .onFailure { e -> Logger.w(TAG) { "field covers fetch failed: ${e.message}" } }
+                        .getOrElse { emptyList() }
+                }
+                val fetchedCovers = (fetched.ifEmpty { _trending.value })
+                    .map { HomeFieldCover(anilistId = it.id, url = it.coverUrl) }
+                if (fetched.isNotEmpty()) {
+                    val json = withContext(Dispatchers.IO) { BrowseCacheCodec.encode(fetched) }
+                    withContext(Dispatchers.IO) {
+                        dataCacheRepository.upsertBrowseCache(SECTION_FIELD_COVERS, json)
+                    }
+                }
+                fetchedCovers
             }
-            val covers = (fetched.ifEmpty { _trending.value })
-                .map { HomeFieldCover(anilistId = it.id, url = it.coverUrl) }
             if (covers.isEmpty()) {
                 // Nothing to serve yet (no library genres AND no trending) —
                 // un-mark so the next trigger retries.
@@ -641,9 +721,10 @@ class HomeViewModel(
         viewModelScope.launch {
             _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
             _suggestedRefreshToken.value += 1
-            // ROUND 152: retries only when the fetch-once guard is open (a
-            // cold-start warm-up that landed nothing) — a served pool is kept.
-            loadFieldCovers()
+            // ROUND 156: pull-to-refresh is the USER's refresh — it
+            // force-fetches the covers and rewrites home_field_covers, which
+            // resets the 6-hour timer (the guard stays out of the way).
+            loadFieldCovers(force = true)
         }
         viewModelScope.launch { _airsReloadToken.value += 1 }
     }
