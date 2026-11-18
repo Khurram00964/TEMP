@@ -71,6 +71,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
@@ -394,35 +395,71 @@ fun HomeScreen(
                     // moods section (chips + rail) is fully visible. The item
                     // order below is FIXED: topbar, hero, continue, airs head,
                     // airs rows…, trending, suggested, moods.
-                    val moodsIndex = 6 + airsToday.size
+                    // ROUND 155: the topbar merged into the hero item — one
+                    // item fewer ahead of the moods.
+                    val moodsIndex = 5 + airsToday.size
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = bottomBarClearance(90.dp)),
                     ) {
-                        // ── TopBar (the CollapsingHeader is SCRAPPED) ──
-                        item(key = "topbar") {
-                            HomeTopBar(
-                                onProfileClick = onProfileClick,
-                                avatarUrl = profileAvatarUrl,
-                                avatarInitial = profileInitial,
-                            )
-                        }
-
-                        // ── Hero — the one moving thing (5.5s auto-advance) ──
+                        // ── TopBar + Hero — ONE item (round 155): the cover
+                        // wash (the active slide's blurred art + the fade)
+                        // underlies BOTH, so the gradient reaches behind the
+                        // app name + the profile icon — the user: "at the very
+                        // top section… implement the same thing". It still
+                        // fades to the background by the hero's bottom — the
+                        // rest of the feed stays clean. The hero is the one
+                        // moving thing (5.5s auto-advance). ──
                         item(key = "hero") {
-                            HomeHero(
-                                slides = heroSlides,
-                                onOpen = { anime ->
-                                    onNavigate(
-                                        AnimeDetailsKey.AniList(
-                                            anime.id,
-                                            coverUrl = anime.coverUrl,
-                                            title = anime.displayName,
-                                        ),
+                            var washIndex by remember { mutableIntStateOf(0) }
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Box(modifier = Modifier.matchParentSize()) {
+                                    heroSlides.getOrNull(washIndex)?.let { washSlide ->
+                                        AsyncImage(
+                                            model = washSlide.coverUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .blur(28.dp),
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colorStops = arrayOf(
+                                                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                                                        0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                                                        1f to MaterialTheme.colorScheme.background,
+                                                    ),
+                                                ),
+                                            ),
                                     )
-                                },
-                            )
+                                }
+                                Column {
+                                    HomeTopBar(
+                                        onProfileClick = onProfileClick,
+                                        avatarUrl = profileAvatarUrl,
+                                        avatarInitial = profileInitial,
+                                    )
+                                    HomeHero(
+                                        slides = heroSlides,
+                                        onOpen = { anime ->
+                                            onNavigate(
+                                                AnimeDetailsKey.AniList(
+                                                    anime.id,
+                                                    coverUrl = anime.coverUrl,
+                                                    title = anime.displayName,
+                                                ),
+                                            )
+                                        },
+                                        onWashIndex = { washIndex = it },
+                                    )
+                                }
+                            }
                         }
 
                         // ── Continue watching ──
@@ -707,6 +744,9 @@ private fun HomeTopBar(
 private fun HomeHero(
     slides: List<AniListAnime>,
     onOpen: (AniListAnime) -> Unit,
+    // ROUND 155: the active-slide index rides up to the merged item — the
+    // wash underlay lives THERE now (behind the top bar + the hero).
+    onWashIndex: (Int) -> Unit = {},
 ) {
     if (slides.isEmpty()) return
     val n = slides.size
@@ -815,46 +855,19 @@ private fun HomeHero(
             }
         }
 
-        // ROUND 154 (the device round): the cover-derived gradient wash BEHIND
-        // the carousel — the ACTIVE slide's art, blurred + dimmed, fading to
-        // the background (a subtle read: "not that much, but a very subtle
-        // looking kind of one"). Rides the same fractional position as the
-        // cards, so the wash crossfades as the carousel advances. The wash is
-        // an UNDERLAY: the carousel Column stacks on top (sibling order), the
-        // wash shows through the 10dp gaps + the peeking neighbour edges.
-        Box(modifier = Modifier.fillMaxWidth()) {
-            val washIndex = fractionalPos.roundToInt().coerceIn(0, n - 1)
-            val washSlide = slides.getOrNull(washIndex)
-            Box(
-                modifier = Modifier
-                    .matchParentSize(),
-            ) {
-                if (washSlide != null) {
-                    AsyncImage(
-                        model = washSlide.coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(28.dp),
-                    )
-                }
-                // The dim + the fade to the screen background (subtle, not a poster).
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                                    0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                                    1f to MaterialTheme.colorScheme.background,
-                                ),
-                            ),
-                        ),
-                )
-            }
-            Column(modifier = Modifier.fillMaxWidth()) {
+        // ROUND 155: the wash moved OUT of the hero to the merged screen item
+        // (the top bar + the hero share ONE underlay — the cover wash now
+        // reaches behind the app name + the profile icon, the round-155
+        // order). And the dots moved INSIDE this Column: the round-154 wash
+        // wrapper Box stranded them as a sibling — and Box children OVERLAY,
+        // so the dots rendered at the TOP edge over the cards instead of
+        // below the carousel.
+        LaunchedEffect(n) {
+            snapshotFlow { fractionalPos.roundToInt() }
+                .distinctUntilChanged()
+                .collect { onWashIndex(it.coerceIn(0, n - 1)) }
+        }
+        Column(modifier = Modifier.fillMaxWidth()) {
             LazyRow(
                 state = listState,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
@@ -896,16 +909,19 @@ private fun HomeHero(
                     )
                 }
             }
-        }
 
-            // ── The dots — loop controls with the direction-aware seam ──
+            // ── The dots BELOW the carousel (they were a Box sibling at the
+            // top — the round-155 report). Loop controls with the
+            // direction-aware seam. ──
             val lit = if (dir < 0) {
                 if (active == 0) 2 else active + 1
             } else {
                 if (active == n - 1) 1 else active + 1
             }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 2.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
                 slides.forEachIndexed { i, _ ->
