@@ -65,6 +65,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -412,33 +413,17 @@ fun HomeScreen(
                         // rest of the feed stays clean. The hero is the one
                         // moving thing (5.5s auto-advance). ──
                         item(key = "hero") {
-                            var washIndex by remember { mutableIntStateOf(0) }
+                            // ROUND 156: the wash rides the FRACTIONAL carousel
+                            // position now — the state object is passed DOWN
+                            // unread, so the per-frame writes recompose ONLY
+                            // the wash underlay, never the top bar or the hero.
+                            val washFraction = remember { mutableFloatStateOf(0f) }
                             Box(modifier = Modifier.fillMaxWidth()) {
-                                Box(modifier = Modifier.matchParentSize()) {
-                                    heroSlides.getOrNull(washIndex)?.let { washSlide ->
-                                        AsyncImage(
-                                            model = washSlide.coverUrl,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .blur(28.dp),
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    colorStops = arrayOf(
-                                                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                                                        0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                                                        1f to MaterialTheme.colorScheme.background,
-                                                    ),
-                                                ),
-                                            ),
-                                    )
-                                }
+                                HeroWashUnderlay(
+                                    slides = heroSlides,
+                                    fractionState = washFraction,
+                                    modifier = Modifier.matchParentSize(),
+                                )
                                 Column {
                                     HomeTopBar(
                                         onProfileClick = onProfileClick,
@@ -456,7 +441,7 @@ fun HomeScreen(
                                                 ),
                                             )
                                         },
-                                        onWashIndex = { washIndex = it },
+                                        onWashFraction = { washFraction.floatValue = it },
                                     )
                                 }
                             }
@@ -731,6 +716,72 @@ private fun HomeTopBar(
     }
 }
 
+/**
+ * ROUND 156: the hero wash — the active cover's art, blurred + dimmed,
+ * CROSSFADING cover-to-cover as the carousel moves. The blend is
+ * position-tied: the settled slide holds full alpha while the NEXT slide
+ * fades in with the fractional part — symmetric for both swipe directions
+ * and seamless across the wrap seam (the last slide blends into the first).
+ * The round-155 wash hard-swapped the image at the rounded index under a
+ * 28dp blur + a heavy dim — every cover reduced to the same haze and the
+ * swap read as "it does not change at all". The blur now leaves the cover's
+ * palette legible while the dim keeps it subtle. The fraction is read
+ * INSIDE this composable, so the per-frame writes recompose only this
+ * underlay — never the top bar or the hero.
+ */
+@Composable
+private fun HeroWashUnderlay(
+    slides: List<AniListAnime>,
+    fractionState: androidx.compose.runtime.MutableFloatState,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        val n = slides.size
+        if (n > 0) {
+            val pos = ((fractionState.floatValue % n) + n) % n
+            val i0 = pos.toInt().mod(n)
+            val i1 = (i0 + 1) % n
+            val incoming = (pos - pos.toInt()).coerceIn(0f, 1f)
+            slides.getOrNull(i0)?.let { slide ->
+                AsyncImage(
+                    model = slide.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alpha = 1f,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(20.dp),
+                )
+            }
+            slides.getOrNull(i1)?.let { slide ->
+                AsyncImage(
+                    model = slide.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alpha = incoming,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(20.dp),
+                )
+            }
+        }
+        // The dim + the fade to the screen background (subtle, not a poster).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                            0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.68f),
+                            1f to MaterialTheme.colorScheme.background,
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
 // ── Hero (Hero.tsx — the exact mechanics) ────────────────────────────────────
 
 /**
@@ -746,7 +797,7 @@ private fun HomeHero(
     onOpen: (AniListAnime) -> Unit,
     // ROUND 155: the active-slide index rides up to the merged item — the
     // wash underlay lives THERE now (behind the top bar + the hero).
-    onWashIndex: (Int) -> Unit = {},
+    onWashFraction: (Float) -> Unit = {},
 ) {
     if (slides.isEmpty()) return
     val n = slides.size
@@ -863,9 +914,9 @@ private fun HomeHero(
         // so the dots rendered at the TOP edge over the cards instead of
         // below the carousel.
         LaunchedEffect(n) {
-            snapshotFlow { fractionalPos.roundToInt() }
+            snapshotFlow { fractionalPos }
                 .distinctUntilChanged()
-                .collect { onWashIndex(it.coerceIn(0, n - 1)) }
+                .collect { onWashFraction(it) }
         }
         Column(modifier = Modifier.fillMaxWidth()) {
             LazyRow(
