@@ -544,8 +544,21 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10108
+    const val versionName = "1.1.8"
+    // THE PROFESSIONAL v1.1.8 RELEASE (round 156): release/1.1.8 — cut from
+    // the round-156 head ecf5fe4a (CI green — run 44351460947 on TEMP). The
+    // professional line's next head (v1.1.1 -> ... -> 1.1.7 -> 1.1.8;
+    // 10108 > 10107 so v1.1.7 devices update in place). Carries EVERYTHING
+    // since v1.1.7: the home screen redo (the hero carousel, continue
+    // watching, airs today, trending, suggested, browse by mood, all-genres
+    // index), the multi-audio system (the instant audio-version switching,
+    // the never-silent ladder, the variant honest cascade, add-audio-file,
+    // the first-frame cover, the audio-switch pill), the 6-hour home cache,
+    // the offline audio languages, the download-audio improvements, the
+    // notifications root-cause fix, the restore resilience, and the
+    // suggestion-field fixes. Built all-ABI release-signed via the
+    // release-build-once path; re-hosted on the official repository.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
