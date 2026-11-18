@@ -1436,26 +1436,34 @@ fun WatchScreen(
                                 registeredAudioTrackFor(version)?.id == track.id
                             }
                         }
-                        // ROUND 153: the key/state variant (the clicked row's
-                        // own truth) OVERRIDES the collapsed metadata map.
+                        // ROUND 155 (the v1.1.94 device round): the variant is
+                        // the NEWEST intent (the clicked row / the sheet pick's
+                        // label) — it OUTRANKS the remembered per-series choice,
+                        // and a variant-LESS episode must NOT hunt anything:
+                        // mpv's own default (alang) IS the extension's
+                        // recommendation, and the round-154 report showed the
+                        // old first-external stomp overriding it with Japanese.
                         val variant = resolveAudioVariant()
-                        val langTokens = if (variant.hasDub) {
-                            listOf("eng", "english")
-                        } else {
-                            listOf("jpn", "japanese")
+                        val langTokens = when {
+                            variant.hasDub -> listOf("eng", "english")
+                            variant.hasSub -> listOf("jpn", "japanese")
+                            else -> null // unknown flavor — respect mpv's default
                         }
-                        val variantExternal = externalTracks.firstOrNull { track ->
-                            val haystack = ((track.lang ?: "") + " " + track.name).lowercase()
-                            langTokens.any { haystack.contains(it) }
+                        val variantExternal = langTokens?.let { tokens ->
+                            externalTracks.firstOrNull { track ->
+                                val haystack = ((track.lang ?: "") + " " + track.name).lowercase()
+                                tokens.any { haystack.contains(it) }
+                            }
                         }
-                        // The remembered choice when it IS one of the external
-                        // tracks (the "predetermined" pick outranks the variant
-                        // guess), then the variant match, then any external.
-                        val rememberedExternal = rememberedMatch?.takeIf { rm ->
-                            externalTracks.any { it.id == rm.id }
-                        }
-                        val target = rememberedExternal ?: variantExternal
-                            ?: externalTracks.firstOrNull()
+                        // The remembered choice only when the variant said
+                        // nothing — a stale memory must never override an
+                        // explicit flavor click.
+                        val rememberedExternal = if (langTokens == null) {
+                            rememberedMatch?.takeIf { rm ->
+                                externalTracks.any { it.id == rm.id }
+                            }
+                        } else null
+                        val target = variantExternal ?: rememberedExternal
                         if (target != null && target.id != current) {
                             runCatching { MPVLib.setPropertyInt("aid", target.id) }
                             Logger.i(TAG) {
@@ -1464,33 +1472,44 @@ fun WatchScreen(
                                     "external track id ${target.id} ('${target.lang ?: target.name}')"
                             }
                         }
-                        // No external match → stay on the embedded track (the
-                        // documented fallback; the aid never moves).
+                        // No variant/remembered match → STAY on mpv's default
+                        // (the extension's recommendation; the aid never moves).
                     }
                 } else {
                     // (c) The variant-based match (DUB → eng, SUB/HSUB → jpn).
-                    val variantMatch = if (rememberedMatch == null) {
-                        val currentEpNum = stateHolder.currentEpisodeNumber.value.toInt()
-                        val variant = resolveAudioVariant()
-                        val langTokens = if (variant.hasDub) {
-                            listOf("eng", "english")
-                        } else {
-                            listOf("jpn", "japanese")
-                        }
+                    // ROUND 155: computed ALWAYS — the variant is the newest
+                    // intent and must outrank the remembered per-series choice
+                    // (the round-154 report: an explicit dub-row click stayed
+                    // Japanese because the remembered Japanese gated this match
+                    // out). A variant-LESS episode hunts NOTHING — mpv's alang
+                    // default (the extension's recommendation) lands on its own.
+                    val currentEpNum = stateHolder.currentEpisodeNumber.value.toInt()
+                    val variant = resolveAudioVariant()
+                    val langTokens = when {
+                        variant.hasDub -> listOf("eng", "english")
+                        variant.hasSub -> listOf("jpn", "japanese")
+                        else -> null // unknown flavor — respect mpv's default
+                    }
+                    val variantMatch = langTokens?.let { tokens ->
                         audios.firstOrNull { track ->
                             val haystack = ((track.lang ?: "") + " " + track.name).lowercase()
-                            langTokens.any { haystack.contains(it) }
+                            tokens.any { haystack.contains(it) }
                         }
-                    } else null
-                    // (d) The terminal fallback — the FIRST audio track.
-                    val target = rememberedMatch ?: variantMatch ?: audios.first()
-                    if (target.id != current) {
+                    }
+                    // (d) The remembered choice only when the variant said
+                    // nothing; when neither determines a flavor, LEAVE the aid
+                    // alone — mpv's own auto-selection picks the recommended
+                    // track (and it is never silent by itself; the
+                    // embedded-silent case is rung (a)'s job). The old
+                    // audios.first() terminal stomp is retired — it was the
+                    // "the extension's recommendation was not respected" bug.
+                    val target = variantMatch ?: rememberedMatch
+                    if (target != null && target.id != current) {
                         runCatching { MPVLib.setPropertyInt("aid", target.id) }
                         val source = when {
-                            rememberedMatch != null -> "remembered '$remembered'"
                             variantMatch != null ->
                                 "variant match ('${target.lang ?: target.name}')"
-                            else -> "first-track fallback (never silent)"
+                            else -> "remembered '$remembered'"
                         }
                         Logger.i(TAG) {
                             "Default-audio ladder → track id ${target.id} ($source)"

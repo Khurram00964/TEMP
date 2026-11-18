@@ -1130,18 +1130,26 @@ class DetailsViewModel(
         // variant-steered pick is a soft preference (the best-quality video in
         // the matching group; an empty group falls through to the pin/engine).
         if (episodeVariant == "dub" || episodeVariant == "sub") {
-            val wanted = if (episodeVariant == "dub") "DUB" else "SUB"
+            // ROUND 155: the group match is TOKEN-based (contains), not
+            // exact-label — some extensions label their groups beyond the
+            // canonical DUB/SUB/HSUB (e.g. "English Dub", "Japanese Sub"),
+            // and an exact equals() silently missed them, dropping the
+            // steering to the stale pin.
             val variantVideo = successState.servers.asSequence()
                 .flatMap { s ->
                     s.audioVersions.filter { av ->
-                        av.label.equals(wanted, ignoreCase = true) ||
-                            (wanted == "SUB" && av.label.equals("HSUB", ignoreCase = true))
+                        val l = av.label.lowercase()
+                        if (episodeVariant == "dub") {
+                            l.contains("dub")
+                        } else {
+                            l.contains("sub") // SUB + HSUB are one flavor group
+                        }
                     }.flatMap { av -> av.videos.map { it } }
                 }
                 .maxByOrNull { it.quality?.toIntOrNull() ?: 0 }
             if (variantVideo != null) {
                 Logger.i(TAG) {
-                    "tryAutoSelect: episode-variant steered → $wanted group " +
+                    "tryAutoSelect: episode-variant steered → $episodeVariant group " +
                         "(${variantVideo.quality} on ${variantVideo.url.take(50)})"
                 }
                 return com.confused.anikuta.core.videoresolver.ResolvedVideo(
@@ -1156,7 +1164,17 @@ class DetailsViewModel(
         if (pin.isNotBlank()) {
             val parts = pin.split('|')
             val pinServer = parts.getOrElse(0) { "" }
-            val pinAudio = parts.getOrElse(1) { "" }
+            // ROUND 155: when the episode's flavor is KNOWN but the steering
+            // found no matching group (the resolver's labels carried no
+            // tokens), the pin's AUDIO component must not re-impose the stale
+            // flavor either — continuity keeps the server + the quality, the
+            // flavor belongs to the episode (the player ladder + the stream's
+            // own default decide it).
+            val pinAudio = if (episodeVariant == "dub" || episodeVariant == "sub") {
+                ""
+            } else {
+                parts.getOrElse(1) { "" }
+            }
             val pinQuality = parts.getOrElse(2) { "" }
             if (pinServer.isNotBlank() || pinAudio.isNotBlank() || pinQuality.isNotBlank()) {
                 val pinned = successState.servers.asSequence()
