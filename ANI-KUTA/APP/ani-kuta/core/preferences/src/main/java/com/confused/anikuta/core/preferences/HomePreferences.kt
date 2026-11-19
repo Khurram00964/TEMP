@@ -39,6 +39,7 @@ class HomePreferences(
     companion object {
         // CORE_RULES §20 tag when logging lands: "Anikuta:Core:Preferences:Home".
         private const val KEY_AIRS_SOURCE = "home_airs_source"
+        private const val KEY_CONTENT_MODE = "home_content_mode"
 
         // ROUND 152: the popular-tags cache keys + the 7-day TTL.
         private const val KEY_POPULAR_TAGS = "popular_tags_json"
@@ -50,6 +51,31 @@ class HomePreferences(
 
     private val _airsSource = MutableStateFlow(getAirsSource())
     val airsSource: StateFlow<HomeAirsSource> = _airsSource.asStateFlow()
+
+    // ROUND 157 (WS-D1): the home's content mode — which feeds the home shows.
+    // ANIME (default): today's behavior byte-for-byte. SERIES_MOVIES: the
+    // CloudStream providers' shelves only (the AniList discovery fetches are
+    // skipped entirely). BOTH: the anime sections + the CS shelves interleave.
+    private val _contentMode = MutableStateFlow(getContentMode())
+    val contentMode: StateFlow<HomeContentMode> = _contentMode.asStateFlow()
+
+    fun getContentMode(): HomeContentMode =
+        HomeContentMode.fromValue(store.getString(KEY_CONTENT_MODE, HomeContentMode.ANIME.value))
+
+    fun setContentMode(mode: HomeContentMode) {
+        store.putString(KEY_CONTENT_MODE, mode.value)
+        _contentMode.value = mode
+    }
+
+    fun cycleContentMode(): HomeContentMode {
+        val next = when (_contentMode.value) {
+            HomeContentMode.ANIME -> HomeContentMode.SERIES_MOVIES
+            HomeContentMode.SERIES_MOVIES -> HomeContentMode.BOTH
+            HomeContentMode.BOTH -> HomeContentMode.ANIME
+        }
+        setContentMode(next)
+        return next
+    }
 
     fun getAirsSource(): HomeAirsSource =
         HomeAirsSource.fromValue(store.getString(KEY_AIRS_SOURCE, HomeAirsSource.LIBRARY.value))
@@ -111,5 +137,22 @@ enum class HomeAirsSource(val value: String, val displayName: String) {
     companion object {
         fun fromValue(value: String): HomeAirsSource =
             entries.firstOrNull { it.value == value } ?: LIBRARY
+    }
+}
+
+/**
+ * ROUND 157 (WS-D1): the home's content mode — the same axis as the Airs
+ * toggle, one level up. The CloudStream providers carry live-action series
+ * AND movies; the AniList discovery carries anime. BOTH interleaves them.
+ */
+enum class HomeContentMode(val value: String, val displayName: String) {
+    ANIME("anime", "Anime"),
+    SERIES_MOVIES("series_movies", "Series & movies"),
+    BOTH("both", "Both"),
+    ;
+
+    companion object {
+        fun fromValue(value: String): HomeContentMode =
+            entries.firstOrNull { it.value == value } ?: ANIME
     }
 }

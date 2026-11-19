@@ -166,7 +166,6 @@ class DownloadStore(private val database: AnikutaDatabase) {
         )
     }
 
-    /** Sets the result URIs on a COMPLETED task. */
     /**
      * ROUND 157 (WS-A3): the COMPLETED-state update + the downloaded_episode
      * insert land in ONE transaction. The old two separate writes could crash

@@ -35,4 +35,12 @@ class SAnimeImpl : SAnime {
     override var year: Int? = null
 
     override var score: Double? = null
+
+    // ROUND 157 (WS-B2): the external-ID + content-kind channel — the
+    // interface's no-op defaults are for EXTERNAL implementers; the real impl
+    // (the bridge + every local flow) MUST store, or the whole channel is
+    // dead (the P0 the round-157 critic caught).
+    override var external_ids: Map<String, String>? = null
+
+    override var content_kind: String? = null
 }

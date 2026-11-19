@@ -648,7 +648,15 @@ fun WatchScreen(
             playerMode == PlayerMode.FULLSCREEN && isPlaying
     }
     DisposableEffect(Unit) {
-        onDispose { com.confused.anikuta.core.common.PipState.eligible.value = false }
+        onDispose {
+            com.confused.anikuta.core.common.PipState.eligible.value = false
+            com.confused.anikuta.core.common.PipState.setInPip(false)
+        }
+    }
+    // ROUND 157 (the critic's P1-5): the controls hide while IN PiP (the
+    // surface alone + tap-to-expand — the system PiP affordances).
+    LaunchedEffect(isInPip) {
+        if (isInPip) stateHolder.updateControlsVisible(false)
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current

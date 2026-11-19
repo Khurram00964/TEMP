@@ -2726,8 +2726,15 @@ class DetailsViewModel(
             // ROUND 157 (WS-B1): the EXISTS path — resolveOrCreate returns an
             // existing mainId without re-classifying when the kind matches its
             // default; keep the axis honest when the kind is known.
-            if (!unifiedAnime?.contentKind.isNullOrBlank()) {
-                contentRepository.updateContentType(mainId, unifiedAnime!!.contentKind!!)
+            // ROUND 157 (the critic's P2): converge — only when the row still
+            // carries a different type (every open otherwise bumps updated_at
+            // and re-emits the main_entry observers).
+            val wantedKind = unifiedAnime?.contentKind
+            if (!wantedKind.isNullOrBlank()) {
+                val currentType = contentRepository.getMainEntryByMainId(mainId)?.contentType
+                if (currentType != wantedKind) {
+                    contentRepository.updateContentType(mainId, wantedKind)
+                }
             }
 
             // D-223: Trigger cover color extraction for adaptive theming.

@@ -236,10 +236,19 @@ class TrackSyncManager(
             val anilistId = details?.anilistId ?: return@launch
 
             for (tracker in trackers) {
-                // ROUND 157 (WS-C): the rating relay rides the same id seam.
-                val effectiveId = linkResolvers
+                // ROUND 157 (WS-C): the rating relay rides the same id seam —
+                // with the SAME guard (the critic's P1-4: without it an AniList
+                // id leaks into a TMDB-id space).
+                val resolvedId = linkResolvers
                     .firstOrNull { it.trackerType == tracker.type }
-                    ?.resolve(contentKey) ?: anilistId
+                    ?.resolve(contentKey)
+                if (resolvedId == null && tracker.type != TrackerType.ANILIST) {
+                    Logger.d(TAG) {
+                        "relayRating — ${tracker.displayName}: no resolved id for mainId=$contentKey — skipping"
+                    }
+                    continue
+                }
+                val effectiveId = resolvedId ?: anilistId
                 if (!tracker.isLoggedIn()) continue
                 // ROUND 102 (WS-E): the opt-in gate — ratings ride the same
                 // contract as watch events.

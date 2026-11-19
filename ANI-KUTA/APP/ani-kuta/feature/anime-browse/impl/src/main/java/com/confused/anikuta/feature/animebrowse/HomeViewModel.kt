@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -219,11 +221,35 @@ class HomeViewModel(
         // The personal rails (continue/airs/suggested) run in every mode.
         when (homePreferences.getContentMode()) {
             com.confused.anikuta.core.preferences.HomeContentMode.SERIES_MOVIES -> loadCsSections()
+            com.confused.anikuta.core.preferences.HomeContentMode.BOTH -> {
+                loadTrending()
+                loadCsSections()
+            }
             else -> loadTrending()
         }
         observeContinueWatching()
         observeAirsToday()
         observeSuggestedPool()
+        // ROUND 157 (the critic's P1-2): a runtime Settings mode switch
+        // re-targets the discovery fetches without a restart.
+        viewModelScope.launch {
+            homePreferences.contentMode.collect { mode ->
+                    when (mode) {
+                        com.confused.anikuta.core.preferences.HomeContentMode.SERIES_MOVIES -> {
+                            if (_trending.value.isNotEmpty()) _trending.value = emptyList()
+                            loadCsSections()
+                        }
+                        com.confused.anikuta.core.preferences.HomeContentMode.BOTH -> {
+                            loadTrending()
+                            loadCsSections()
+                        }
+                        else -> {
+                            loadTrending()
+                            _csSections.value = emptyList()
+                        }
+                    }
+                }
+        }
     }
 
     // ── Trending (the EXACT round-148 cache-first loadSection, one section) ──
@@ -748,10 +774,13 @@ class HomeViewModel(
     fun loadCsSections(force: Boolean = false) {
         val repo = cloudstreamRepository ?: return
         if (csSectionsFetched && !force) return
-        csSectionsFetched = true
         viewModelScope.launch {
             _csLoading.value = true
             try {
+                // ROUND 157 (the critic's P1-1): the plugin scan is ASYNC —
+                // sources.value is empty at Home init. Await the loaded flow
+                // before picking (the repo exposes sourcesLoaded).
+                repo.sourcesLoaded.firstOrNull()
                 // The provider pick: the first installed source with a main
                 // page (the search page's provider picker lets the user drive
                 // the detail; the home shows the first capable one — a stored
@@ -759,8 +788,10 @@ class HomeViewModel(
                 val provider = repo.sources.value.firstOrNull { it.hasMainPage && !it.isNsfw }
                 if (provider == null) {
                     Logger.i(TAG) { "CS home: no capable provider — the block hides" }
+                    csSectionsFetched = false // the scan may land later — retryable
                     return@launch
                 }
+                csSectionsFetched = true
                 _csProviderName.value = provider.providerName
                 _csSections.value = emptyList()
                 repo.browseSectionsProgressive(provider.providerName).collect { event ->

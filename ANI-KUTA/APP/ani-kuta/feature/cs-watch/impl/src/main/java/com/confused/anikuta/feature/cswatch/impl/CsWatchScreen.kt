@@ -248,7 +248,10 @@ fun CsWatchScreen(
             playerMode == CsPlayerMode.FULLSCREEN && engineState.isPlaying
     }
     DisposableEffect(Unit) {
-        onDispose { com.confused.anikuta.core.common.PipState.eligible.value = false }
+        onDispose {
+            com.confused.anikuta.core.common.PipState.eligible.value = false
+            com.confused.anikuta.core.common.PipState.setInPip(false)
+        }
     }
     var controlsLocked by remember { mutableStateOf(false) }
 
@@ -518,6 +521,10 @@ fun CsWatchScreen(
 
     // ── Controls auto-hide (5s minimized / 4s fullscreen — the aniyomi timing) ─
     var controlsVisible by remember { mutableStateOf(true) }
+    // ROUND 157 (the critic's P1-5): the controls hide while IN PiP.
+    LaunchedEffect(isInPip) {
+        if (isInPip) controlsVisible = false
+    }
     LaunchedEffect(controlsVisible, engineState.isPlaying, playerMode) {
         if (controlsVisible && engineState.isPlaying) {
             delay(if (playerMode == CsPlayerMode.FULLSCREEN) 4_000L else 5_000L)

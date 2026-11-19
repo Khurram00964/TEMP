@@ -76,6 +76,9 @@ class TraktTracker(
             return false
         }
         return try {
+            // ROUND 157 (the critic's P1-3): the exchange is blocking OkHttp —
+            // never on Main (the AniList twin launches on IO).
+            return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val body = okhttp3.FormBody.Builder()
                 .add("grant_type", "authorization_code")
                 .add("code", code)
@@ -88,16 +91,17 @@ class TraktTracker(
                 .post(body)
                 .build()
             client.newCall(request).execute().use { response ->
-                val payload = response.body?.string() ?: return false
-                if (!response.isSuccessful) {
-                    Logger.w(TAG) { "token exchange failed: ${response.code} ${payload.take(120)}" }
-                    return false
+                val payload = response.body?.string()
+                if (payload == null || !response.isSuccessful) {
+                    Logger.w(TAG) { "token exchange failed: ${response.code}" }
+                    return@withContext false
                 }
                 val obj = json.parseToJsonElement(payload).jsonObject
                 preferences.putString(KEY_ACCESS_TOKEN, obj["access_token"]?.jsonPrimitive?.content ?: "")
                 preferences.putString(KEY_REFRESH_TOKEN, obj["refresh_token"]?.jsonPrimitive?.content ?: "")
                 Logger.i(TAG) { "Trakt login succeeded" }
                 true
+            }
             }
         } catch (e: Exception) {
             Logger.w(TAG) { "handleLoginCallback failed: ${e.message}" }
@@ -120,12 +124,15 @@ class TraktTracker(
         if (!TraktAuth.isConfigured || !isLoggedIn()) return false
         _syncState.value = TrackerSyncState.Syncing
         try {
-            val idsJson = when (entry.kind) {
-                TrackKind.MOVIE ->
-                    """{"movies":[{"ids":{"tmdb":${entry.trackerId}},"plays":${entry.timesWatched}}]}"""
-                else ->
-                    """{"shows":[{"ids":{"tmdb":${entry.trackerId}}}]}"""
+            // ROUND 157 (the critic): a SERIES sync needs the season/episode
+            // map (a bare ids block 400s) — that lands WITH the app
+            // registration + the TrackerLinkResolver. Movies sync today.
+            if (entry.kind != TrackKind.MOVIE) {
+                Logger.i(TAG) { "syncEntry — the series sync waits for the id-resolution round" }
+                _syncState.value = TrackerSyncState.Idle
+                return false
             }
+            val idsJson = """{"movies":[{"ids":{"tmdb":${entry.trackerId}},"plays":${entry.timesWatched}}]}"""
             val request = Request.Builder()
                 .url(TraktAuth.API_BASE + "/sync/history")
                 .header("trakt-api-version", "2")

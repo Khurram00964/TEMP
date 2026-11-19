@@ -203,7 +203,11 @@ class DataCacheRepository(
      * re-fetches + re-inserts them (the cache is a read accelerator, never a
      * source of truth). Default retention 30 days.
      */
-    fun pruneStaleEpisodeMetadata(retentionMs: Long = 30L * 24 * 60 * 60 * 1000) {
+    // ROUND 157 (the critic): 180d, not 30d — the Library's per-title audio
+    // pills aggregate THESE rows (getAllEpisodeAudioRows) with no re-fetch
+    // path; a 30d prune erased them for anything not opened recently. A
+    // library-aware prune (skip library rows) is the proper fix later.
+    fun pruneStaleEpisodeMetadata(retentionMs: Long = 180L * 24 * 60 * 60 * 1000) {
         val cutoff = System.currentTimeMillis() - retentionMs
         queries.deleteEpisodeMetadataStale(cutoff)
         Logger.d(TAG) { "pruneStaleEpisodeMetadata: rows older than ${retentionMs / 86400000}d pruned" }
