@@ -544,8 +544,20 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10197
+    const val versionName = "1.1.97"
+    // ROUND 158 (v1.1.97): release/1.1.97 — cut from the round-158 head
+    // f944a11e (CI green — run 44634941096 on TEMP): THE VERIFICATION ROUND.
+    // Three rounds of verification over the groundwork: (V1) the self-sweep
+    // (the home mode observer's initial double-load removed; the auto-PiP
+    // no longer fires under an open sheet — the SAF pickers fired
+    // onUserLeaveHint; the PiP window follows the video's aspect with the
+    // 16:9 retry; the CS home block's honest error state; the debug gate's
+    // subtitle hint; the stale comment). (V2) the critic agent's round 2
+    // (verified all 8 round-157 fixes; caught the sourcesLoaded await
+    // no-op — a StateFlow firstOrNull returns instantly — plus the CS load
+    // job duplication, the missing sheets guard, the PipState size reset,
+    // and the 180d doc drift). (V3) all fixed + compiled + 8/8 tests + CI.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
