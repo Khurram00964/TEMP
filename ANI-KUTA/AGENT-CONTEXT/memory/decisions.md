@@ -48,6 +48,27 @@ The audit: home_trending was already 6h cache-first; the VIOLATIONS were the GLO
 ## D-903 (round 156): THE PROFESSIONAL v1.1.8 RELEASE — Routines B/C/D
 The user's explicit order (v1.1.7 -> v1.1.8 on the OFFICIAL repository). Routine B: release/1.1.8 + ONE bump 6fdf7a96 (10120 -> 10108/1.1.8) -> release-build-once on TEMP. THE INCIDENT: the signing secrets were missing on TEMP (write-only on the flagged testplay-byte) — the delivery keystore was FOUND in the workspace (SECURITY/ANI-KUTA-v1.1.1-DELIVERY/) and VERIFIED the professional key (its cert fingerprint byte-matches the v1.1.7 APK's signer) -> the 4 secrets set via the sealed-box API -> run 44355252757 GREEN; the artifact downloaded + verified (the CI sums, the ABI audit: 4 singles exact + universal all-four). Routine C: the 11 assets staged (the ZIPs level 9, the inner shas verified, the sums LF) + the release created STABLE + make_latest on Confused-Creature-180/ANI-KUTA with the short what's-new body. Routine D: the gh-pages chip + the README download links re-pointed to v1.1.8; the Pages build + the live fetches verified. The updater simulation: v1.1.7 -> v1.1.8 OFFERED, v1.1.8 -> no update.
 
+## D-904 (round 157): THE DB HARDENING — v5
+4.sqm: watch_progress.episode_number (the CAST/SUBSTR per-save scan dead) + the backfill + the covering index; the hot queries read the column; every upsert caller passes episodeNumberFromKey. The bulk writes transactional (markAllWatched — markWatchedInternal extracted, a withContext inside a SQLDelight suspend transaction breaks it; the library batches; the download completion trio). The prunes: watch_session 400d, data_cache_episode 180d (RAISED from 30d — the Library's audio pills aggregate those rows), the expired browse rows; the sweep on app start. The post-restore episode_number reconcile. The tests: 8/8 (two latent never-compiled test bugs fixed: fun "name"() + the createV3Shape collision). DATABASE-CONTRACT.md.
+
+## D-905 (round 157): THE PLAYER — audio delay, CS resize, PiP
+The audio delay (the subtitle pattern's audio twin: the pref + AudioSettingsSheet + the audio-sheet row + applyAudioPreferences). The CS resize (the PlayerView modes behind the MPV tray's pattern, session-only). PiP: the manifest flag + core/common PipState (eligible/isInPip/requestEnter) + the auto-enter on leave + the opt-in tray buttons (the MPV dead param live via FullscreenMode's pass-through) + the controls hide in PiP + the dispose resets. The ON_STOP observers are PiP-safe (PAUSED not STOPPED).
+
+## D-906 (round 157): THE CONTENT-TYPE AXIS
+SAnime.external_ids/content_kind (AND SAnimeImpl MUST override them — the critic's P0: the no-op defaults made the channel dead), the bridge captures syncData (<=8) + the kind, ExtensionExtras.tmdbId/imdbId, content.sq updateContentType (guarded) + the resolver's contentType param + the exists-path re-classification (the convergence guard), the movie mode (a Play-movie hero, the episode list hidden).
+
+## D-907 (round 157): THE HOME CONTENT MODE
+HomeContentMode (anime/series_movies/both) + the Settings row; the CS provider shelves as the home's Series & movies block (the phased loader; the provider attribution; the Extension/CsCategory routing); the AniList discovery skipped in SERIES_MOVIES; BOTH loads both; a live mode switch re-targets; the loader awaits sourcesLoaded (the async plugin-scan race).
+
+## D-908 (round 157): THE TRACKING TRANSLATION LAYER
+TrackerType.TRAKT + TrackKind + TrackEntry.kind/timesWatched (additive); TrackerLinkResolver (the per-tracker id seam; relayWatchEvent AND relayRating guarded — the rating relay would have leaked an AniList id into a TMDB space); core/tracker-trakt (PKCE S256, the redirect anikuta://trakt-auth, the movie /sync/history, the series sync honestly deferred; CLIENT_ID empty = dormant until the user's app registration). AniList byte-identical.
+
+## D-909 (round 157): THE CRITIC ROUND
+The adversarial review of all 7 commits: P0-1 (SAnimeImpl's missing overrides — the whole WS-B channel dead on device), P1-1..P1-5 (the plugin-scan race, BOTH loading, the Trakt exchange on Main, the rating id leak, the PiP hiding), the P2 warts (the convergence guard, the prune/pills clash, the honest series deferral). ALL fixed.
+
+## D-910 (round 157): THE v1.1.96 DEBUG RELEASE
+44625819352 GREEN (post-fix) + 44626990190 (the Release run) GREEN; **v1.1.96/10196 LIVE on TEMP** (76,685,744 bytes, the SHA 663877dd... MATCHED). NEXT: background playback (the deferred structural item), the search-with picker + the Trakt/TMDB activation (awaits the TMDB API key + the Trakt client_id), MAL when ordered. Next decision: D-911; next record: 137.
+
 ## D-898 (round 155): THE VARIANT HONEST CASCADE — the thorough trace
 The v1.1.94 device round: a DUB open STILL selected Japanese AND ignored the extension's recommendation. THREE stacked ladder bugs: (1) the remembered per-series audio gated variantMatch out (computed only when rememberedMatch == null) and outranked it — a stale memory beat an explicit dub-row click; (2) `if (hasDub) eng else jpn` forced a JAPANESE hunt for variant-LESS episodes (the else caught the unknown flavor); (3) audios.first() / externalTracks.firstOrNull() stomped mpv's alang default (the extension's recommendation). THE HONEST CASCADE: variant > remembered > mpv default; an unknown flavor touches nothing; the stomp retired. The steering matches the groups by token (contains); the pin's audio blanks under a known variant.
 
