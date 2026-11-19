@@ -247,6 +247,12 @@ updateMainEntryDisplaySource:
 UPDATE main_entry SET display_source = :displaySource, updated_at = :updatedAt
 WHERE main_id = :mainId;
 
+-- ROUND 157 (WS-B1): activate the content-type axis — the extension resolver
+-- derives the kind from the source's response (movie / tv_series / anime).
+updateContentType:
+UPDATE main_entry SET content_type = :contentType, updated_at = :updatedAt
+WHERE main_id = :mainId;
+
 updateMainEntrySources:
 UPDATE main_entry SET
     data_source_id = :dataSourceId,

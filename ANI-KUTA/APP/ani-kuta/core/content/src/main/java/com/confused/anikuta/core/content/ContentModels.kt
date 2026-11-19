@@ -158,6 +158,11 @@ data class ExtensionExtras(
     /** Task 47: the source-provided rating on the 0..100 scale the details
      * screen displays (SAnime.score is 0..10 — converted before persisting). */
     val score: Int? = null,
+    // ROUND 157 (WS-B2): the provider-supplied external IDs (from the CS
+    // LoadResponse.syncData channel) — the identity resolution's raw material
+    // for the TMDB/Trakt tracking layer. Additive JSON (ignoreUnknownKeys).
+    val tmdbId: String? = null,
+    val imdbId: String? = null,
     /** ROUND 124 (R9): the extension axis's REAL title — the reopen path used
      * to derive a display name from the URL slug ("dandadan-lzcmw" →
      * "dandadan lzcmw", the device report's wrong name after a kill+reopen).

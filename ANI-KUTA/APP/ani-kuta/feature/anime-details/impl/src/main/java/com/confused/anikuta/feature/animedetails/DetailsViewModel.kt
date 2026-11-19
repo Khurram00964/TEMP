@@ -2676,6 +2676,12 @@ class DetailsViewModel(
                                 title = unifiedAnime.title.takeIf { it.isNotBlank() }
                                     ?: existingExt?.extExtras?.title
                                     ?: title.takeIf { it.isNotBlank() },
+                                // ROUND 157 (WS-B2): the provider-supplied
+                                // external IDs ride the extras (null-preserving).
+                                tmdbId = unifiedAnime.externalIds?.get("tmdb")
+                                    ?: existingExt?.extExtras?.tmdbId,
+                                imdbId = unifiedAnime.externalIds?.get("imdb")
+                                    ?: existingExt?.extExtras?.imdbId,
                             ).toJson(),
                             extUpdatedAt = System.currentTimeMillis(),
                         )
@@ -2711,8 +2717,18 @@ class DetailsViewModel(
                 systemName = ecosystemName,
                 repoUrl = null,
                 extensionPkg = null,
+                // ROUND 157 (WS-B1): the response kind activates the
+                // content-type axis (movie / tv_series / anime).
+                contentType = unifiedAnime?.contentKind ?: "anime",
             )
             currentMainId = mainId; _mainIdFlow.value = mainId
+
+            // ROUND 157 (WS-B1): the EXISTS path — resolveOrCreate returns an
+            // existing mainId without re-classifying when the kind matches its
+            // default; keep the axis honest when the kind is known.
+            if (!unifiedAnime?.contentKind.isNullOrBlank()) {
+                contentRepository.updateContentType(mainId, unifiedAnime!!.contentKind!!)
+            }
 
             // D-223: Trigger cover color extraction for adaptive theming.
             triggerCoverColorExtraction(mainId, unifiedAnime?.coverUrl)
@@ -2745,6 +2761,12 @@ class DetailsViewModel(
                             score = unifiedAnime.averageScore,
                             title = unifiedAnime.title.takeIf { it.isNotBlank() }
                                 ?: existingExt?.extExtras?.title,
+                            // ROUND 157 (WS-B2): the provider-supplied
+                            // external IDs ride the extras (null-preserving).
+                            tmdbId = unifiedAnime.externalIds?.get("tmdb")
+                                ?: existingExt?.extExtras?.tmdbId,
+                            imdbId = unifiedAnime.externalIds?.get("imdb")
+                                ?: existingExt?.extExtras?.imdbId,
                         ).toJson(),
                         extUpdatedAt = System.currentTimeMillis(),
                     ),

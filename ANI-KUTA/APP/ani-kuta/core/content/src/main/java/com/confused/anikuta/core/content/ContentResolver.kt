@@ -192,11 +192,21 @@ class ContentResolver(
         systemName: String = "aniyomi",
         repoUrl: String? = null,
         extensionPkg: String?,
+        // ROUND 157 (WS-B1): the source's response kind (movie / tv_series /
+        // anime). Defaults to the legacy value so every existing caller keeps
+        // its behavior; the CS bridge flow passes the real kind.
+        contentType: String = "anime",
     ): String {
         // Check if content already exists for this (extensionId, animeUrl).
         val existing = repo.getMainEntryByExtension(extensionId, animeUrl)
         if (existing != null) {
             Logger.d(TAG) { "Extension $extensionId/$animeUrl → existing mainId=${existing.mainId}" }
+            // ROUND 157 (WS-B1): re-classify when the kind is known and the
+            // row still carries the legacy default (created before the type
+            // was derived).
+            if (contentType != "anime" && existing.contentType != contentType) {
+                repo.updateContentType(existing.mainId, contentType)
+            }
             return existing.mainId
         }
 
@@ -238,7 +248,7 @@ class ContentResolver(
             mainId = mainId,
             contentId = contentId,
             title = title,
-            contentType = "anime",
+            contentType = contentType,
             contentFormat = "video",
             dataSourceId = null,
             systemId = system?.id,

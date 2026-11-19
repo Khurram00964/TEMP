@@ -117,5 +117,8 @@ fun SAnime.toUnifiedAnime(sourceId: Long, sourceName: String): UnifiedAnime {
         entryMode = EntryMode.EXTENSION,
         seasonYear = year,
         averageScore = averageScore,
+        // ROUND 157 (WS-B2): the bridge's kind + external-ID channel.
+        externalIds = external_ids,
+        contentKind = content_kind,
     )
 }

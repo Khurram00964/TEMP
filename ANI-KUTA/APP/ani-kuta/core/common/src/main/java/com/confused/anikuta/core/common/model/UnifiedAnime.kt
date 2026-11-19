@@ -44,6 +44,11 @@ data class UnifiedAnime(
      * reflects the only available source.
      */
     val dataSourcePriority: DataSourcePriority = DataSourcePriority.EXTENSION,
+    // ROUND 157 (WS-B2): the extension channel's additive fields — the
+    // provider-supplied external IDs (tmdb/imdb/...) + the response kind
+    // (movie/tv_series/anime) driving the content-type axis + the movie mode.
+    val externalIds: Map<String, String>? = null,
+    val contentKind: String? = null,
 ) {
     /** Alias for [title] — for AniListAnime compatibility (displayName property). */
     val displayName: String get() = title

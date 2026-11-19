@@ -412,6 +412,19 @@ class CloudstreamAnimeSourceBridge(
             year = this@applyOnto.year ?: anime.year
             score = resolvedScore
             initialized = true
+            // ROUND 157 (WS-B2): the response kind + the external IDs — the
+            // movie-mode truth + the TMDB/Trakt identity resolution's raw
+            // material (the bridge used to drop syncData entirely).
+            content_kind = when (this@applyOnto) {
+                is com.lagradost.cloudstream3.MovieLoadResponse -> "movie"
+                is com.lagradost.cloudstream3.TvSeriesLoadResponse -> "tv_series"
+                is com.lagradost.cloudstream3.AnimeLoadResponse -> "anime"
+                else -> null
+            }
+            external_ids = syncData.entries
+                .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+                .take(8)
+                .associate { it.key to it.value }
         }
     }
 

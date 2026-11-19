@@ -304,6 +304,28 @@ class ContentRepository(
         Logger.d(TAG) { "Updated displaySource: mainId=$mainId, displaySource=$displaySource" }
     }
 
+    /**
+     * ROUND 157 (WS-B1): activate the content-type axis — the extension
+     * resolver derives the kind from the source's response (movie /
+     * tv_series / anime; anything else stays "anime" — the legacy default).
+     */
+    fun updateContentType(mainId: String, contentType: String) {
+        val allowed = setOf("anime", "tv_series", "movie")
+        if (contentType !in allowed) {
+            Logger.w(TAG) {
+                "REFUSED content_type write mainId=$mainId: '$contentType' is not a valid value " +
+                    "(expected anime | tv_series | movie) — row left unchanged"
+            }
+            return
+        }
+        contentQueries.updateContentType(
+            contentType = contentType,
+            updatedAt = System.currentTimeMillis(),
+            mainId = mainId,
+        )
+        Logger.d(TAG) { "Updated contentType: mainId=$mainId → $contentType" }
+    }
+
     fun deleteMainEntry(mainId: String) {
         contentQueries.deleteMainEntry(mainId)
         Logger.i(TAG) { "Deleted main_entry: mainId=$mainId" }

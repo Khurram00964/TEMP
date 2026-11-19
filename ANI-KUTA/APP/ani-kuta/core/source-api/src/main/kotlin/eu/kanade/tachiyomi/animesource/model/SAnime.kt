@@ -51,6 +51,23 @@ interface SAnime : Serializable {
         get() = null
         set(@Suppress("UNUSED_PARAMETER") value) {}
 
+    // ── ROUND 157 (WS-B2): the external-ID + content-kind channel ──
+    // CloudStream LoadResponse.syncData carries provider-known external IDs
+    // (tmdb/imdb/mal/anilist) — the bridge used to DISCARD it, so identity
+    // resolution (TMDB/Trakt linking) had nothing to work with. The
+    // LoadResponse type is also the only truth for the content kind (movie
+    // vs tv_series vs anime) the details flow needs for the movie mode.
+
+    /** The provider-supplied external IDs, e.g. {"tmdb": "1234", "imdb": "tt..."}. Null = unknown. */
+    var external_ids: Map<String, String>?
+        get() = null
+        set(@Suppress("UNUSED_PARAMETER") value) {}
+
+    /** The response kind: "movie" | "tv_series" | "anime" (null = the source didn't say). */
+    var content_kind: String?
+        get() = null
+        set(@Suppress("UNUSED_PARAMETER") value) {}
+
     fun getGenres(): List<String>? {
         if (genre.isNullOrBlank()) return null
         return genre?.split(", ")?.map { it.trim() }?.filterNot { it.isBlank() }?.distinct()
