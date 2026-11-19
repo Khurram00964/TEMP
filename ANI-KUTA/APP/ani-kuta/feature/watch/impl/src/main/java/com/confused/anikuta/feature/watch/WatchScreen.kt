@@ -640,13 +640,11 @@ fun WatchScreen(
     // it returns to foreground (ON_START). Uses LifecycleEventObserver to match
     // the old project's behavior. ON_STOP/ON_START (not ON_PAUSE/ON_RESUME) so
     // multi-window focus changes don't trigger a pause.
-    // ROUND 157 (WS-E3): the PiP state — eligible while fullscreen + playing;
-    // in PiP the controls hide (the surface alone, tap-to-expand).
+    // ROUND 157 (WS-E3): the PiP in-session flag — the controls hide while IN
+    // PiP (the surface alone, tap-to-expand). The ELIGIBILITY effect lives
+    // below (after the last sheet declaration — the sheets-open guard needs
+    // them all in scope).
     val isInPip by com.confused.anikuta.core.common.PipState.isInPip.collectAsState()
-    LaunchedEffect(playerMode, isPlaying) {
-        com.confused.anikuta.core.common.PipState.eligible.value =
-            playerMode == PlayerMode.FULLSCREEN && isPlaying
-    }
     DisposableEffect(Unit) {
         onDispose {
             com.confused.anikuta.core.common.PipState.eligible.value = false
@@ -3003,6 +3001,27 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
     // drawer chip; the stored stamps still feed the skip fallback below).
     // ROUND 121: the fullscreen episodes browser (the More button's sheet).
     var showEpisodesSheet by remember { mutableStateOf(false) }
+
+    // ROUND 158 (V1): the PiP ELIGIBILITY — fullscreen + playing, and NOT
+    // while any sheet is open (the system SAF pickers fire onUserLeaveHint;
+    // an auto-PiP under a picker was a trap). The video size rides PipState
+    // so the PiP window follows the content's aspect.
+    val anySheetOpen = showAudioSheet || showQualitySheet || showSubtitleSheet ||
+        showAudioDelaySheet || showEpisodesSheet || showSpeedSheet ||
+        showSubtitleSettingsSheet
+    LaunchedEffect(playerMode, isPlaying, anySheetOpen) {
+        com.confused.anikuta.core.common.PipState.eligible.value =
+            playerMode == PlayerMode.FULLSCREEN && isPlaying && !anySheetOpen
+        if (playerMode == PlayerMode.FULLSCREEN && !anySheetOpen) {
+            runCatching {
+                val w = MPVLib.getPropertyInt("width")
+                val h = MPVLib.getPropertyInt("height")
+                if (w != null && h != null && w > 0 && h > 0) {
+                    com.confused.anikuta.core.common.PipState.setVideoSize(w, h)
+                }
+            }
+        }
+    }
     // ROUND 121: the fullscreen episodes browser — the More button's sheet,
     // and the skip editor's new home (the control-bar entry retired for the
     // prev/next episode buttons).

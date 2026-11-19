@@ -245,6 +245,7 @@ fun HomeScreen(
     val csSections by viewModel.csSections.collectAsState()
     val csProviderName by viewModel.csProviderName.collectAsState()
     val csLoading by viewModel.csLoading.collectAsState()
+    val csError by viewModel.csError.collectAsState()
     val suggestedToken by viewModel.suggestedRefreshToken.collectAsState()
     val fieldCovers by viewModel.fieldCovers.collectAsState()
 
@@ -562,6 +563,7 @@ fun HomeScreen(
                                     providerName = csProviderName,
                                     sections = csSections.take(4),
                                     loading = csLoading,
+                                    error = csError,
                                     onOpenAll = { section ->
                                         csProviderName?.let { provider ->
                                             onNavigate(
@@ -715,6 +717,7 @@ private fun CsHomeBlock(
     providerName: String?,
     sections: List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>,
     loading: Boolean,
+    error: String?,
     onOpenAll: (com.confused.anikuta.data.cloudstream.content.CsBrowseSection) -> Unit,
     onOpen: (com.confused.anikuta.data.cloudstream.content.CsContentCard) -> Unit,
 ) {
@@ -729,6 +732,14 @@ private fun CsHomeBlock(
         if (loading && sections.isEmpty()) {
             Text(
                 text = "Loading your providers…",
+                fontFamily = RobotoFamily,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            )
+        } else if (sections.isEmpty() && error != null) {
+            Text(
+                text = "The provider could not be reached ($error). Pull down to retry.",
                 fontFamily = RobotoFamily,
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

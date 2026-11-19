@@ -219,14 +219,9 @@ class HomeViewModel(
         // ANIME/BOTH run today's AniList path; SERIES_MOVIES skips it entirely
         // (zero AniList traffic) and loads the CS provider shelves instead.
         // The personal rails (continue/airs/suggested) run in every mode.
-        when (homePreferences.getContentMode()) {
-            com.confused.anikuta.core.preferences.HomeContentMode.SERIES_MOVIES -> loadCsSections()
-            com.confused.anikuta.core.preferences.HomeContentMode.BOTH -> {
-                loadTrending()
-                loadCsSections()
-            }
-            else -> loadTrending()
-        }
+        // ROUND 158 (V1): the loads live ONLY in the mode observer below (its
+        // StateFlow collect fires immediately with the current mode — the old
+        // init `when` double-ran every loader).
         observeContinueWatching()
         observeAirsToday()
         observeSuggestedPool()
@@ -765,6 +760,11 @@ class HomeViewModel(
     private val _csLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
     val csLoading: kotlinx.coroutines.flow.StateFlow<Boolean> = _csLoading.asStateFlow()
 
+    /** ROUND 158 (V1): the honest failure state — a Cloudflare block or a
+     * network miss is NOT "install a plugin"; the block says what happened. */
+    private val _csError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val csError: kotlinx.coroutines.flow.StateFlow<String?> = _csError.asStateFlow()
+
     /** ROUND 157 (WS-D1): the home's content mode, exposed for the screen. */
     val contentMode: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.preferences.HomeContentMode> =
         homePreferences.contentMode
@@ -794,6 +794,7 @@ class HomeViewModel(
                 csSectionsFetched = true
                 _csProviderName.value = provider.providerName
                 _csSections.value = emptyList()
+                _csError.value = null
                 repo.browseSectionsProgressive(provider.providerName).collect { event ->
                     when (event) {
                         is com.confused.anikuta.data.cloudstream.content.CsBrowseEvent.Section ->
@@ -806,6 +807,7 @@ class HomeViewModel(
                 }
             } catch (e: Exception) {
                 Logger.w(TAG) { "CS home shelves failed: ${e.message}" }
+                _csError.value = e.message ?: "The provider could not be reached"
             } finally {
                 _csLoading.value = false
             }

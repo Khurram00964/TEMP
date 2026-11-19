@@ -33,6 +33,18 @@ object PipState {
 
     val eligible = MutableStateFlow(false)
 
+    // ROUND 158 (V1): the playing video's size — the PiP window follows the
+    // CONTENT's aspect instead of a hardcoded 16:9 (portrait/4:3 sources were
+    // letterboxed inside a 16:9 hole). The screens write it; 0/0 = unknown →
+    // the 16:9 fallback.
+    val videoWidth = MutableStateFlow(0)
+    val videoHeight = MutableStateFlow(0)
+
+    fun setVideoSize(width: Int, height: Int) {
+        videoWidth.value = width
+        videoHeight.value = height
+    }
+
     fun requestEnter(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         var current: Context = context
@@ -41,9 +53,30 @@ object PipState {
             current = current.baseContext
         }
         val activity = current as? Activity ?: return
-        val params = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(16, 9))
-            .build()
+        val w = videoWidth.value
+        val h = videoHeight.value
+        val params = if (w > 0 && h > 0) {
+            PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(w, h))
+                .build()
+        } else {
+            PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .build()
+        }
+        // A video aspect outside the system's PiP range (2.39:1 .. 1:2.39)
+        // throws — retry the neutral 16:9 so the entry never dead-ends.
         runCatching { activity.enterPictureInPictureMode(params) }
+            .onFailure {
+                if (w > 0 && h > 0) {
+                    runCatching {
+                        activity.enterPictureInPictureMode(
+                            PictureInPictureParams.Builder()
+                                .setAspectRatio(Rational(16, 9))
+                                .build(),
+                        )
+                    }
+                }
+            }
     }
 }

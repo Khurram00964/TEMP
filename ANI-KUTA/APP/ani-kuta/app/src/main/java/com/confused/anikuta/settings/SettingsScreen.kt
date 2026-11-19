@@ -488,12 +488,16 @@ fun SettingsScreen(
                                 anchorId = "debug",
                                 icon = Icons.Filled.BugReport,
                                 title = "Debug options",
-                                subtitle = "Debug bubble and source details",
+                                // ROUND 158 (V1): the discoverability hint —
+                                // the D-657 ten-second hold had NO visual hint
+                                // anywhere (the audit's trap).
+                                subtitle = "Debug bubble and source details · hold 10s for developer tools",
                                 onClick = onOpenDebug,
                                 // D-561 → D-657: the hidden gate — HOLD the
                                 // row for TEN SECONDS to open the hidden
                                 // debug-options page (Always sponsor +
-                                // Extension Testing). No visual hint anywhere.
+                                // Extension Testing). ROUND 158: the subtitle
+                                // carries the hint now.
                                 onLongClick = onOpenSponsorDebug,
                                 holdActivationMillis = DEBUG_GATE_HOLD_MS,
                             )

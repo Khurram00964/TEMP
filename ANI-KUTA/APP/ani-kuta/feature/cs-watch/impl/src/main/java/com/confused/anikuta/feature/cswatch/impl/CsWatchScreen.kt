@@ -241,12 +241,10 @@ fun CsWatchScreen(
 
     // ── Display mode + window choreography (the aniyomi screen's pattern) ────
     var playerMode by remember { mutableStateOf(CsPlayerMode.MINIMIZED) }
-    // ROUND 157 (WS-E3): the PiP state — eligible while fullscreen + playing.
+    // ROUND 157 (WS-E3): the PiP in-session flag — the ELIGIBILITY effect
+    // lives below (after the sheet declarations — the sheets-open guard needs
+    // them all in scope).
     val isInPip by com.confused.anikuta.core.common.PipState.isInPip.collectAsState()
-    LaunchedEffect(playerMode, engineState.isPlaying) {
-        com.confused.anikuta.core.common.PipState.eligible.value =
-            playerMode == CsPlayerMode.FULLSCREEN && engineState.isPlaying
-    }
     DisposableEffect(Unit) {
         onDispose {
             com.confused.anikuta.core.common.PipState.eligible.value = false
@@ -544,6 +542,23 @@ fun CsWatchScreen(
     var showSubsSettingsSheet by remember { mutableStateOf(false) }
     var showEpisodesSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+
+    // ROUND 158 (V1): the PiP ELIGIBILITY — fullscreen + playing, not under a
+    // sheet (the SAF pickers fire onUserLeaveHint); the video size rides
+    // PipState so the PiP window follows the content's aspect.
+    val anyCsSheetOpen = showLinksSheet || showSubsSheet || showEpisodesSheet || showSpeedSheet
+    LaunchedEffect(playerMode, engineState.isPlaying, anyCsSheetOpen, engineState.videoWidth, engineState.videoHeight) {
+        com.confused.anikuta.core.common.PipState.eligible.value =
+            playerMode == CsPlayerMode.FULLSCREEN && engineState.isPlaying && !anyCsSheetOpen
+        if (playerMode == CsPlayerMode.FULLSCREEN &&
+            engineState.videoWidth > 0 && engineState.videoHeight > 0
+        ) {
+            com.confused.anikuta.core.common.PipState.setVideoSize(
+                engineState.videoWidth,
+                engineState.videoHeight,
+            )
+        }
+    }
 
     // ── Task 58 (round 18): the LIVE subtitle style snapshot ─────────────────
     // The v0.4.5 device round's finding: while PAUSED, slider changes did not
