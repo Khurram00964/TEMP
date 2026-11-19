@@ -17,6 +17,8 @@ dependencies {
     implementation(project(":core:anilist"))
     implementation(project(":core:common"))
     implementation(project(":core:data-cache"))
+    // ROUND 157 (WS-D2): the CS home shelves — the Series & movies feed.
+    implementation(project(":data:cloudstream"))
     // Phase 3: continue-watching carousel
     implementation(project(":core:watch-progress"))
     implementation(project(":core:content"))
@@ -27,6 +29,7 @@ dependencies {
     // Round 151 (the design-handoff home rebuild): the home's rails push the
     // History ("See all") + Updates ("Schedule") keys directly.
     implementation(project(":feature:anime-history:api"))
+    implementation(project(":feature:anime-search:api"))  // WS-D2: CsCategoryKey
     implementation(project(":feature:updates:api"))
 
     implementation(libs.androidx.ui)

@@ -100,6 +100,9 @@ class HomeViewModel(
     private val scheduleStore: ScheduleStore,
     private val contentRepository: ContentRepository,
     private val homePreferences: HomePreferences,
+    // ROUND 157 (WS-D2): the Series & movies feed's source (null in unit
+    // tests / environments without CloudStream — the CS block hides).
+    private val cloudstreamRepository: com.confused.anikuta.data.cloudstream.content.CloudstreamContentRepository? = null,
 ) : ViewModel() {
 
     companion object {
@@ -210,7 +213,14 @@ class HomeViewModel(
     val airsSource: StateFlow<HomeAirsSource> = homePreferences.airsSource
 
     init {
-        loadTrending()
+        // ROUND 157 (WS-D1/D2): the content mode gates the DISCOVERY fetches.
+        // ANIME/BOTH run today's AniList path; SERIES_MOVIES skips it entirely
+        // (zero AniList traffic) and loads the CS provider shelves instead.
+        // The personal rails (continue/airs/suggested) run in every mode.
+        when (homePreferences.getContentMode()) {
+            com.confused.anikuta.core.preferences.HomeContentMode.SERIES_MOVIES -> loadCsSections()
+            else -> loadTrending()
+        }
         observeContinueWatching()
         observeAirsToday()
         observeSuggestedPool()
@@ -303,7 +313,8 @@ class HomeViewModel(
     private fun anyContentLoaded(): Boolean =
         _trending.value.isNotEmpty() ||
             _continueWatching.value.isNotEmpty() ||
-            _airsToday.value.isNotEmpty()
+            _airsToday.value.isNotEmpty() ||
+            _csSections.value.isNotEmpty()
 
     // ── Continue watching (the user's rules + the round-148 enrichment) ──────
 
@@ -708,6 +719,68 @@ class HomeViewModel(
             merged.take(SUGGESTED_COVER_POOL)
         }
 
+    // ── The CS "Series & movies" home block (WS-D2) ─────────────────────────
+
+    /**
+     * The CloudStream provider's browse shelves, rendered as the home's
+     * Series & movies block (SERIES_MOVIES / BOTH modes; hidden in ANIME).
+     * The loader is the search page's phased pipeline verbatim — the skeleton
+     * arrives first, shelves fill as they land, [CloudstreamBrowseCache] holds
+     * the 10-minute snapshot. In-memory only here: the search page's cache
+     * serves the same provider within its TTL, and a home-grade cache is a
+     * later round once the shelf layout settles.
+     */
+    private val _csSections = kotlinx.coroutines.flow.MutableStateFlow<List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>>(emptyList())
+    val csSections: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>> = _csSections.asStateFlow()
+
+    private val _csProviderName = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val csProviderName: kotlinx.coroutines.flow.StateFlow<String?> = _csProviderName.asStateFlow()
+
+    private val _csLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val csLoading: kotlinx.coroutines.flow.StateFlow<Boolean> = _csLoading.asStateFlow()
+
+    /** ROUND 157 (WS-D1): the home's content mode, exposed for the screen. */
+    val contentMode: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.preferences.HomeContentMode> =
+        homePreferences.contentMode
+
+    private var csSectionsFetched = false
+
+    fun loadCsSections(force: Boolean = false) {
+        val repo = cloudstreamRepository ?: return
+        if (csSectionsFetched && !force) return
+        csSectionsFetched = true
+        viewModelScope.launch {
+            _csLoading.value = true
+            try {
+                // The provider pick: the first installed source with a main
+                // page (the search page's provider picker lets the user drive
+                // the detail; the home shows the first capable one — a stored
+                // home-provider preference is a later round).
+                val provider = repo.sources.value.firstOrNull { it.hasMainPage && !it.isNsfw }
+                if (provider == null) {
+                    Logger.i(TAG) { "CS home: no capable provider — the block hides" }
+                    return@launch
+                }
+                _csProviderName.value = provider.providerName
+                _csSections.value = emptyList()
+                repo.browseSectionsProgressive(provider.providerName).collect { event ->
+                    when (event) {
+                        is com.confused.anikuta.data.cloudstream.content.CsBrowseEvent.Section ->
+                            _csSections.value = _csSections.value + event.section
+                        is com.confused.anikuta.data.cloudstream.content.CsBrowseEvent.Complete ->
+                            _csSections.value = event.sections
+                        else -> Unit
+                    }
+                    promoteOutOfError()
+                }
+            } catch (e: Exception) {
+                Logger.w(TAG) { "CS home shelves failed: ${e.message}" }
+            } finally {
+                _csLoading.value = false
+            }
+        }
+    }
+
     // ── Refresh (pull-to-refresh + the error Retry) ──────────────────────────
 
     /**
@@ -717,7 +790,16 @@ class HomeViewModel(
      * airs source re-fetches through the reload token.
      */
     fun refresh() {
-        viewModelScope.launch { fetchTrending() }
+        // ROUND 157 (WS-D1): pull-to-refresh force-refreshes whichever feed the
+        // current content mode shows (both in BOTH).
+        when (homePreferences.getContentMode()) {
+            com.confused.anikuta.core.preferences.HomeContentMode.SERIES_MOVIES -> loadCsSections(force = true)
+            com.confused.anikuta.core.preferences.HomeContentMode.BOTH -> {
+                viewModelScope.launch { fetchTrending() }
+                loadCsSections(force = true)
+            }
+            else -> viewModelScope.launch { fetchTrending() }
+        }
         viewModelScope.launch {
             _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
             _suggestedRefreshToken.value += 1

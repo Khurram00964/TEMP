@@ -75,6 +75,7 @@ import com.confused.anikuta.core.designsystem.component.ScrollBlurOverlay
 import com.confused.anikuta.core.designsystem.component.SettingsIconTile
 import com.confused.anikuta.core.designsystem.theme.RobotoFamily
 import com.confused.anikuta.core.preferences.HomeAirsSource
+import com.confused.anikuta.core.preferences.HomeContentMode
 import com.confused.anikuta.core.preferences.HomePreferences
 import com.confused.anikuta.settings.search.SettingsHighlightTarget
 import com.confused.anikuta.settings.search.SettingsSearchEngine
@@ -421,6 +422,21 @@ fun SettingsScreen(
                                             "Global — AniList's airing schedule"
                                     },
                                     onClick = { homePreferences.cycleAirsSource() },
+                                )
+                                // ROUND 157 (WS-D1): the home's content mode.
+                                val contentMode by homePreferences.contentMode.collectAsState()
+                                MoreListRow(
+                                    icon = Icons.Filled.Home,
+                                    title = "Home content",
+                                    subtitle = when (contentMode) {
+                                        HomeContentMode.ANIME ->
+                                            "Anime — AniList discovery"
+                                        HomeContentMode.SERIES_MOVIES ->
+                                            "Series & movies — your CloudStream providers"
+                                        HomeContentMode.BOTH ->
+                                            "Both — anime and your providers together"
+                                    },
+                                    onClick = { homePreferences.cycleContentMode() },
                                 )
                             }
                         }

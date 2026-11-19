@@ -238,6 +238,13 @@ fun HomeScreen(
     val trending by viewModel.trending.collectAsState()
     val continueWatching by viewModel.continueWatching.collectAsState()
     val airsToday by viewModel.airsToday.collectAsState()
+    // ROUND 157 (WS-D1/D2): the content mode + the CS Series & movies block.
+    val contentMode by viewModel.contentMode.collectAsState()
+    val showAnimeDiscovery = contentMode != com.confused.anikuta.core.preferences.HomeContentMode.SERIES_MOVIES
+    val showCsBlock = contentMode != com.confused.anikuta.core.preferences.HomeContentMode.ANIME
+    val csSections by viewModel.csSections.collectAsState()
+    val csProviderName by viewModel.csProviderName.collectAsState()
+    val csLoading by viewModel.csLoading.collectAsState()
     val suggestedToken by viewModel.suggestedRefreshToken.collectAsState()
     val fieldCovers by viewModel.fieldCovers.collectAsState()
 
@@ -398,7 +405,12 @@ fun HomeScreen(
                     // airs rows…, trending, suggested, moods.
                     // ROUND 155: the topbar merged into the hero item — one
                     // item fewer ahead of the moods.
-                    val moodsIndex = 5 + airsToday.size
+                    // ROUND 157 (WS-D1): the mode decides which discovery
+                    // items exist ahead of the moods (the anime pair =
+                    // trending + suggested; the CS block = one item).
+                    val moodsIndex = 3 + airsToday.size +
+                        (if (showAnimeDiscovery) 2 else 0) +
+                        (if (showCsBlock) 1 else 0)
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -505,7 +517,7 @@ fun HomeScreen(
                         }
 
                         // ── Trending this week (ranked posters) ──
-                        item(key = "trending_rail") {
+                        if (showAnimeDiscovery) item(key = "trending_rail") {
                             HomeTrendingRail(
                                 ranked = trendingRanked,
                                 onSeeAll = {
@@ -529,7 +541,7 @@ fun HomeScreen(
                         }
 
                         // ── Suggested for you (the honeycomb cover field) ──
-                        item(key = "suggested") {
+                        if (showAnimeDiscovery) item(key = "suggested") {
                             HomeSuggestedSection(
                                 covers = fieldCovers,
                                 refreshToken = suggestedToken,
@@ -541,7 +553,42 @@ fun HomeScreen(
                         }
 
                         // ── Browse by mood (surprise + genre chips) ──
-                        item(key = "moods") {
+                        // ── Series & movies (ROUND 157, WS-D2) — the
+                        // CloudStream provider's shelves. One item; the head's
+                        // action opens the provider's category subpages.
+                        if (showCsBlock) {
+                            item(key = "cs_home") {
+                                CsHomeBlock(
+                                    providerName = csProviderName,
+                                    sections = csSections.take(4),
+                                    loading = csLoading,
+                                    onOpenAll = { section ->
+                                        csProviderName?.let { provider ->
+                                            onNavigate(
+                                                com.confused.anikuta.feature.animesearch.CsCategoryKey(
+                                                    providerName = provider,
+                                                    sectionTitle = section.title,
+                                                    shelfIndex = section.shelfIndex,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                    onOpen = { card ->
+                                        onNavigate(
+                                            com.confused.anikuta.feature.animedetails.AnimeDetailsKey.Extension(
+                                                sourceId = com.confused.anikuta.data.cloudstream.content.CsSourceIds.idFor(card.providerName),
+                                                animeUrl = card.url,
+                                                title = card.name,
+                                                thumbnailUrl = card.posterUrl,
+                                                year = card.year,
+                                            ),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+
+                        if (showAnimeDiscovery) item(key = "moods") {
                             HomeMoodChips(
                                 trending = trending,
                                 activeMood = activeMood,
@@ -655,6 +702,96 @@ private fun HomeSectionHead(
  * file:// paths) and falls back to the display name's first letter
  * ([avatarInitial] — the handoff's TopBar fallback), then the Person glyph.
  */
+// ════════════════════════════════════════════════════════════════════════════
+//  ROUND 157 (WS-D2): the home's Series & movies block — the CloudStream
+//  provider's browse shelves (Trending / Latest / ... per provider), one rail
+//  per shelf, the provider name on the head. Routing mirrors the search page's
+//  CS handling: a card opens the standard Extension details screen; a head's
+//  action opens the shelf's category subpage.
+// ════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun CsHomeBlock(
+    providerName: String?,
+    sections: List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>,
+    loading: Boolean,
+    onOpenAll: (com.confused.anikuta.data.cloudstream.content.CsBrowseSection) -> Unit,
+    onOpen: (com.confused.anikuta.data.cloudstream.content.CsContentCard) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HomeSectionHead(
+            title = "Series & movies",
+            actionLabel = providerName?.takeIf { it.isNotBlank() } ?: "",
+            onAction = if (sections.isNotEmpty()) {
+                { onOpenAll(sections.first()) }
+            } else null,
+        )
+        if (loading && sections.isEmpty()) {
+            Text(
+                text = "Loading your providers…",
+                fontFamily = RobotoFamily,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            )
+        } else if (sections.isEmpty()) {
+            Text(
+                text = "Install a CloudStream plugin (Extensions) to see series and movies here.",
+                fontFamily = RobotoFamily,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            )
+        }
+        sections.forEach { section ->
+            Text(
+                text = section.title,
+                fontFamily = DisplayFamily,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(section.items.size, key = { section.title + "#" + it }) { index ->
+                    val card = section.items[index]
+                    Column(
+                        modifier = Modifier
+                            .width(108.dp)
+                            .clickable { onOpen(card) },
+                    ) {
+                        AsyncImage(
+                            model = card.posterUrl,
+                            contentDescription = card.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(2f / 3f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer),
+                        )
+                        Text(
+                            text = card.name,
+                            fontFamily = RobotoFamily,
+                            fontSize = 12.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 @Composable
 private fun HomeTopBar(
     onProfileClick: () -> Unit,
