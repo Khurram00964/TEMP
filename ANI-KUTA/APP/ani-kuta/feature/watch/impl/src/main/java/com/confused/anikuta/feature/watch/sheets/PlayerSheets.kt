@@ -600,6 +600,9 @@ fun AudioSheet(
     // ROUND 153: "Add audio file" — the user's own audio file joins the
     // current stream as an external track (the host opens the SAF picker).
     onAddExternalAudio: () -> Unit = {},
+    // ROUND 157 (WS-E1): "Audio delay…" — opens the audio-delay sheet (the
+    // host renders AudioSettingsSheet above this one).
+    onOpenAudioDelay: () -> Unit = {},
     // ROUND 152: the version-row STATE trio. Row identity = the version's url
     // (the stable half of the rows' LazyColumn keys).
     activeVersionUrl: String? = null,
@@ -896,6 +899,40 @@ fun AudioSheet(
                             Spacer(Modifier.width(12.dp))
                             Text(
                                 text = "Add audio file…",
+                                fontFamily = RobotoFamily,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+                // ROUND 157 (WS-E1): the audio-delay entry — the same glass-row
+                // anatomy as the add-file row.
+                item(key = "audio-delay") {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onOpenAudioDelay),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = "Audio delay…",
                                 fontFamily = RobotoFamily,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,

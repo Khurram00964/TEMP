@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
@@ -637,6 +638,10 @@ internal fun CsFullscreenControls(
     onSubtitleClick: () -> Unit,
     onAudioClick: () -> Unit,
     onMoreClick: () -> Unit,
+    // ROUND 157 (WS-E2): the resize-mode cycle (0=Fit, 1=Fill W, 2=Fill H,
+    // 3=Crop — the MPV tray's presets). Session-only, MPV parity.
+    resizeModeIndex: Int = 0,
+    onResizeClick: () -> Unit = {},
     onSpeedClick: () -> Unit,
     onSkipForward: () -> Unit,
 ) {
@@ -761,6 +766,13 @@ internal fun CsFullscreenControls(
                             CsFsSmallButton(icon = Icons.Default.Subtitles, contentDescription = "Subtitles", onClick = onSubtitleClick)
                             CsFsSmallButton(icon = Icons.Default.HighQuality, contentDescription = "Quality", onClick = onQualityClick)
                             CsFsSmallButton(icon = Icons.Default.MusicNote, contentDescription = "Audio", onClick = onAudioClick)
+                            // ROUND 157 (WS-E2): the aspect/resize cycle — the MPV
+                            // tray's Zoom button mapped to PlayerView resize modes.
+                            CsFsSmallButton(
+                                icon = Icons.Default.AspectRatio,
+                                contentDescription = "Video zoom: " + listOf("Fit", "Fill W", "Fill H", "Crop")[resizeModeIndex.coerceIn(0, 3)],
+                                onClick = onResizeClick,
+                            )
                             CsFsSmallButton(icon = Icons.Default.MoreVert, contentDescription = "More", onClick = onMoreClick)
                         }
                     }

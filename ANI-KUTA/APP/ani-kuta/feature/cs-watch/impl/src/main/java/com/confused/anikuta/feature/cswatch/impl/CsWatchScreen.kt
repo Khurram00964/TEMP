@@ -17,6 +17,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -189,6 +191,22 @@ fun CsWatchScreen(
     // The single PlayerView, re-parented between the minimized player box and
     // the fullscreen surface (the aniyomi screen's PlayerSurface pattern).
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
+
+    // ROUND 157 (WS-E2): the CS aspect/resize cycle — session-only (the MPV
+    // tray's Zoom resets on leaving fullscreen; this holds for the session,
+    // MPV parity). 0=Fit, 1=Fill W, 2=Fill H, 3=Crop.
+    var resizeModeIndex by remember { mutableIntStateOf(0) }
+    val resizeModeLabels = listOf("Fit", "Fill W", "Fill H", "Crop")
+    LaunchedEffect(playerView, resizeModeIndex) {
+        playerView?.let { view ->
+            view.resizeMode = when (resizeModeIndex) {
+                1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
+                3 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        }
+    }
 
     /** F3: engine position belongs to the CURRENT episode only when the loaded
      *  URL matches the state's current link — otherwise a switch is in flight
@@ -677,6 +695,9 @@ fun CsWatchScreen(
                     onMoreClick = { showEpisodesSheet = true },
                     onSpeedClick = { showSpeedSheet = true },
                     onSkipForward = { viewModel.nextEpisode()?.let(viewModel::selectEpisode) },
+                    // ROUND 157 (WS-E2): the resize cycle.
+                    resizeModeIndex = resizeModeIndex,
+                    onResizeClick = { resizeModeIndex = (resizeModeIndex + 1) % 4 },
                 )
             }
         }

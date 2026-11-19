@@ -146,6 +146,11 @@ class PlayerPreferences(private val store: PreferenceStore) {
         get() = store.getInt(KEY_SUB_DELAY, 0)
         set(value) = store.putInt(KEY_SUB_DELAY, value)
 
+    /** ROUND 157 (WS-E1): audio delay in milliseconds (-5000..5000). Default: 0. */
+    var audioDelay: Int
+        get() = store.getInt(KEY_AUDIO_DELAY, 0)
+        set(value) = store.putInt(KEY_AUDIO_DELAY, value)
+
     /**
      * Task 59 (round 19) — resets EVERY subtitle preference to its default in
      * one write (the shared backing for BOTH subtitle settings sheets' Reset
@@ -594,6 +599,7 @@ class PlayerPreferences(private val store: PreferenceStore) {
         private const val KEY_SUB_SHADOW_OFFSET = "pref_sub_shadow_offset"
         private const val KEY_OVERRIDE_ASS = "pref_override_subtitles_ass"
         private const val KEY_SUB_DELAY = "pref_subtitles_delay"
+    private const val KEY_AUDIO_DELAY = "player_audio_delay_ms"
         private const val KEY_RESOLVE_SHEET_FORMATTED = "pref_resolve_sheet_formatted"
         private const val KEY_PREF_SUB_LANGS = "pref_preferred_subtitle_languages"
         private const val KEY_GESTURES = "player_gestures"

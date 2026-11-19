@@ -159,9 +159,26 @@ class AnikutaMPVView(
                 MPVLib.setOptionString("sub-ass-justify", "yes")
             }
             MPVLib.setOptionString("sub-delay", (playerPreferences.subtitlesDelay / 1000.0).toString())
+            // ROUND 157 (WS-E1): the audio delay rides the same init pass.
+            MPVLib.setOptionString("audio-delay", (playerPreferences.audioDelay / 1000.0).toString())
             Logger.d(TAG) { "Subtitle preferences applied (init, setOptionString)" }
         } catch (e: Exception) {
             Logger.w(TAG) { "Could not apply subtitle preferences (init): ${e.message}" }
+        }
+    }
+
+    /**
+     * ROUND 157 (WS-E1): apply the audio delay LIVE (from the audio-delay
+     * sheet). Same property-value discipline as the subtitle twin: doubles
+     * via setPropertyDouble (a string value doesn't reliably update numeric
+     * mpv properties at runtime).
+     */
+    fun applyAudioPreferences() {
+        try {
+            MPVLib.setPropertyDouble("audio-delay", playerPreferences.audioDelay / 1000.0)
+            Logger.d(TAG) { "Audio preferences applied (live): delay=${playerPreferences.audioDelay}ms" }
+        } catch (e: Exception) {
+            Logger.w(TAG) { "Could not apply audio preferences (live): ${e.message}" }
         }
     }
 

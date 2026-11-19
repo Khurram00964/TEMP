@@ -1898,6 +1898,8 @@ fun WatchScreen(
     // ROUND 149: the unified AUDIO sheet (the landscape Audio button + the
     // portrait [Subtitles, Quality, Audio] row both open it).
     var showAudioSheet by remember { mutableStateOf(false) }
+    // ROUND 157 (WS-E1): the audio-delay sheet rides the audio sheet's host.
+    var showAudioDelaySheet by remember { mutableStateOf(false) }
     var showQualitySheet by remember { mutableStateOf(false) }
 
     // ROUND 152: currentExternalAudioVersions + registeredAudioTrackFor now
@@ -3228,11 +3230,30 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             // file fd://-attaches as a selected mpv track, and the refreshed
             // track list shows it (the debug list or the ladder's highlight).
             onAddExternalAudio = { addAudioFilePicker.launch(arrayOf("audio/*", "application/octet-stream")) },
+            // ROUND 157 (WS-E1): the audio-delay entry (the sheet renders below).
+            onOpenAudioDelay = {
+                showAudioSheet = false
+                showAudioDelaySheet = true
+            },
             activeVersionUrl = activeExternalVersionUrl,
             switchingVersionUrl = audioSwitchPendingUrl,
             switchFailedVersionUrl = audioSwitchFailedUrl,
             onDismiss = { showAudioSheet = false },
             asDrawer = playerMode == PlayerMode.FULLSCREEN,
+        )
+    }
+
+    // ROUND 157 (WS-E1): the audio-delay sheet — persisted + applied LIVE
+    // (mpv audio-delay via applyAudioPreferences, the subtitle twin's
+    // property-value discipline).
+    if (showAudioDelaySheet) {
+        com.confused.anikuta.core.player.controls.AudioSettingsSheet(
+            playerPreferences = playerPreferences,
+            onApplySettings = {
+                try { mpvView?.applyAudioPreferences() }
+                catch (e: Exception) { Logger.w(TAG) { "Failed to apply the audio delay: ${e.message}" } }
+            },
+            onDismiss = { showAudioDelaySheet = false },
         )
     }
 
