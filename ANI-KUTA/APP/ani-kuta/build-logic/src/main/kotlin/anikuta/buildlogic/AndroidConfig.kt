@@ -544,8 +544,28 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10196
+    const val versionName = "1.1.96"
+    // ROUND 157 (v1.1.96): release/1.1.96 — cut from the round-157 head
+    // 2811c395 (CI green — run 44625819352 on TEMP): THE GROUNDWORK ROUND.
+    // (1) THE DATABASE HARDENING — the v5 migration (episode_number
+    // denormalized, killing the reactive key-parse scan), the transactional
+    // bulk writes, the growth bounds (watch_session 400d / episode-metadata
+    // 180d / expired browse rows), the post-restore reconcile, the migration
+    // tests (8 pass), the DATABASE-CONTRACT.md. (2) THE PLAYER — the audio
+    // delay control (MPV), the CS aspect/resize toggle, PICTURE-IN-PICTURE
+    // (auto-enter + the tray button + the in-PiP surface). (3) THE CONTENT
+    // TYPE AXIS — the response kind (movie/tv_series/anime) activates
+    // main_entry.content_type, the movie-mode details, the CS bridge captures
+    // the provider's tmdb/imdb IDs. (4) THE HOME CONTENT MODE — anime /
+    // series-movies / both (Settings > Home feed), the CS provider shelves as
+    // the home's Series & movies block. (5) THE TRACKING TRANSLATION LAYER —
+    // TrackerKind + the per-tracker id-resolution seam + the Trakt module
+    // (dormant until the app registration). (6) THE CRITIC'S FIXES — the
+    // SAnimeImpl channel override (P0), the CS loader's plugin-scan await,
+    // BOTH-mode loading + the live mode switch, the PiP controls hiding, the
+    // rating-relay id guard. Background playback is the NEXT round's first
+    // item (the engine-ownership move).
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
