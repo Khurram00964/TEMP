@@ -383,6 +383,32 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             Logger.w("AnikutaApp") { "Failed to start playback cache: ${e.message}" }
         }
 
+        // ROUND 157 (WS-A4): the DATABASE MAINTENANCE sweep — the growth bounds
+        // for the per-day session ledger (400-day window; the profile's chart
+        // reads ≤ 1 year + the heatmap) and the two caches (the episode
+        // metadata 30-day retention; the expired browse rows). Idempotent,
+        // best-effort, IO — mirrors the playback-cache launch pattern.
+        try {
+            val watchStore = org.koin.core.context.GlobalContext.get()
+                .get<com.confused.anikuta.core.watchprogress.WatchProgressStore>()
+            val dataCache = org.koin.core.context.GlobalContext.get()
+                .get<com.confused.anikuta.core.datacache.DataCacheRepository>()
+            kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+            ).launch {
+                val sessionCutoff = System.currentTimeMillis() - 400L * 24 * 60 * 60 * 1000
+                runCatching { watchStore.pruneWatchSessionsBefore(sessionCutoff) }
+                    .onFailure { Logger.w("AnikutaApp") { "session prune failed: ${it.message}" } }
+                runCatching { dataCache.pruneStaleEpisodeMetadata() }
+                    .onFailure { Logger.w("AnikutaApp") { "episode-metadata prune failed: ${it.message}" } }
+                runCatching { dataCache.pruneExpiredBrowseCache() }
+                    .onFailure { Logger.w("AnikutaApp") { "browse-cache prune failed: ${it.message}" } }
+                Logger.i("AnikutaApp") { "Database maintenance sweep completed" }
+            }
+        } catch (e: Exception) {
+            Logger.w("AnikutaApp") { "Database maintenance not available at startup: ${e.message}" }
+        }
+
     }
 
     // Phase UP: Configuration.Provider for WorkManager (disables default initializer).

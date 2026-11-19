@@ -167,6 +167,38 @@ class DownloadStore(private val database: AnikutaDatabase) {
     }
 
     /** Sets the result URIs on a COMPLETED task. */
+    /**
+     * ROUND 157 (WS-A3): the COMPLETED-state update + the downloaded_episode
+     * insert land in ONE transaction. The old two separate writes could crash
+     * between them, leaving a COMPLETED queue row with NO downloaded_episode
+     * (the details page showed NotDownloaded until the scanner healed it).
+     */
+    fun completeWithEpisode(
+        id: Long,
+        status: DownloadStatus,
+        progress: Int,
+        startedAt: Long?,
+        completedAt: Long?,
+        videoUri: String?,
+        subtitleUris: List<String>,
+        episode: DownloadedEpisode?,   // null when the video URI is absent — nothing to insert
+    ) {
+        database.transaction(noEnclosing = true) {
+            updateState(
+                id = id,
+                status = status,
+                progress = progress,
+                startedAt = startedAt,
+                completedAt = completedAt,
+                errorMessage = null,
+            )
+            updateResult(id, videoUri, subtitleUris)
+            if (episode != null) {
+                insertDownloadedEpisode(episode)
+            }
+        }
+    }
+
     fun updateResult(id: Long, videoUri: String?, subtitleUris: List<String>) {
         queueQueries.updateDownloadVideoUri(
             video_uri = videoUri,

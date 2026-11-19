@@ -1,0 +1,10 @@
+-- Schema v4 → v5 (ROUND 157, WS-A2): the denormalized episode_number column.
+--
+-- The highest-watched queries (getHighestWatchedEpisodeNumber +
+-- getAllHighestWatchedNumbers) used to CAST(SUBSTR(episode_key, ...)) per row;
+-- the batch twin is re-emitted reactively on EVERY watch_progress write (the
+-- player's 10s saves) → a table-wide expression scan per save. The column
+-- kills that. Follows the 1.sqm pattern: guarded ALTER + in-file backfill.
+ALTER TABLE watch_progress ADD COLUMN episode_number INTEGER NOT NULL DEFAULT 0;
+UPDATE watch_progress SET episode_number = CAST(SUBSTR(episode_key, INSTR(episode_key, '|') + 1) AS INTEGER);
+CREATE INDEX IF NOT EXISTS idx_watch_progress_main_number ON watch_progress(main_id, episode_number);

@@ -862,9 +862,7 @@ class LibraryViewModel(
         // The sheet is closed via dismissMultiSelectCategorySheet() (Done button).
         val selected = _selectedMainIds.value.toList()
         viewModelScope.launch(dispatchers.io) {
-            for (mainId in selected) {
-                contentRepository.addToCategory(mainId, categoryId)
-            }
+            contentRepository.addManyToCategory(selected, categoryId)
             Logger.i(TAG) { "Added ${selected.size} entries to category $categoryId" }
             // Update the category membership state (for checkbox display).
             _multiSelectCategoryMembership.value = _multiSelectCategoryMembership.value + categoryId
@@ -879,9 +877,7 @@ class LibraryViewModel(
     fun removeSelectedFromCategory(categoryId: Long) {
         val selected = _selectedMainIds.value.toList()
         viewModelScope.launch(dispatchers.io) {
-            for (mainId in selected) {
-                contentRepository.removeFromCategory(mainId, categoryId)
-            }
+            contentRepository.removeManyFromCategory(selected, categoryId)
             Logger.i(TAG) { "Removed ${selected.size} entries from category $categoryId" }
             _multiSelectCategoryMembership.value = _multiSelectCategoryMembership.value - categoryId
         }
@@ -917,9 +913,7 @@ class LibraryViewModel(
     fun deleteSelected() {
         val selected = _selectedMainIds.value.toList()
         viewModelScope.launch(dispatchers.io) {
-            for (mainId in selected) {
-                contentRepository.removeFromLibrary(mainId)
-            }
+            contentRepository.removeManyFromLibrary(selected)
             Logger.i(TAG) { "Deleted ${selected.size} entries from library" }
             _showDeleteConfirmation.value = false
             exitSelectionMode()

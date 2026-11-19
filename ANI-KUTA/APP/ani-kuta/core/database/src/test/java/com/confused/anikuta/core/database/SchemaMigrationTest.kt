@@ -129,6 +129,9 @@ class SchemaMigrationTest {
     @Test
     fun `migration 1 to 2 preserves existing watch progress data`() {
         AnikutaDatabase.Schema.migrate(driver, 1, 2)
+        // ROUND 157: the generated code is v5-shaped — finish the chain (the
+        // schema only adds; the v2 asserts below still hold).
+        AnikutaDatabase.Schema.migrate(driver, 2, 5)
 
         val database = AnikutaDatabase(driver)
         val row = database.watchQueries.getWatchProgress("main-1|00001").executeAsOneOrNull()
@@ -144,6 +147,7 @@ class SchemaMigrationTest {
     @Test
     fun `migrated database is fully usable by the generated code`() {
         AnikutaDatabase.Schema.migrate(driver, 1, 2)
+        AnikutaDatabase.Schema.migrate(driver, 2, 5)
 
         val database = AnikutaDatabase(driver)
         // A save through the typed API on the MIGRATED database must work —
@@ -161,6 +165,7 @@ class SchemaMigrationTest {
             auto_mark_suppressed = 0L,
             user_marked_watched = 0L,
             played_time_ms = 61_000L,
+            episode_number = 2L,
         )
         val row = database.watchQueries.getWatchProgress("main-1|00002").executeAsOneOrNull()
         assertNotNull(row)
@@ -195,6 +200,12 @@ class SchemaMigrationTest {
 
     /** The faithful v3 shape: both tracking tables WITH the cascade FK. */
     private fun createV3Shape() {
+        // setUp() built the v1 shape — drop the tables this helper replaces
+        // (the v3→v4 tests never ran before ROUND 157: the collision made
+        // every one of them throw at the first CREATE).
+        driver.execute(null, "DROP TABLE IF EXISTS watch_progress", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS watch_session", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS main_entry", 0)
         driver.execute(
             null,
             """
@@ -285,7 +296,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 3 to 4 strips the cascade foreign keys"() {
+    fun `migration 3 to 4 strips the cascade foreign keys`() {
         createV3Shape()
         // The app enables FKs on every open — reproduce that first.
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
@@ -304,14 +315,18 @@ class SchemaMigrationTest {
             "v4 watch_session must have NO foreign keys",
             foreignKeysOf("watch_session").isEmpty(),
         )
+        // ROUND 157: the generated code is v5-shaped — finish the chain.
+        AnikutaDatabase.Schema.migrate(driver, 4, 5)
     }
 
     @Test
-    fun "migration 3 to 4 keeps tracking alive after main_entry deletion"() {
+    fun `migration 3 to 4 keeps tracking alive after main_entry deletion`() {
         createV3Shape()
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
         AnikutaDatabase.Schema.migrate(driver, 3, 4)
+        // ROUND 157: the generated code is v5-shaped — finish the chain.
+        AnikutaDatabase.Schema.migrate(driver, 4, 5)
 
         // THE user scenario: the content's identity row dies (extension
         // uninstall / rebuild) — the watch history + session ledger SURVIVE.
@@ -325,5 +340,35 @@ class SchemaMigrationTest {
         val sessions = database.watchQueries.getAllWatchSessions().executeAsList()
         assertEquals("the session ledger must survive main_entry deletion", 1, sessions.size)
         assertEquals(2520000L, sessions.first().played_ms)
+    }
+
+    @Test
+    fun `migration chain 1 to 5 backfills the denormalized episode_number`() {
+        // The full chain on a v1-shaped database: 1→2→3→4→5. The 3.sqm rebuild
+        // carries the row; 4.sqm adds episode_number + backfills from the key.
+        AnikutaDatabase.Schema.migrate(driver, 1, 5)
+
+        val database = AnikutaDatabase(driver)
+        val row = database.watchQueries.getWatchProgress("main-1|00001").executeAsOneOrNull()
+        assertNotNull("the row must survive the whole chain", row)
+        assertEquals(
+            "the backfill must derive 1 from the key's numeric tail",
+            1L,
+            row!!.episode_number,
+        )
+    }
+
+    @Test
+    fun `migration chain 1 to 5 serves the highest-watched queries from the column`() {
+        AnikutaDatabase.Schema.migrate(driver, 1, 5)
+
+        val database = AnikutaDatabase(driver)
+        // The backfilled row is not watched — mark it, then the per-content
+        // aggregate must return its episode_number (1), NOT a key parse.
+        database.watchQueries.setUserMarkedWatched(1L, "main-1|00001")
+        val highest = database.watchQueries
+            .getHighestWatchedEpisodeNumber("main-1")
+            .executeAsOne()
+        assertEquals(1L, highest)
     }
 }

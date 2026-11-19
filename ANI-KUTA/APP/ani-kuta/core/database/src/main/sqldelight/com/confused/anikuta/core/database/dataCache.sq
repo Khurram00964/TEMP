@@ -88,6 +88,17 @@ DELETE FROM data_cache_episode WHERE main_id = :mainId;
 -- ============================================================================
 -- Queries: browse_cache
 -- ============================================================================
+-- ROUND 157 (WS-A4): the metadata cache's growth bound — rows not refreshed
+-- within the retention window are pruned on app start (the cache is a read
+-- accelerator; re-opening re-fetches).
+deleteEpisodeMetadataStale:
+DELETE FROM data_cache_episode WHERE fetched_at < :cutoff;
+
+-- ROUND 157 (WS-A4): expired browse rows are deleted (the expiry used to be a
+-- read-time check only — the rows lingered forever).
+deleteBrowseCacheExpired:
+DELETE FROM browse_cache WHERE expires_at < :now;
+
 getBrowseCache:
 SELECT * FROM browse_cache WHERE section_key = :sectionKey;
 

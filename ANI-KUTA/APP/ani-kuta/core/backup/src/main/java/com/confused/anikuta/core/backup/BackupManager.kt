@@ -923,6 +923,19 @@ class BackupManager(
             }
             Logger.i(TAG) { "restoreBackup: DB restored (${tableCounts.values.sum()} rows)" }
 
+            // ROUND 157 (WS-A2): the episode_number reconcile — backups made
+            // before the denormalized column existed restore rows with the
+            // DEFAULT 0; recompute from the key (idempotent — a legitimate 0
+            // recomputes to 0). Raw driver SQL: this class is schema-agnostic.
+            runCatching {
+                driver.execute(
+                    null,
+                    "UPDATE watch_progress SET episode_number = CAST(SUBSTR(episode_key, INSTR(episode_key, '|') + 1) AS INTEGER) WHERE episode_number = 0",
+                    0,
+                )
+                Logger.i(TAG) { "restoreBackup: the episode_number reconcile ran" }
+            }.onFailure { Logger.w(TAG) { "restoreBackup: the episode_number reconcile failed: ${it.message}" } }
+
             // ── The prefs payload (AFTER the DB, BEFORE the extension
             // re-registration). ROUND 135 (the verifier's P0): the bridge's
             // record upserts must land AFTER the prefs application — a

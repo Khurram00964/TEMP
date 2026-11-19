@@ -222,6 +222,9 @@ class InteropRestoreBridgeImpl(
             auto_mark_suppressed = existing?.auto_mark_suppressed ?: 0L,
             user_marked_watched = existing?.user_marked_watched ?: 0L,
             played_time_ms = playedMs,
+            // ROUND 157 (WS-A2): the denormalized episode number — the import
+            // bridge KNOWS the number (episode.number), no key parse needed.
+            episode_number = episode.number.toLong(),
         )
     }.getOrElse { e ->
         Logger.w(TAG, e) { "upsertProgress($mainId, ep ${episode.number}) failed: ${e.message}" }

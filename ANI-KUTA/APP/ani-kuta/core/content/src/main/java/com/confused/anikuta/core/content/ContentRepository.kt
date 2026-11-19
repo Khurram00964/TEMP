@@ -823,6 +823,44 @@ class ContentRepository(
     /**
      * Add a content to a specific category.
      */
+    /**
+     * ROUND 157 (WS-A3): the transactional batch twins of the per-item
+     * library operations — the Library's multi-select used to run N
+     * statements without a transaction (a crash mid-batch left a partial
+     * selection applied, and each statement paid its own journal commit).
+     */
+    fun addManyToCategory(mainIds: Collection<String>, categoryId: Long) {
+        // The display order mirrors addToCategory: one COUNT per item inside
+        // the same transaction (the list order stays deterministic).
+        database.transaction(noEnclosing = true) {
+            for (mainId in mainIds) {
+                val order = libraryQueries.countItemsInCategory(categoryId).executeAsOne()
+                libraryQueries.addToCategory(
+                    mainId = mainId,
+                    categoryId = categoryId,
+                    displayOrder = order,
+                    addedAt = System.currentTimeMillis(),
+                )
+            }
+        }
+    }
+
+    fun removeManyFromCategory(mainIds: Collection<String>, categoryId: Long) {
+        database.transaction(noEnclosing = true) {
+            for (mainId in mainIds) {
+                libraryQueries.removeFromCategory(mainId, categoryId)
+            }
+        }
+    }
+
+    fun removeManyFromLibrary(mainIds: Collection<String>) {
+        database.transaction(noEnclosing = true) {
+            for (mainId in mainIds) {
+                removeFromLibrary(mainId)
+            }
+        }
+    }
+
     fun addToCategory(mainId: String, categoryId: Long) {
         val now = System.currentTimeMillis()
         val order = libraryQueries.countItemsInCategory(categoryId).executeAsOne()

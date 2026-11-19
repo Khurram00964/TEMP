@@ -193,4 +193,28 @@ class DataCacheRepository(
         val cached = getBrowseCache(sectionKey) ?: return true
         return cached.isExpired
     }
+
+    // ── Maintenance (ROUND 157, WS-A4 — the growth bounds) ───────────────────
+
+    /**
+     * The episode-metadata cache grows without bound (every opened anime's
+     * full episode rows persisted forever — the delete path had ZERO callers).
+     * Rows not refreshed within [retentionMs] are pruned; re-opening an anime
+     * re-fetches + re-inserts them (the cache is a read accelerator, never a
+     * source of truth). Default retention 30 days.
+     */
+    fun pruneStaleEpisodeMetadata(retentionMs: Long = 30L * 24 * 60 * 60 * 1000) {
+        val cutoff = System.currentTimeMillis() - retentionMs
+        queries.deleteEpisodeMetadataStale(cutoff)
+        Logger.d(TAG) { "pruneStaleEpisodeMetadata: rows older than ${retentionMs / 86400000}d pruned" }
+    }
+
+    /**
+     * Expired browse_cache rows used to linger forever (the expiry was only a
+     * read-time check). Expired rows are deleted in the same sweep.
+     */
+    fun pruneExpiredBrowseCache() {
+        queries.deleteBrowseCacheExpired(System.currentTimeMillis())
+        Logger.d(TAG) { "pruneExpiredBrowseCache: expired rows pruned" }
+    }
 }

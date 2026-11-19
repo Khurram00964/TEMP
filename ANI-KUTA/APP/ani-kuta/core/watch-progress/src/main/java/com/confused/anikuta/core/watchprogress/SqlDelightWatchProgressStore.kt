@@ -103,6 +103,7 @@ class SqlDelightWatchProgressStore(
             auto_mark_suppressed = if (autoMarkSuppressed) 1L else 0L,
             user_marked_watched = if (userMarkedWatched) 1L else 0L,
             played_time_ms = cumulativePlayedMs,
+            episode_number = episodeNumberFromKey(episodeKey),
         )
 
         if (justCompleted) {
@@ -182,6 +183,7 @@ class SqlDelightWatchProgressStore(
                 auto_mark_suppressed = 1L,
                 user_marked_watched = 0L,
                 played_time_ms = 0L,
+                episode_number = episodeNumberFromKey(episodeKey),
             )
             Logger.i(TAG) { "setAutoMarkSuppressed — INSERTED new row (was no-op before): key=$episodeKey mainId=$mainId → isWatched=false (suppressed)" }
         } else {
@@ -192,6 +194,16 @@ class SqlDelightWatchProgressStore(
     }
 
     override suspend fun setUserMarkedWatched(episodeKey: String) = withContext(dispatchers) {
+        markWatchedInternal(episodeKey)
+    }
+
+    /**
+     * ROUND 157 (WS-A3): the INSERT-or-UPDATE body of setUserMarkedWatched,
+     * extracted so [markAllWatched]'s transaction can call it WITHOUT the
+     * dispatcher hop (a withContext inside a SQLDelight suspend transaction
+     * breaks the thread-bound transaction).
+     */
+    private fun markWatchedInternal(episodeKey: String) {
         // CF1: user explicitly marked watched (sticky).
         // FIX: if the row doesn't exist (user never watched the episode), INSERT it
         // with the watched flags set + sensible defaults. The old UPDATE-only approach
@@ -215,6 +227,7 @@ class SqlDelightWatchProgressStore(
                 auto_mark_suppressed = 0L,
                 user_marked_watched = 1L,
                 played_time_ms = 0L,
+                episode_number = episodeNumberFromKey(episodeKey),
             )
             Logger.i(TAG) { "setUserMarkedWatched — INSERTED new row (was no-op before): key=$episodeKey mainId=$mainId → isWatched=true (sticky)" }
         } else {
@@ -305,8 +318,13 @@ class SqlDelightWatchProgressStore(
      * logic that handles the case where the row doesn't exist yet.
      */
     override suspend fun markAllWatched(mainId: String, episodeKeys: List<String>) = withContext(dispatchers) {
-        for (key in episodeKeys) {
-            setUserMarkedWatched(key)
+        // ROUND 157 (WS-A3): the N read-then-upsert statements run in ONE
+        // transaction — a crash mid-batch can no longer leave half the list
+        // marked, and the batch commits at the journal's speed instead of N.
+        database.transaction {
+            for (key in episodeKeys) {
+                markWatchedInternal(key)
+            }
         }
         Logger.i(TAG) { "markAllWatched: mainId=$mainId, ${episodeKeys.size} episode(s) marked" }
     }
@@ -331,6 +349,31 @@ class SqlDelightWatchProgressStore(
         database.watchQueries.deleteAllWatchSessions()
         Logger.i(TAG) { "deleteAll: cleared all watch progress" }
     }
+
+    override suspend fun pruneWatchSessionsBefore(cutoffMs: Long) = withContext(dispatchers) {
+        // ROUND 157 (WS-A4): deleteWatchSessionsBefore (see watch.sq).
+        database.watchQueries.deleteWatchSessionsBefore(cutoffMs)
+        Logger.d(TAG) { "pruneWatchSessionsBefore: sessions older than the window pruned" }
+    }
+
+    /**
+     * ROUND 157 (WS-A2): the post-restore reconcile. Backups made before the
+     * episode_number column existed restore rows with the DEFAULT 0; old rows
+     * recompute from their key (idempotent — a legitimate 0 recomputes to 0).
+     * Called by the restore flow after the DB payload lands.
+     */
+    fun reconcileEpisodeNumbers() {
+        database.watchQueries.backfillEpisodeNumbers()
+        Logger.i(TAG) { "reconcileEpisodeNumbers: the post-restore backfill ran" }
+    }
+
+    /**
+     * ROUND 157 (WS-A2): the episode number from the canonical key
+     * ("${mainId}|${padded_5_digit}"). 0 for malformed/legacy keys — the same
+     * value the old CAST(SUBSTR) produced for them.
+     */
+    private fun episodeNumberFromKey(episodeKey: String): Long =
+        episodeKey.substringAfterLast('|').toLongOrNull() ?: 0L
 
     /**
      * Maps a SQLDelight-generated `Watch_progress` row to the [WatchProgress] model.

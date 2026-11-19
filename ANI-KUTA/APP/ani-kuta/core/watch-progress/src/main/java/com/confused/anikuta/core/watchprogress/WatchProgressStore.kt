@@ -16,6 +16,15 @@ import kotlinx.coroutines.flow.Flow
 interface WatchProgressStore {
 
     /**
+     * ROUND 157 (WS-A4): the per-day session ledger's growth bound — sessions
+     * older than [cutoffMs] (epoch) are pruned on app start. The watch-time
+     * TOTALS keep their integrity via watch_progress.played_time_ms (the
+     * cumulative counter is never pruned); only the per-day chart granularity
+     * beyond the window is released.
+     */
+    suspend fun pruneWatchSessionsBefore(cutoffMs: Long) = Unit
+
+    /**
      * Save watch progress for an episode. Called by the player (batched every 10s + on pause/dispose).
      * Uses UPSERT — if the episode already has progress, it's updated.
      *

@@ -692,25 +692,16 @@ class DownloadQueue(
                             completedAt = now(),
                         )
                         mutateTaskLocked(task.id) { completedTask }
-                        store.updateState(
-                            id = task.id,
-                            status = DownloadStatus.COMPLETED,
-                            progress = finalProgress,
-                            startedAt = completedTask.startedAt,
-                            completedAt = completedTask.completedAt,
-                            errorMessage = null,
-                        )
-                        store.updateResult(task.id, completedTask.videoUri, decodeSubtitleUris(completedTask.subtitleUris))
-
-                        // D.FIX: Insert into downloaded_episode table so isEpisodeDownloaded()
-                        // returns true + the episode shows as Downloaded in the details page.
-                        // Without this, the auto-clear removes the task from the queue after 10s
-                        // and the episode shows as NotDownloaded.
-                        if (completedTask.videoUri != null) {
-                            val downloadedEp = DownloadedEpisode(
+                        // ROUND 157 (WS-A3): the state update + the result + the
+                        // downloaded_episode insert land in ONE transaction — the old
+                        // three separate writes could crash between them (a COMPLETED
+                        // queue row with no downloaded_episode row until the scanner
+                        // healed it).
+                        val downloadedEp = completedTask.videoUri?.let { uri ->
+                            DownloadedEpisode(
                                 content = completedTask.content,
                                 episode = completedTask.episode,
-                                videoUri = completedTask.videoUri,
+                                videoUri = uri,
                                 subtitleUris = decodeSubtitleUris(completedTask.subtitleUris),
                                 sizeBytes = completedTask.totalBytes.takeIf { it > 0 }
                                     ?: completedTask.downloadedBytes,
@@ -721,8 +712,19 @@ class DownloadQueue(
                                 videoServer = completedTask.videoServer.ifBlank { null },
                                 videoAudio = completedTask.videoAudio.ifBlank { null },
                             )
-                            store.insertDownloadedEpisode(downloadedEp)
-                            DownloadLogger.i { "launchDownload — inserted into downloaded_episode table for task ${task.id}" }
+                        }
+                        store.completeWithEpisode(
+                            id = task.id,
+                            status = DownloadStatus.COMPLETED,
+                            progress = finalProgress,
+                            startedAt = completedTask.startedAt,
+                            completedAt = completedTask.completedAt,
+                            videoUri = completedTask.videoUri,
+                            subtitleUris = decodeSubtitleUris(completedTask.subtitleUris),
+                            episode = downloadedEp,
+                        )
+                        if (downloadedEp != null) {
+                            DownloadLogger.i { "launchDownload — completed atomically (state + downloaded_episode) for task ${task.id}" }
                             // D-241: the on-disk .data.json episodes list is updated by
                             // HttpDownloader.publishVideoFile flow (it has the storage ref +
                             // runs the upsert right after the video file is published, before
