@@ -63,6 +63,9 @@ class TrackSyncManager(
     private val trackEntryRepository: TrackEntryRepository,
     // ROUND 102 (WS-E): the opt-in gate — every relay consults it.
     private val trackingStateRepository: TrackingStateRepository? = null,
+    // ROUND 157 (WS-C): the per-tracker id resolvers (Trakt/TMDB first; MAL
+    // when wired). AniList carries none — its anilistId path stays untouched.
+    private val linkResolvers: List<com.confused.anikuta.core.trackerapi.TrackerLinkResolver> = emptyList(),
 ) {
 
     companion object {
@@ -130,6 +133,19 @@ class TrackSyncManager(
             }
 
             for (tracker in trackers) {
+                // ROUND 157 (WS-C): the per-tracker id resolution — a resolver
+                // for this type supplies the id; ANILIST falls back to the
+                // anilistId (its own path, byte-identical).
+                val resolvedId = linkResolvers
+                    .firstOrNull { it.trackerType == tracker.type }
+                    ?.resolve(contentKey)
+                if (resolvedId == null && tracker.type != TrackerType.ANILIST) {
+                    Logger.d(TAG) {
+                        "${tracker.displayName}: no resolved id for mainId=$contentKey — skipping"
+                    }
+                    continue
+                }
+                val effectiveId = resolvedId ?: anilistId
                 if (!tracker.isLoggedIn()) {
                     Logger.d(TAG) { "${tracker.displayName} not logged in — skipping" }
                     continue
@@ -174,7 +190,7 @@ class TrackSyncManager(
 
                     val entry = (cached ?: TrackEntry(
                         contentKey = contentKey,
-                        trackerId = anilistId,
+                        trackerId = effectiveId,
                     )).copy(
                         status = status,
                         // ROUND 121 (D2-a): Int parameter — no Double→Int
@@ -192,7 +208,7 @@ class TrackSyncManager(
                         // Update the local cache so the TrackSheet shows fresh data.
                         trackEntryRepository.upsert(entry, tracker.type)
                         Logger.i(TAG) {
-                            "Synced to ${tracker.displayName}: $contentKey (anilistId=$anilistId, " +
+                            "Synced to ${tracker.displayName}: $contentKey (trackerId=$effectiveId, " +
                                 "progress=${entry.progress}, status=${entry.status})"
                         }
                     } else {
@@ -220,6 +236,10 @@ class TrackSyncManager(
             val anilistId = details?.anilistId ?: return@launch
 
             for (tracker in trackers) {
+                // ROUND 157 (WS-C): the rating relay rides the same id seam.
+                val effectiveId = linkResolvers
+                    .firstOrNull { it.trackerType == tracker.type }
+                    ?.resolve(contentKey) ?: anilistId
                 if (!tracker.isLoggedIn()) continue
                 // ROUND 102 (WS-E): the opt-in gate — ratings ride the same
                 // contract as watch events.
@@ -234,7 +254,7 @@ class TrackSyncManager(
                     val cached = trackEntryRepository.get(contentKey, tracker.type)
                     val entry = (cached ?: TrackEntry(
                         contentKey = contentKey,
-                        trackerId = anilistId,
+                        trackerId = effectiveId,
                     )).copy(
                         score = score,
                         updatedAt = System.currentTimeMillis(),

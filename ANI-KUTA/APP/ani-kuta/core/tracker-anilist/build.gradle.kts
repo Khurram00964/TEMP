@@ -10,6 +10,8 @@ android {
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:tracker-api"))
+    // ROUND 157 (WS-C): the trackers-list registry hosts the Trakt binding.
+    implementation(project(":core:tracker-trakt"))
     implementation(project(":core:preferences"))
     implementation(project(":core:anilist"))
     implementation(project(":core:database"))

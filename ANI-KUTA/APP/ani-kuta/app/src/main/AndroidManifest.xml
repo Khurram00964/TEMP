@@ -107,6 +107,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="anikuta" android:host="anilist-auth" />
             </intent-filter>
+            <!-- ROUND 157 (WS-C): Trakt OAuth2 + PKCE redirect. -->
+            <!-- Trakt redirects to anikuta://trakt-auth?code=... (a QUERY param). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="anikuta" android:host="trakt-auth" />
+            </intent-filter>
             <!-- ROUND 101 (WS-C): the app's OWN share links — -->
             <!-- anikuta://content/{mainId} opens ANI-KUTA straight on the -->
             <!-- shared content (MainActivity resolves the mainId through the -->

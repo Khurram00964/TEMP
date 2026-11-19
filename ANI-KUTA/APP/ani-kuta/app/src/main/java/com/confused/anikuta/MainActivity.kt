@@ -234,6 +234,7 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
         // D-220: Handle AniList OAuth redirect (anikuta://anilist-auth#access_token=...).
         // The token is in the URL fragment (not query). Parse + pass to AniListTracker.
         handleAniListOAuthRedirect(intent)
+        handleTraktOAuthRedirect(intent)
         // ROUND 102 (WS-D): the unified pending-navigation intake — the COLD
         // half. Every navigation-bearing delivery (the share deep link, the
         // notification extras) funnels through the reactive PendingNavigation
@@ -303,6 +304,7 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleAniListOAuthRedirect(intent)
+        handleTraktOAuthRedirect(intent)
         PendingNavigation.offerFromIntent(intent)
     }
 
@@ -325,6 +327,23 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
      * This method extracts the token + calls AniListTracker.handleLoginCallback(token)
      * in a background coroutine.
      */
+    /**
+     * ROUND 157 (WS-C): the Trakt OAuth redirect (anikuta://trakt-auth?code=...).
+     * The tracker is dormant until TraktAuth.CLIENT_ID lands — an early
+     * redirect resolves to no-op (honest).
+     */
+    private fun handleTraktOAuthRedirect(intent: android.content.Intent) {
+        val data = intent.data ?: return
+        if (data.host != com.confused.anikuta.core.trackertrakt.TraktAuth.REDIRECT_HOST) return
+        val code = data.getQueryParameter("code") ?: return
+        kotlinx.coroutines.MainScope().launch {
+            val tracker = org.koin.core.context.GlobalContext.get()
+                .get<com.confused.anikuta.core.trackertrakt.TraktTracker>()
+            val ok = tracker.handleLoginCallback(code)
+            Logger.i("Anikuta:MainActivity") { "Trakt OAuth redirect handled: ok=$ok" }
+        }
+    }
+
     private fun handleAniListOAuthRedirect(intent: android.content.Intent?) {
         val data = intent?.data ?: return
         if (data.scheme != "anikuta" || data.host != "anilist-auth") return

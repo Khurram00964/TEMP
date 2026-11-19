@@ -20,9 +20,15 @@ val trackerAniListModule = module {
     single { TrackingStateRepository(get()) }
 
     // Multi-binding: List<Tracker> for TrackSyncManager
+    // ROUND 157 (WS-C): the Trakt tracker — dormant (honest "not configured")
+    // until the app registration's client_id lands in TraktAuth.CLIENT_ID.
+    single<com.confused.anikuta.core.trackertrakt.TraktTracker> {
+        com.confused.anikuta.core.trackertrakt.TraktTracker(get())
+    }
     single<List<Tracker>>(named("trackers")) {
         listOf(
             get<AniListTracker>(),
+            get<com.confused.anikuta.core.trackertrakt.TraktTracker>(),
         )
     }
 
