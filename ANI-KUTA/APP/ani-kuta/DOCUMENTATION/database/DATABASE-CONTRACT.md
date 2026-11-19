@@ -18,7 +18,7 @@
 4. **Every new migration gets a test** in `SchemaMigrationTest` (a v-shaped table + a data row → migrate → assert column + value). Tests that read through the generated code must end the chain at the CURRENT schema version.
 5. **Bulk multi-writes are transactional** (`database.transaction`): mark-all-watched, the library multi-select batches, the download completion pair. New multi-statement paths must be too.
 6. **Backup parity**: `BackupManager.BACKUP_TABLES` must carry every new table (except the documented exclusions: transient queue rows, dedup logs, analytics, the byte cache). Post-restore reconciles (e.g. the `episode_number` backfill) run in `restoreBackup` after the DB commit.
-7. **Growth bounds**: every append-heavy table needs a prune (the precedent: `activity_event` 365d, `watch_session` 400d, `data_cache_episode` 30d-fetched, `browse_cache` expired-delete). New caches declare their TTL at creation.
+7. **Growth bounds**: every append-heavy table needs a prune (the precedent: `activity_event` 365d, `watch_session` 400d, `data_cache_episode` 180d-fetched, `browse_cache` expired-delete). New caches declare their TTL at creation.
 
 ## 3. The key formats (canonical)
 

@@ -649,6 +649,7 @@ fun WatchScreen(
         onDispose {
             com.confused.anikuta.core.common.PipState.eligible.value = false
             com.confused.anikuta.core.common.PipState.setInPip(false)
+            com.confused.anikuta.core.common.PipState.setVideoSize(0, 0)
         }
     }
     // ROUND 157 (the critic's P1-5): the controls hide while IN PiP (the

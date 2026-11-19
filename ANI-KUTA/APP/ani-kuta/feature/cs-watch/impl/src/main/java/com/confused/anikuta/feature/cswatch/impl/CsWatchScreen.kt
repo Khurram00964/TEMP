@@ -249,6 +249,7 @@ fun CsWatchScreen(
         onDispose {
             com.confused.anikuta.core.common.PipState.eligible.value = false
             com.confused.anikuta.core.common.PipState.setInPip(false)
+            com.confused.anikuta.core.common.PipState.setVideoSize(0, 0)
         }
     }
     var controlsLocked by remember { mutableStateOf(false) }
@@ -546,7 +547,10 @@ fun CsWatchScreen(
     // ROUND 158 (V1): the PiP ELIGIBILITY — fullscreen + playing, not under a
     // sheet (the SAF pickers fire onUserLeaveHint); the video size rides
     // PipState so the PiP window follows the content's aspect.
-    val anyCsSheetOpen = showLinksSheet || showSubsSheet || showEpisodesSheet || showSpeedSheet
+    // ROUND 158 V3 (the round-2 critic): the subtitle-SETTINGS sheet joins the
+    // guard (the MPV twin is guarded; the asymmetry was a trap).
+    val anyCsSheetOpen = showLinksSheet || showSubsSheet || showEpisodesSheet ||
+        showSpeedSheet || showSubsSettingsSheet
     LaunchedEffect(playerMode, engineState.isPlaying, anyCsSheetOpen, engineState.videoWidth, engineState.videoHeight) {
         com.confused.anikuta.core.common.PipState.eligible.value =
             playerMode == CsPlayerMode.FULLSCREEN && engineState.isPlaying && !anyCsSheetOpen

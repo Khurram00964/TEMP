@@ -386,7 +386,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
         // ROUND 157 (WS-A4): the DATABASE MAINTENANCE sweep — the growth bounds
         // for the per-day session ledger (400-day window; the profile's chart
         // reads ≤ 1 year + the heatmap) and the two caches (the episode
-        // metadata 30-day retention; the expired browse rows). Idempotent,
+        // metadata 180-day retention; the expired browse rows). Idempotent,
         // best-effort, IO — mirrors the playback-cache launch pattern.
         try {
             val watchStore = org.koin.core.context.GlobalContext.get()

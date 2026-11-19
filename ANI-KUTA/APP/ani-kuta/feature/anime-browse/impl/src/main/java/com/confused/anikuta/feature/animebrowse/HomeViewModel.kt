@@ -18,7 +18,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
@@ -109,6 +111,10 @@ class HomeViewModel(
 
     companion object {
         private const val TAG = "Anikuta:Feature:Home"
+
+        /** ROUND 158: the plugin-scan wait before the CS home picks a provider
+         * (the Search page's CS_LOAD_WAIT_MS precedent — a 20s bound). */
+        private const val CS_LOAD_WAIT_MS = 20_000L
 
         // The home_trending storage key (BrowseCacheCodec owns the namespace —
         // no drift). The old trending/popular/top_rated keys stay untouched —
@@ -771,16 +777,25 @@ class HomeViewModel(
 
     private var csSectionsFetched = false
 
+    // ROUND 158 (the round-2 critic): one load job at a time — a
+    // pull-to-refresh during a streaming load ran TWO collectors appending
+    // into the same list (duplicate shelves).
+    private var csLoadJob: kotlinx.coroutines.Job? = null
+
     fun loadCsSections(force: Boolean = false) {
         val repo = cloudstreamRepository ?: return
         if (csSectionsFetched && !force) return
-        viewModelScope.launch {
+        csLoadJob?.cancel()
+        csLoadJob = viewModelScope.launch {
             _csLoading.value = true
             try {
-                // ROUND 157 (the critic's P1-1): the plugin scan is ASYNC —
-                // sources.value is empty at Home init. Await the loaded flow
-                // before picking (the repo exposes sourcesLoaded).
-                repo.sourcesLoaded.firstOrNull()
+                // ROUND 157 (the critic's P1-1) / ROUND 158 (the round-2
+                // critic): a StateFlow firstOrNull() returns its CURRENT value
+                // INSTANTLY — the await was a no-op. The Search page's exact
+                // pattern: a bounded wait for the scan to land (20s).
+                withTimeoutOrNull(CS_LOAD_WAIT_MS) {
+                    repo.sourcesLoaded.first { it }
+                }
                 // The provider pick: the first installed source with a main
                 // page (the search page's provider picker lets the user drive
                 // the detail; the home shows the first capable one — a stored
