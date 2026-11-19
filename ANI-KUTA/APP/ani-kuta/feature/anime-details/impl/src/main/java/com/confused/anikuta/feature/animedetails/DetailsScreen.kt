@@ -33,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.Bookmark
@@ -1299,10 +1300,55 @@ fun DetailsScreen(
                             item { SynopsisSection(desc, animeRating, viewModel::setAnimeRating) }
                         }
 
+                        // ── Movie mode (ROUND 157, WS-B3) ──
+                        // A CS MovieLoadResponse renders as a single "Movie"
+                        // episode row — a movie deserves a PLAY hero, not an
+                        // episode list. The hero routes through the SAME
+                        // onEpisodeClick resolve flow (ep 1 = the movie).
+                        val isMovie = anime.contentKind == "movie"
+                        if (isMovie) {
+                            item(key = "movie_play") {
+                                val movieEp = (episodeState as? EpisodeState.Loaded)?.episodes?.firstOrNull()
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                                        .clickable(enabled = movieEp != null) {
+                                            movieEp?.let { onEpisodeClick(it, false) }
+                                        },
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(28.dp),
+                                        )
+                                        Text(
+                                            text = if (movieEp != null) "Play movie" else "Loading…",
+                                            fontFamily = RobotoFamily,
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // ── Episodes section (D-228: flattened for virtualization) ──
                         // Header + non-Loaded states (Idle/Loading/Empty/Error/CloudflareBlocked)
                         // are rendered inside EpisodesSection. When Loaded, the episode rows
                         // are emitted as lazy items() BELOW — proper Compose virtualization.
+                        // ROUND 157 (WS-B3): movies hide the episode list (the Play hero above).
                         //
                         // D-232: Compute the processed/grouped episodes BEFORE the
                         // EpisodesSection call so the group switcher data is available
@@ -1445,7 +1491,7 @@ fun DetailsScreen(
                             }
                         } else displayEpisodes.orEmpty()
 
-                        item {
+                        if (!isMovie) item {
                             EpisodesSection(
                                 linkedSource = effectiveLinkedSource,
                                 episodeState = episodeState,
@@ -1523,7 +1569,7 @@ fun DetailsScreen(
                         // D-232: rawEpisodes/processedEpisodes/episodeGroups/currentGroup/
                         // episodesToShow are now computed ABOVE (before EpisodesSection).
 
-                        if (episodesToShow != null && !matchPreviewVisible) {
+                        if (!isMovie && episodesToShow != null && !matchPreviewVisible) {
                             // D-233: Empty-state when filters produce no results.
                             if (episodesToShow.isEmpty() && rawEpisodes?.isNotEmpty() == true) {
                                 item {
