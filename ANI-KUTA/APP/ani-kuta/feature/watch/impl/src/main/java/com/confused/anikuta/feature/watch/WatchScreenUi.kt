@@ -182,6 +182,8 @@ internal fun FullscreenMode(
     // ROUND 154: the audio-version switch wait — the player is deliberately
     // paused while mpv fetches the new external audio; the pill says so.
     audioSwitching: Boolean = false,
+    // ROUND 157 (WS-E3): the PiP entry (null = no tray button).
+    onPiPClick: (() -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier
@@ -235,6 +237,8 @@ internal fun FullscreenMode(
             // cluster, left of the exit chip).
             onToggleRotationClick = onToggleRotationClick,
             rotationLocked = rotationLocked,
+            // ROUND 157 (WS-E3): the PiP tray button.
+            onPiPClick = onPiPClick,
             onSpeedClick = onSpeedClick,
             // ROUND 121: the episodes browser (the previously dead More button).
             onMoreClick = onOpenEpisodesSheet,

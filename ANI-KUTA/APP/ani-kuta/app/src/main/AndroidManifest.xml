@@ -70,6 +70,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.ANIKUTA">
             <!-- ROUND 102 (WS-D): launchMode=singleTask — the deep-link fix's

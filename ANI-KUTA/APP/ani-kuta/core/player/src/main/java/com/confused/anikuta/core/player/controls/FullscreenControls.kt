@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.SkipNext
@@ -123,7 +124,9 @@ fun FullscreenControls(
     onPrevEpisode: () -> Unit = {},
     onNextEpisode: () -> Unit = {},
     onSkipForward: () -> Unit = {},
-    onPiPClick: () -> Unit = {},
+    // ROUND 157 (WS-E3): the PiP tray button renders ONLY when the host opts
+    // in (null = no button — the old dead-param default made it invisible).
+    onPiPClick: (() -> Unit)? = null,
     // ROUND 145 (P-M3): the DEAD Rotate button removed (same rationale — the
     // MPV stack never wired a rotation handler).
     // ROUND 150: it is BACK and WIRED — the bottom-right cluster's rotation
@@ -538,6 +541,16 @@ fun FullscreenControls(
                                             },
                                             onClick = onToggleRotationClick,
                                         )
+                                        // ROUND 157 (WS-E3): the PiP button —
+                                        // rendered only when the host opted in
+                                        // (the dead-param hook now live).
+                                        if (onPiPClick != null) {
+                                            FSSmallButton(
+                                                icon = Icons.Default.PictureInPicture,
+                                                contentDescription = "Picture-in-picture",
+                                                onClick = { onPiPClick?.invoke() },
+                                            )
+                                        }
                                         FSSkipIconButton(onClick = onSkipForward)
                                     }
                                 }

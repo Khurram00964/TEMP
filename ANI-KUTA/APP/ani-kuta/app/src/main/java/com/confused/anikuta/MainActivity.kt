@@ -279,6 +279,26 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
     // now (no more stacked duplicate activities). The OAuth handler runs
     // first (it reads the redirect's data URI); the unified intake parses
     // + records every navigation-bearing marker reactively.
+    // ── ROUND 157 (WS-E3): PICTURE-IN-PICTURE ──
+    // The player screens set [pipEligible] while a video plays in fullscreen;
+    // leaving the app (home/recents) auto-enters PiP instead of pausing. The
+    // explicit PiP button in the controls calls [enterPip] directly.
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // ROUND 157 (WS-E3): auto-PiP when a player marked itself eligible.
+        if (com.confused.anikuta.core.common.PipState.eligible.value &&
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+        ) {
+            com.confused.anikuta.core.common.PipState.requestEnter(this)
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        com.confused.anikuta.core.common.PipState.setInPip(isInPictureInPictureMode)
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

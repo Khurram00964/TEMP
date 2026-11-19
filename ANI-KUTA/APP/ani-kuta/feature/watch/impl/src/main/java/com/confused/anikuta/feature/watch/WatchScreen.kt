@@ -640,6 +640,17 @@ fun WatchScreen(
     // it returns to foreground (ON_START). Uses LifecycleEventObserver to match
     // the old project's behavior. ON_STOP/ON_START (not ON_PAUSE/ON_RESUME) so
     // multi-window focus changes don't trigger a pause.
+    // ROUND 157 (WS-E3): the PiP state — eligible while fullscreen + playing;
+    // in PiP the controls hide (the surface alone, tap-to-expand).
+    val isInPip by com.confused.anikuta.core.common.PipState.isInPip.collectAsState()
+    LaunchedEffect(playerMode, isPlaying) {
+        com.confused.anikuta.core.common.PipState.eligible.value =
+            playerMode == PlayerMode.FULLSCREEN && isPlaying
+    }
+    DisposableEffect(Unit) {
+        onDispose { com.confused.anikuta.core.common.PipState.eligible.value = false }
+    }
+
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -3061,6 +3072,8 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             // deliberately paused while the new external audio fetches; the
             // pill says so (the sheet can be dismissed mid-wait).
             audioSwitching = audioSwitchPendingUrl != null,
+            // ROUND 157 (WS-E3): the PiP entry (the tray button opts in).
+            onPiPClick = { com.confused.anikuta.core.common.PipState.requestEnter(context) },
             // ROUND 132: swipe DOWN from the center third = back to portrait;
             // the pinch zoom is a fullscreen-only capability.
             gestureConfig = gestureConfig.copy(

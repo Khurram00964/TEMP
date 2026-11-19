@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
@@ -642,6 +643,8 @@ internal fun CsFullscreenControls(
     // 3=Crop — the MPV tray's presets). Session-only, MPV parity.
     resizeModeIndex: Int = 0,
     onResizeClick: () -> Unit = {},
+    // ROUND 157 (WS-E3): the PiP entry (null = no button).
+    onPiPClick: (() -> Unit)? = null,
     onSpeedClick: () -> Unit,
     onSkipForward: () -> Unit,
 ) {
@@ -773,6 +776,14 @@ internal fun CsFullscreenControls(
                                 contentDescription = "Video zoom: " + listOf("Fit", "Fill W", "Fill H", "Crop")[resizeModeIndex.coerceIn(0, 3)],
                                 onClick = onResizeClick,
                             )
+                            // ROUND 157 (WS-E3): the PiP entry (rendered only when wired).
+                            if (onPiPClick != null) {
+                                CsFsSmallButton(
+                                    icon = Icons.Default.PictureInPicture,
+                                    contentDescription = "Picture-in-picture",
+                                    onClick = { onPiPClick?.invoke() },
+                                )
+                            }
                             CsFsSmallButton(icon = Icons.Default.MoreVert, contentDescription = "More", onClick = onMoreClick)
                         }
                     }

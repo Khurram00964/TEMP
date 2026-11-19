@@ -208,6 +208,7 @@ fun CsWatchScreen(
         }
     }
 
+
     /** F3: engine position belongs to the CURRENT episode only when the loaded
      *  URL matches the state's current link — otherwise a switch is in flight
      *  and saving would write episode N-1's progress under episode N's key.
@@ -240,6 +241,15 @@ fun CsWatchScreen(
 
     // ── Display mode + window choreography (the aniyomi screen's pattern) ────
     var playerMode by remember { mutableStateOf(CsPlayerMode.MINIMIZED) }
+    // ROUND 157 (WS-E3): the PiP state — eligible while fullscreen + playing.
+    val isInPip by com.confused.anikuta.core.common.PipState.isInPip.collectAsState()
+    LaunchedEffect(playerMode, engineState.isPlaying) {
+        com.confused.anikuta.core.common.PipState.eligible.value =
+            playerMode == CsPlayerMode.FULLSCREEN && engineState.isPlaying
+    }
+    DisposableEffect(Unit) {
+        onDispose { com.confused.anikuta.core.common.PipState.eligible.value = false }
+    }
     var controlsLocked by remember { mutableStateOf(false) }
 
     // Keep-screen-on while the screen is alive.
@@ -698,6 +708,10 @@ fun CsWatchScreen(
                     // ROUND 157 (WS-E2): the resize cycle.
                     resizeModeIndex = resizeModeIndex,
                     onResizeClick = { resizeModeIndex = (resizeModeIndex + 1) % 4 },
+                    // ROUND 157 (WS-E3): the PiP entry.
+                    onPiPClick = {
+                        com.confused.anikuta.core.common.PipState.requestEnter(context)
+                    },
                 )
             }
         }
