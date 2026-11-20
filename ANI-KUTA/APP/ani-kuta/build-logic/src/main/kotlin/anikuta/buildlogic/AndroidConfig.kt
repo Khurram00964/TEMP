@@ -544,8 +544,25 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10198
+    const val versionName = "1.1.98"
+    // ROUND 159 (v1.1.98): release/1.1.98 — cut from the round-159 head
+    // 4692d92b (CI green — run 44765449418 on TEMP): THE DEVICE-REPORT ROUND
+    // + THE TRACKERS. (1) P0 THE BLACK-SCREEN CRASH (the home mode observer's
+    // synchronous first emission touched state declared after init — the
+    // declarations moved before it). (2) P0 THE PLUGIN LOAD FAILURE (the
+    // compose stability stamp $stable — STATIC FINAL — now on BasePlugin +
+    // MainAPI; javap-verified the exact getstatic shape). (3) MYANIMELIST
+    // (the full tracker: PKCE + the refresh + the list sync + the search +
+    // the id resolution riding AniList's idMal + the Trackers card; dormant
+    // until the app registration). (4) BACKGROUND PLAYBACK (the foreground
+    // mediaPlayback service + the media notification with the play/pause/
+    // seek actions via the stack-agnostic command bus; the Settings option;
+    // the ON_STOP gating; stops itself when the playback ends away). (5) THE
+    // TRAKT/TMDB GROUNDWORK COMPLETED (TrackerKeys.kt — the one documented
+    // keys file; the resolvers registered; keys-only remaining). (6) The
+    // critic round 3's fixes (the static shape, the service lifecycle, the
+    // stale-state races, the honest guards).
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
