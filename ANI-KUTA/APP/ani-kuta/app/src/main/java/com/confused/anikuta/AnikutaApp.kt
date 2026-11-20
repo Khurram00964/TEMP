@@ -178,6 +178,8 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 metadataModule,
                 trackerAniListModule,
                 com.confused.anikuta.core.trackersimkl.trackerSimklModule, // ROUND 163 (STEP-2): the Simkl tracker (movies + TV)
+                com.confused.anikuta.core.tmdb.tmdbModule, // ROUND 163 (STEP-3): the TMDB data source
+                com.confused.anikuta.core.tvmaze.tvmazeModule, // ROUND 163 (STEP-3): the TVmaze data source
                 watchProgressModule,
                 smartMatcherModule,
                 shareModule,  // Round 101 (WS-C): the share system (:core:share)

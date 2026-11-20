@@ -184,6 +184,8 @@ dependencies {
     implementation(project(":core:tracker-api"))
     implementation(project(":core:tracker-anilist"))
     implementation(project(":core:tracker-simkl")) // ROUND 163 (STEP-2): the Simkl tracker
+    implementation(project(":core:tmdb")) // ROUND 163 (STEP-3): the movies/series data source
+    implementation(project(":core:tvmaze")) // ROUND 163 (STEP-3): the keyless TV data source
     implementation(project(":core:smart-matcher"))
     // Round 101 (WS-C): the share system (:core:share — MainActivity deep-link intake).
     implementation(project(":core:share"))
