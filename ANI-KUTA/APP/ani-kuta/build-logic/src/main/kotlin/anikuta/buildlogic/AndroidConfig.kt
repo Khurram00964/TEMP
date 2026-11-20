@@ -544,8 +544,22 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10199
+    const val versionName = "1.1.99"
+    // ROUND 160 (v1.1.99): release/1.1.99 — cut from the round-160 head
+    // f9dc2404 (CI green — run 44787340701 on TEMP): THE SAME-LAYOUT HOME +
+    // THE KEYS + THE SEARCH SOURCES. (1) THE KEYS LANDED (TrackerKeys — the
+    // user's MAL/Trakt/TMDB registrations) — the trackers are LIVE. (2) THE
+    // SAME-LAYOUT HOME: the Series & movies mode renders the SAME sections
+    // the anime home does (the hero, the trending rail, the suggested, the
+    // genre chips) fed by the CS provider's shelves; the generic HeroSlide
+    // hero (both modes pre-bind their navigation; the wash follows). (3) THE
+    // SEARCH-WITH SOURCES: the source menu (AniList/TMDB/Jikan/Extensions) —
+    // TMDB (series & movies incl. the Chinese/Korean content), Jikan (the
+    // keyless MAL data). (4) THE AUDIO INTEGRITY (the round-159 continued):
+    // the FFprobeKit probe (the parse + the 60s duration floor) + the
+    // 3-attempt retry on BOTH audio paths. (5) THE MOVIE DOWNLOAD BUTTON
+    // (the device report: the single-episode CS entries had no affordance).
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
