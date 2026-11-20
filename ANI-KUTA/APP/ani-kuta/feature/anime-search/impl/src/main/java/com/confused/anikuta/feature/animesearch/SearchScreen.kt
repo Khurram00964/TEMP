@@ -50,6 +50,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -497,7 +498,7 @@ fun SearchScreen(
 
                 is SearchUiState.DataSourceSuccess -> {
                     DataSourceResultsGrid(
-                        results = state.results,
+                        results = effectiveState.results,
                         onResultTap = { result -> handOffResult = result },
                     )
                 }

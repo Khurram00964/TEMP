@@ -49,6 +49,7 @@ import com.confused.anikuta.core.designsystem.theme.RobotoFamily
  * The picker SELECTS a backend; it never plays anything — data-source results
  * are metadata and hand off to the CloudStream playback search.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun DataSourcePickerSheet(
     current: DataSourceKind,

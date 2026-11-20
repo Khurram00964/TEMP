@@ -1653,6 +1653,8 @@ class SearchViewModel(
         loadMoreJob = viewModelScope.launch {
             try {
                 when (mode) {
+                    PagingMode.NONE -> return@launch
+
                     PagingMode.ANILIST_TRENDING -> {
                         val more = anilistApi.fetchTrending(page = nextPage, perPage = 30)
                         appendAniList(more, mode, nextPage, hasMore = more.size >= 30)
