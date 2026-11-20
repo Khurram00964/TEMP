@@ -1309,36 +1309,73 @@ fun DetailsScreen(
                         if (isMovie) {
                             item(key = "movie_play") {
                                 val movieEp = (episodeState as? EpisodeState.Loaded)?.episodes?.firstOrNull()
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 8.dp)
-                                        .clickable(enabled = movieEp != null) {
-                                            movieEp?.let { onEpisodeClick(it, false) }
-                                        },
+                                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
-                                    Row(
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 18.dp, vertical = 14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            .weight(1f)
+                                            .clickable(enabled = movieEp != null) {
+                                                movieEp?.let { onEpisodeClick(it, false) }
+                                            },
                                     ) {
-                                        Icon(
-                                            Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(28.dp),
-                                        )
-                                        Text(
-                                            text = if (movieEp != null) "Play movie" else "Loading…",
-                                            fontFamily = RobotoFamily,
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(26.dp),
+                                            )
+                                            Text(
+                                                text = if (movieEp != null) "Play movie" else "Loading…",
+                                                fontFamily = RobotoFamily,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            )
+                                        }
+                                    }
+                                    // ROUND 160 (the device report): the movie's
+                                    // DOWNLOAD button — a single-episode CS
+                                    // response used to render Play with NO
+                                    // download affordance (the episode list that
+                                    // carries the row buttons is hidden in movie
+                                    // mode). The SAME onDownloadEpisode flow the
+                                    // series rows use (the CS resolve sheet in
+                                    // download mode included).
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                        modifier = Modifier
+                                            .clickable(enabled = movieEp != null) {
+                                                movieEp?.let {
+                                                    currentEpisode = it
+                                                    onDownloadEpisode(it)
+                                                }
+                                            },
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Download,
+                                                contentDescription = "Download movie",
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }

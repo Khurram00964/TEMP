@@ -31,6 +31,7 @@ import com.confused.anikuta.core.watchprogress.watchProgressModule
 import com.confused.anikuta.data.extension.extensionModule
 import com.confused.anikuta.data.extension.manager.ExtensionManager
 import com.confused.anikuta.data.cloudstream.di.cloudstreamModule
+import com.confused.anikuta.core.tmdb.di.tmdbModule
 import com.confused.anikuta.feature.cswatch.impl.di.csWatchModule
 import com.confused.anikuta.data.cloudstream.content.CloudstreamSourceRegistry
 import com.confused.anikuta.feature.animebrowse.di.browseModule
@@ -170,6 +171,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 com.confused.anikuta.core.torrent.di.torrentModule,  // Round 143 (D-858): the torrent engine
                 extensionModule,
                 cloudstreamModule,  // Task 41: CloudStream extension system (doc 23)
+                com.confused.anikuta.core.tmdb.di.tmdbModule,  // ROUND 160: TMDB + Jikan
                 csWatchModule,  // Task 52 (round 12): the CS watch screen (playback port)
                 playerModule,
                 videoResolverModule,

@@ -330,32 +330,96 @@ private fun SourceToggle(
     onExtensionSourceClick: () -> Unit = {},
     selectedExtensionSourceName: String? = null,
 ) {
+    // ROUND 160 (WS-SEARCH): the "pick a source" MENU — the user's spec: tap
+    // the source option and a dropdown lists the sources (AniList, TMDB,
+    // Jikan, Extensions). The Extensions entry routes to the existing
+    // extension picker (its per-source list is its own).
+    var menuOpen by remember { mutableStateOf(false) }
+
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            .padding(3.dp),
+        modifier = modifier,
     ) {
-        SourceToggleSegment(
-            label = "AniList",
-            icon = Icons.Filled.Search,
-            active = source == SearchSource.ANILIST,
-            onClick = { onSelect(SearchSource.ANILIST) },
-        )
-        SourceToggleSegment(
-            label = selectedExtensionSourceName ?: "Extension",
-            icon = Icons.Filled.Extension,
-            active = source == SearchSource.EXTENSION,
-            onClick = {
-                // If Extension is already selected, open the source picker (per user spec).
-                // Otherwise, switch to Extension mode (which shows the picker prompt if no source).
-                if (source == SearchSource.EXTENSION) {
-                    onExtensionSourceClick()
-                } else {
-                    onSelect(SearchSource.EXTENSION)
-                }
-            },
-        )
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .clickable { menuOpen = true }
+                .padding(3.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.padding(4.dp))
+                Text(
+                    text = when (source) {
+                        SearchSource.ANILIST -> "AniList"
+                        SearchSource.TMDB -> "TMDB"
+                        SearchSource.JIKAN -> "Jikan (MAL)"
+                        SearchSource.EXTENSION -> selectedExtensionSourceName ?: "Extension"
+                    },
+                    fontFamily = RobotoFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+        }
+
+        androidx.compose.material3.DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("AniList — anime", fontFamily = RobotoFamily) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    onSelect(SearchSource.ANILIST)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("TMDB — series & movies", fontFamily = RobotoFamily) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    onSelect(SearchSource.TMDB)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Jikan — MyAnimeList data", fontFamily = RobotoFamily) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    onSelect(SearchSource.JIKAN)
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        (selectedExtensionSourceName ?: "Extensions") + " — your plugins",
+                        fontFamily = RobotoFamily,
+                    )
+                },
+                leadingIcon = { Icon(Icons.Filled.Extension, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    if (source == SearchSource.EXTENSION) {
+                        onExtensionSourceClick()
+                    } else {
+                        onSelect(SearchSource.EXTENSION)
+                    }
+                },
+            )
+        }
     }
 }
 

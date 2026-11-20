@@ -36,13 +36,24 @@ package com.confused.anikuta.core.common
  */
 object TrackerKeys {
 
-    /** MyAnimeList — the registered app's Client Id (blank = dormant). */
-    const val MAL_CLIENT_ID = ""
+    /** MyAnimeList — the registered app's Client Id (blank = dormant).
+     * ROUND 160: PROVIDED by the user (the mal-apiconfig registration). */
+    const val MAL_CLIENT_ID = "3ef19e73545f5029bbb1f2bfd62fd6c5"
 
-    /** Trakt — the registered app's Client Id (blank = dormant). */
-    const val TRAKT_CLIENT_ID = ""
+    /** Trakt — the registered app's Client Id (blank = dormant).
+     * ROUND 160: PROVIDED (the Development app — a 16-user cap; a Production
+     * upgrade is a same-page switch that lifts it, same client id). */
+    const val TRAKT_CLIENT_ID = "RCANXjQblhWRIIYj0ax1ZmWH_S8e-IM0Va3Cz1A9qSY"
 
-    /** TMDB — the API key (v3) for the identity resolution (blank = the
-     * stored-ids-only mode; the search fallback stays off). */
-    const val TMDB_API_KEY = ""
+    /** TMDB — the API key (v3) for the identity resolution + the home/search
+     * data (blank = the stored-ids-only mode). ROUND 160: PROVIDED (the
+     * Personal tier — fine for this scope; the commercial tier needs the
+     * 500k-user/revenue threshold and a payment conversation). */
+    const val TMDB_API_KEY = "210d23e812a0b2f4ea75fe4e934ff526"
+
+    /** TMDB — the API Read Access Token (v4 bearer; an alternative auth
+     * shape — stored for the future v4 endpoints; the v3 key above is what
+     * the current calls use). */
+    const val TMDB_READ_ACCESS_TOKEN =
+        "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyMTBkMjNlODEyYTBiMmY0ZWE3NWZlNGU5MzRmZjUyNiIsIm5iZiI6MTc5NTE5MjMwNi4yNjcsInN1YiI6IjZiMDA3NWYyZDA0N2RiYmRmMjhmNzJiZSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.t5xheRXvTuL5hMVL5nLTuLZxx76q-hDfYJ_R39KazHA"
 }

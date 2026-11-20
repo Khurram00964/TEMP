@@ -11,6 +11,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -249,7 +251,54 @@ fun HomeScreen(
     val suggestedToken by viewModel.suggestedRefreshToken.collectAsState()
     val fieldCovers by viewModel.fieldCovers.collectAsState()
 
-    val heroSlides = remember(trending) { trending.take(HomeViewModel.HERO_COUNT) }
+    // ROUND 160 (the device report — "the home page should look exactly the
+    // same"): the hero's slides are GENERIC — the anime path builds them from
+    // the AniList trending (the AniList details navigation pre-bound); the
+    // Series & movies path from the CS provider's first shelf (the Extension
+    // details navigation pre-bound). The SAME carousel, the SAME layout.
+    val animeHeroSlides = remember(trending) {
+        trending.take(HomeViewModel.HERO_COUNT).map { anime ->
+            HeroSlide(
+                title = anime.displayName,
+                posterUrl = anime.coverUrl,
+                scorePct = anime.averageScore,
+                year = anime.seasonYear,
+                genres = anime.genres?.take(2)?.joinToString(" · "),
+                onClick = {
+                    onNavigate(
+                        AnimeDetailsKey.AniList(
+                            anime.id,
+                            coverUrl = anime.coverUrl,
+                            title = anime.displayName,
+                        ),
+                    )
+                },
+            )
+        }
+    }
+    val csHeroSlides = remember(csSections) {
+        csSections.firstOrNull()?.items?.take(HomeViewModel.HERO_COUNT)?.map { card ->
+            HeroSlide(
+                title = card.name,
+                posterUrl = card.posterUrl,
+                scorePct = null,
+                year = card.year,
+                genres = card.type,
+                onClick = {
+                    onNavigate(
+                        com.confused.anikuta.feature.animedetails.AnimeDetailsKey.Extension(
+                            sourceId = com.confused.anikuta.data.cloudstream.content.CsSourceIds.idFor(card.providerName),
+                            animeUrl = card.url,
+                            title = card.name,
+                            thumbnailUrl = card.posterUrl,
+                            year = card.year,
+                        ),
+                    )
+                },
+            )
+        }.orEmpty()
+    }
+    val heroSlides = if (showAnimeDiscovery) animeHeroSlides else csHeroSlides
     val trendingRanked = remember(trending) {
         trending.mapIndexed { index, anime -> index + 1 to anime }
     }
@@ -392,7 +441,7 @@ fun HomeScreen(
                     // 152's field covers at the EXACT tile size (the pool is
                     // hoisted to the VM, so re-entry composes instantly). ──
                     SectionPreloader(
-                        urls = heroSlides.map { it.coverUrl },
+                        urls = heroSlides.map { it.posterUrl.orEmpty() },
                         width = 340.dp,
                         height = 454.dp,
                     )
@@ -406,12 +455,11 @@ fun HomeScreen(
                     // airs rows…, trending, suggested, moods.
                     // ROUND 155: the topbar merged into the hero item — one
                     // item fewer ahead of the moods.
-                    // ROUND 157 (WS-D1): the mode decides which discovery
-                    // items exist ahead of the moods (the anime pair =
-                    // trending + suggested; the CS block = one item).
-                    val moodsIndex = 3 + airsToday.size +
-                        (if (showAnimeDiscovery) 2 else 0) +
-                        (if (showCsBlock) 1 else 0)
+                    // ROUND 157 (WS-D1) / ROUND 160 (the device report — the
+                    // same-layout order): every mode renders the SAME slots
+                    // ahead of the moods (the hero, the rail, the suggested,
+                    // the airs head + the rows) — the index is mode-blind.
+                    val moodsIndex = 5 + airsToday.size
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -445,15 +493,6 @@ fun HomeScreen(
                                     )
                                     HomeHero(
                                         slides = heroSlides,
-                                        onOpen = { anime ->
-                                            onNavigate(
-                                                AnimeDetailsKey.AniList(
-                                                    anime.id,
-                                                    coverUrl = anime.coverUrl,
-                                                    title = anime.displayName,
-                                                ),
-                                            )
-                                        },
                                         onWashFraction = { washFraction.floatValue = it },
                                     )
                                 }
@@ -518,6 +557,41 @@ fun HomeScreen(
                         }
 
                         // ── Trending this week (ranked posters) ──
+                        // ROUND 160 (the device report — "the home page
+                        // should look exactly the same"): the Series & movies
+                        // mode renders the SAME sections (the rail, the
+                        // suggested, the genres) with the CS provider's
+                        // shelves — never a stripped-down page.
+                        if (!showAnimeDiscovery && csSections.isNotEmpty()) {
+                            item(key = "trending_rail") {
+                                CsShelfRail(
+                                    shelf = csSections[0],
+                                    providerName = csProviderName,
+                                    onSeeAll = { shelf ->
+                                        csProviderName?.let { provider ->
+                                            onNavigate(
+                                                com.confused.anikuta.feature.animesearch.CsCategoryKey(
+                                                    providerName = provider,
+                                                    sectionTitle = shelf.title,
+                                                    shelfIndex = shelf.shelfIndex,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                    onOpen = { card ->
+                                        onNavigate(
+                                            com.confused.anikuta.feature.animedetails.AnimeDetailsKey.Extension(
+                                                sourceId = com.confused.anikuta.data.cloudstream.content.CsSourceIds.idFor(card.providerName),
+                                                animeUrl = card.url,
+                                                title = card.name,
+                                                thumbnailUrl = card.posterUrl,
+                                                year = card.year,
+                                            ),
+                                        )
+                                    },
+                                )
+                            }
+                        }
                         if (showAnimeDiscovery) item(key = "trending_rail") {
                             HomeTrendingRail(
                                 ranked = trendingRanked,
@@ -542,35 +616,18 @@ fun HomeScreen(
                         }
 
                         // ── Suggested for you (the honeycomb cover field) ──
-                        if (showAnimeDiscovery) item(key = "suggested") {
-                            HomeSuggestedSection(
-                                covers = fieldCovers,
-                                refreshToken = suggestedToken,
-                                onRefresh = { viewModel.refreshSuggestions() },
-                                onOpenCover = { anilistId ->
-                                    onNavigate(AnimeDetailsKey.AniList(anilistId))
-                                },
-                            )
-                        }
-
-                        // ── Browse by mood (surprise + genre chips) ──
-                        // ── Series & movies (ROUND 157, WS-D2) — the
-                        // CloudStream provider's shelves. One item; the head's
-                        // action opens the provider's category subpages.
-                        if (showCsBlock) {
-                            item(key = "cs_home") {
-                                CsHomeBlock(
+                        if (!showAnimeDiscovery && csSections.size > 1) {
+                            item(key = "suggested") {
+                                CsShelfRail(
+                                    shelf = csSections[1],
                                     providerName = csProviderName,
-                                    sections = csSections.take(4),
-                                    loading = csLoading,
-                                    error = csError,
-                                    onOpenAll = { section ->
+                                    onSeeAll = { shelf ->
                                         csProviderName?.let { provider ->
                                             onNavigate(
                                                 com.confused.anikuta.feature.animesearch.CsCategoryKey(
                                                     providerName = provider,
-                                                    sectionTitle = section.title,
-                                                    shelfIndex = section.shelfIndex,
+                                                    sectionTitle = shelf.title,
+                                                    shelfIndex = shelf.shelfIndex,
                                                 ),
                                             )
                                         }
@@ -589,7 +646,42 @@ fun HomeScreen(
                                 )
                             }
                         }
+                        if (showAnimeDiscovery) item(key = "suggested") {
+                            HomeSuggestedSection(
+                                covers = fieldCovers,
+                                refreshToken = suggestedToken,
+                                onRefresh = { viewModel.refreshSuggestions() },
+                                onOpenCover = { anilistId ->
+                                    onNavigate(AnimeDetailsKey.AniList(anilistId))
+                                },
+                            )
+                        }
 
+                        // ── Browse by mood (surprise + genre chips) ──
+// ROUND 160: the old cs_home block is RETIRED — its shelves
+// render in the SAME home slots the anime sections use (the rail,
+// the suggested, the genres — the user's same-layout order).
+
+
+                        if (!showAnimeDiscovery && csSections.isNotEmpty()) {
+                            item(key = "moods") {
+                                CsGenreChips(
+                                    sections = csSections,
+                                    providerName = csProviderName,
+                                    onSelect = { shelf ->
+                                        csProviderName?.let { provider ->
+                                            onNavigate(
+                                                com.confused.anikuta.feature.animesearch.CsCategoryKey(
+                                                    providerName = provider,
+                                                    sectionTitle = shelf.title,
+                                                    shelfIndex = shelf.shelfIndex,
+                                                ),
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                        }
                         if (showAnimeDiscovery) item(key = "moods") {
                             HomeMoodChips(
                                 trending = trending,
@@ -803,6 +895,115 @@ private fun CsHomeBlock(
 }
 
 
+/**
+ * ROUND 160 (the device report — "the home page should look exactly the
+ * same"): the Series & movies mode's shelf rail — the SAME section anatomy
+ * as the anime rails (the head + the See-all + the poster row), fed by the
+ * CloudStream provider's shelf. The tap routes to the Extension details;
+ * See-all to the provider's category subpage.
+ */
+@Composable
+private fun CsShelfRail(
+    shelf: com.confused.anikuta.data.cloudstream.content.CsBrowseSection,
+    providerName: String?,
+    onSeeAll: (com.confused.anikuta.data.cloudstream.content.CsBrowseSection) -> Unit,
+    onOpen: (com.confused.anikuta.data.cloudstream.content.CsContentCard) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HomeSectionHead(
+            title = shelf.title,
+            actionLabel = if (providerName != null) "See all" else "",
+            onAction = { onSeeAll(shelf) },
+        )
+        LazyRow(
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(shelf.items.size, key = { shelf.title + "#" + it }) { index ->
+                val card = shelf.items[index]
+                Column(
+                    modifier = Modifier
+                        .width(104.dp)
+                        .clickable { onOpen(card) },
+                ) {
+                    AsyncImage(
+                        model = card.posterUrl,
+                        contentDescription = card.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                    Text(
+                        text = card.name,
+                        fontFamily = RobotoFamily,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * ROUND 160: the Series & movies mode's genre chips — the provider's shelf
+ * titles as the chips (the SAME slot the anime moods occupy). The selected
+ * chip opens that shelf's category subpage.
+ */
+@Composable
+private fun CsGenreChips(
+    sections: List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>,
+    providerName: String?,
+    onSelect: (com.confused.anikuta.data.cloudstream.content.CsBrowseSection) -> Unit,
+) {
+    var selectedTitle by remember { mutableStateOf<String?>(null) }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            sections.take(6).forEach { shelf ->
+                val active = selectedTitle == shelf.title
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (active) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    },
+                    modifier = Modifier.clickable {
+                        selectedTitle = shelf.title
+                        onSelect(shelf)
+                    },
+                ) {
+                    Text(
+                        text = shelf.title,
+                        fontFamily = RobotoFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (active) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeTopBar(
     onProfileClick: () -> Unit,
@@ -879,7 +1080,7 @@ private fun HomeTopBar(
  */
 @Composable
 private fun HeroWashUnderlay(
-    slides: List<AniListAnime>,
+    slides: List<HeroSlide>,
     fractionState: androidx.compose.runtime.MutableFloatState,
     modifier: Modifier = Modifier,
 ) {
@@ -892,7 +1093,7 @@ private fun HeroWashUnderlay(
             val incoming = (pos - pos.toInt()).coerceIn(0f, 1f)
             slides.getOrNull(i0)?.let { slide ->
                 AsyncImage(
-                    model = slide.coverUrl,
+                    model = slide.posterUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alpha = 1f,
@@ -903,7 +1104,7 @@ private fun HeroWashUnderlay(
             }
             slides.getOrNull(i1)?.let { slide ->
                 AsyncImage(
-                    model = slide.coverUrl,
+                    model = slide.posterUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alpha = incoming,
@@ -939,10 +1140,30 @@ private fun HeroWashUnderlay(
  * direction-aware dot seam with the countdown fill, neighbours peeking at
  * 0.88/0.66 while the active card sits centered at scale 1.
  */
+/**
+ * ROUND 160 (the device report — "the home page should look exactly the
+ * same"): the hero's GENERIC slide — the anime path builds them from the
+ * AniList trending, the Series & movies path from the CloudStream provider's
+ * cards. [onClick] is pre-bound by the builder (the anime slides navigate to
+ * the AniList details; the CS slides to the Extension details) — the carousel
+ * machinery stays data-source blind.
+ */
+data class HeroSlide(
+    val title: String,
+    val posterUrl: String?,
+    val scorePct: Int? = null,
+    val year: Int? = null,
+    val genres: String? = null,
+    val onClick: () -> Unit,
+)
+
 @Composable
 private fun HomeHero(
-    slides: List<AniListAnime>,
-    onOpen: (AniListAnime) -> Unit,
+    slides: List<HeroSlide>,
+    // ROUND 160 (the device report — "the home page should look exactly the
+    // same"): the hero's data source is generic — the anime slides carry the
+    // AniList navigation pre-bound; the Series & movies slides carry the CS
+    // Extension navigation. The carousel machinery stays data-source blind.
     // ROUND 155: the active-slide index rides up to the merged item — the
     // wash underlay lives THERE now (behind the top bar + the hero).
     onWashFraction: (Float) -> Unit = {},
@@ -1084,7 +1305,7 @@ private fun HomeHero(
                 items(copies * n, key = { it }) { index ->
                     val slide = slides[index % n]
                     HeroCard(
-                        anime = slide,
+                        slide = slide,
                         index = index,
                         listState = listState,
                         stridePx = stridePx,
@@ -1094,7 +1315,7 @@ private fun HomeHero(
                             val slideIndex = index % n
                             if (slideIndex == active) {
                                 // The center card (or its Play) opens details.
-                                onOpen(slide)
+                                slide.onClick()
                             } else {
                                 // A peeking neighbour centers itself.
                                 val forwardDist = (slideIndex - active + n) % n
@@ -1104,7 +1325,7 @@ private fun HomeHero(
                                 jump(slideIndex, manual = true, step = if (adjacent) nextDir else 0)
                             }
                         },
-                        onPlay = { onOpen(slide) },
+                        onPlay = slide.onClick,
                     )
                 }
             }
@@ -1165,7 +1386,7 @@ private fun HomeHero(
  * updates, no recomposition). */
 @Composable
 private fun HeroCard(
-    anime: AniListAnime,
+    slide: HeroSlide,
     index: Int,
     listState: androidx.compose.foundation.lazy.LazyListState,
     stridePx: Float,
@@ -1199,8 +1420,8 @@ private fun HeroCard(
         // The cover art — objectPosition 50% 14% ≈ a top-crop with a slight
         // downward bias (BiasAlignment -1 = top, +1 = bottom → -0.72).
         AsyncImage(
-            model = anime.coverUrl,
-            contentDescription = anime.displayName,
+            model = slide.posterUrl,
+            contentDescription = slide.title,
             contentScale = ContentScale.Crop,
             alignment = BiasAlignment(0f, -0.72f),
             modifier = Modifier.fillMaxSize(),
@@ -1241,10 +1462,10 @@ private fun HeroCard(
                 .fillMaxWidth()
                 .padding(16.dp),
         ) {
-            HeroTitleLockup(title = anime.displayName)
+            HeroTitleLockup(title = slide.title)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                anime.averageScore?.let { score ->
+                slide.scorePct?.let { score ->
                     GlassChip {
                         Icon(
                             imageVector = Icons.Filled.Star,
@@ -1263,10 +1484,10 @@ private fun HeroCard(
                         )
                     }
                 }
-                anime.genres?.takeIf { it.isNotEmpty() }?.let { genres ->
+                slide.genres?.let { genres ->
                     GlassChip {
                         Text(
-                            text = genres.take(2).joinToString(" · "),
+                            text = genres,
                             fontFamily = RobotoFamily,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -1276,7 +1497,19 @@ private fun HeroCard(
                         )
                     }
                 }
-                HeroNoteChip(anime)
+                slide.year?.let { year ->
+                    GlassChip {
+                        Text(
+                            text = year.toString(),
+                            fontFamily = RobotoFamily,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.22.sp,
+                            color = OnScrim,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

@@ -533,6 +533,60 @@ class HttpDownloader(
     /** One downloaded audio version: the temp file + the extension's language label. */
     private data class DownloadedAudioVariant(val file: File, val lang: String)
 
+    // ── ROUND 161 (the device report): THE AUDIO INTEGRITY SYSTEM ──
+    //
+    // The device round's failure: BOTH downloaded audio versions were
+    // CORRUPT — sub-megabyte .mp4 files that published as real audio (the
+    // size gate only catches TINY garbage; a truncated CDN response of a
+    // few hundred KB sails through). A corrupt audio variant ruins the
+    // whole offline episode: the video plays silent.
+    //
+    // THE SYSTEM: every landed audio variant is PROBED with the bundled
+    // FFmpegKit (FFprobeKit.getMediaInformation): a file that cannot be
+    // parsed as media, or whose duration is under
+    // [MIN_AUDIO_DURATION_SECONDS] (a real episode's audio is minutes; the
+    // user's corrupt files were seconds or unparseable), is INVALID. The
+    // download RETRIES the variant (up to [AUDIO_DOWNLOAD_ATTEMPTS]
+    // attempts total — a fresh fetch each time) and only the first VALID
+    // file publishes. All attempts invalid → the variant skips honestly
+    // (the video still downloads and plays with whatever audio it carries).
+
+
+
+    /**
+     * Probes an audio file with FFprobeKit: the file must PARSE as media
+     * AND its duration must be at least [MIN_AUDIO_DURATION_SECONDS].
+     * Returns true when the file is a plausible full audio track.
+     */
+    private fun isPlausibleAudio(file: File): Boolean {
+        if (!file.exists() || file.length() == 0L) return false
+        return try {
+            val info = com.arthenica.ffmpegkit.FFprobeKit.getMediaInformation(file.absolutePath)
+            val mediaInfo = info?.mediaInformation
+            if (mediaInfo == null) {
+                DownloadLogger.w {
+                    "Audio probe: ${file.name} does not parse as media — invalid"
+                }
+                return false
+            }
+            val duration = mediaInfo.duration?.toDoubleOrNull() ?: -1.0
+            if (duration < MIN_AUDIO_DURATION_SECONDS) {
+                DownloadLogger.w {
+                    "Audio probe: ${file.name} duration ${"%.1f".format(duration)}s " +
+                        "(< $MIN_AUDIO_DURATION_SECONDS s) — truncated/corrupt, invalid"
+                }
+                return false
+            }
+            DownloadLogger.i {
+                "Audio probe: ${file.name} OK — ${"%.1f".format(duration)}s, ${file.length()} bytes"
+            }
+            true
+        } catch (e: Exception) {
+            DownloadLogger.w { "Audio probe: ${file.name} threw ${e.message} — invalid" }
+            false
+        }
+    }
+
     private suspend fun downloadAudioToCache(task: DownloadTask): List<DownloadedAudioVariant> =
         withContext(Dispatchers.IO) {
             val variants = task.audioTracks.filter { it.kind == TrackKind.AUDIO_VARIANT }
@@ -544,72 +598,107 @@ class HttpDownloader(
             for ((index, track) in variants.withIndex()) {
                 val urlPath = track.url.substringBefore('?')
                     .substringAfterLast('/', "").lowercase()
-                if (urlPath.endsWith(".m3u8") || urlPath.endsWith(".m3u")) {
-                    // ── ROUND 152: the HLS AUDIO ROUTE — FFmpegKit ──
-                    // Replaces the round-150 flat-GET SKIP: that skip left
-                    // every HLS-audio episode with ZERO downloadable audio
-                    // versions (the flat GET only ever wrote the few-KB
-                    // TEXT playlist). FFmpegKit IS bundled
-                    // (com.github.jmir1:ffmpeg-kit:1.18) and its ffmpeg
-                    // binary fetches the segments + remuxes the real
-                    // container (`-c copy` — no transcode; a 24-min
-                    // episode's audio remuxes in seconds). The full flow +
-                    // the honest failure shape live in
-                    // [downloadHlsAudioVariantToCache].
-                    val hlsFile = downloadHlsAudioVariantToCache(task.id, index, track)
-                    if (hlsFile != null) {
-                        results.add(DownloadedAudioVariant(hlsFile, track.lang))
+                val isHls = urlPath.endsWith(".m3u8") || urlPath.endsWith(".m3u")
+
+                // ── ROUND 161 (the device report): THE RETRY + VALIDATION
+                // LOOP — the round-150/152 gates only caught TINY garbage (a
+                // 64KB floor); the device round's corrupt files were
+                // sub-megabyte TRUNCATED transfers that sailed through and
+                // ruined the offline episode (a silent video). Now: every
+                // landed variant is PROBED (FFprobeKit — the parse + the
+                // duration floor) and the download RETRIES until a valid
+                // file lands or the attempts run out.
+                var landed: File? = null
+                for (attempt in 1..AUDIO_DOWNLOAD_ATTEMPTS) {
+                    if (attempt > 1) {
+                        DownloadLogger.w {
+                            "Audio version $index (${track.lang}) — attempt $attempt " +
+                                "of $AUDIO_DOWNLOAD_ATTEMPTS (the previous file was invalid)"
+                        }
                     }
-                    continue
+                    val file = if (isHls) {
+                        // ── ROUND 152: the HLS AUDIO ROUTE — FFmpegKit (the
+                        // segments + the real container remux, `-c copy`).
+                        downloadHlsAudioVariantToCache(task.id, index, track)
+                    } else {
+                        downloadFlatAudioVariantToCache(task.id, index, track)
+                    }
+                    if (file != null && isPlausibleAudio(file)) {
+                        landed = file
+                        break
+                    }
+                    // The invalid file must not survive as a leftover.
+                    runCatching { file?.delete() }
                 }
-                val tempFile = tempCache.getTempFile(task.id, "audio-$index.${audioExtension(track.url)}")
-                try {
-                    val requestBuilder = Request.Builder().url(track.url)
-                    applyTrackHeaders(requestBuilder, track.headers)
-                    if (track.headers.isNullOrBlank() ||
-                        !track.headers.contains("User-Agent", ignoreCase = true)
-                    ) {
-                        requestBuilder.addHeader(
-                            "User-Agent",
-                            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
-                                "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
-                        )
-                    }
-                    client.newCall(requestBuilder.build()).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            DownloadLogger.w {
-                                "Audio version $index (${track.lang}) fetch failed " +
-                                    "(${response.code}) — skipping"
-                            }
-                            return@use
-                        }
-                        tempFile.outputStream().use { out ->
-                            response.body?.byteStream()?.use { it.copyTo(out) }
-                        }
-                        // ── ROUND 150: the minimal publish gate — a fetch
-                        // that wrote nothing (a null body) or an implausibly
-                        // small payload (an error page, a truncated transfer)
-                        // must never publish as an .audio file — the device
-                        // round's glitched playback was exactly such garbage.
-                        if (tempFile.length() < MIN_PUBLISHABLE_AUDIO_BYTES) {
-                            DownloadLogger.w {
-                                "Audio version $index (${track.lang}) fetched only " +
-                                    "${tempFile.length()} bytes (< $MIN_PUBLISHABLE_AUDIO_BYTES) " +
-                                    "— not a plausible audio file; skipping"
-                            }
-                            tempFile.delete()
-                            return@use
-                        }
-                        results.add(DownloadedAudioVariant(tempFile, track.lang))
-                    }
-                } catch (e: Exception) {
+                if (landed != null) {
+                    results.add(DownloadedAudioVariant(landed, track.lang))
+                } else {
                     DownloadLogger.w {
-                        "Audio version $index (${track.lang}) download failed — skipping: ${e.message}"
+                        "Audio version $index (${track.lang}) — ALL $AUDIO_DOWNLOAD_ATTEMPTS " +
+                            "attempts invalid; the variant skips (the video plays with its " +
+                            "own audio)"
                     }
                 }
             }
             results
         }
+
+    /**
+     * ROUND 161: the FLAT (direct-URL) audio variant fetch — extracted from
+     * the old inline loop so the retry wrapper can call it per attempt. The
+     * 64KB size gate stays (the first-line garbage catch); the DURATION
+     * probe is the caller's (the integrity system).
+     */
+    private suspend fun downloadFlatAudioVariantToCache(
+        taskId: Long,
+        index: Int,
+        track: DownloadTrack,
+    ): File? {
+        val tempFile = tempCache.getTempFile(taskId, "audio-$index.${audioExtension(track.url)}")
+        return try {
+            val requestBuilder = Request.Builder().url(track.url)
+            applyTrackHeaders(requestBuilder, track.headers)
+            if (track.headers.isNullOrBlank() ||
+                !track.headers.contains("User-Agent", ignoreCase = true)
+            ) {
+                requestBuilder.addHeader(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+                )
+            }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    DownloadLogger.w {
+                        "Audio version $index (${track.lang}) fetch failed (${response.code})"
+                    }
+                    return@use null
+                }
+                tempFile.outputStream().use { out ->
+                    response.body?.byteStream()?.use { it.copyTo(out) }
+                }
+                // ── ROUND 150: the minimal publish gate — a fetch that wrote
+                // nothing or an implausibly small payload (an error page) is
+                // not an audio file.
+                if (tempFile.length() < MIN_PUBLISHABLE_AUDIO_BYTES) {
+                    DownloadLogger.w {
+                        "Audio version $index (${track.lang}) fetched only " +
+                            "${tempFile.length()} bytes (< $MIN_PUBLISHABLE_AUDIO_BYTES) " +
+                            "— not a plausible audio file"
+                    }
+                    tempFile.delete()
+                    return@use null
+                }
+                tempFile
+            }
+        } catch (e: Exception) {
+            DownloadLogger.w {
+                "Audio version $index (${track.lang}) download failed: ${e.message}"
+            }
+            runCatching { tempFile.delete() }
+            null
+        }
+    }
 
     /**
      * ROUND 152: the HLS AUDIO_VARIANT route — FFmpegKit. The round-150 skip
@@ -883,5 +972,13 @@ class HttpDownloader(
          * Anything under the floor never publishes as an `.audio<N>` file.
          */
         private const val MIN_PUBLISHABLE_AUDIO_BYTES = 65_536L
+
+        // ── ROUND 161 (the device report): THE AUDIO INTEGRITY SYSTEM ──
+        /** The minimum plausible DURATION (seconds) for a full-episode audio
+         * (the corrupt device files were seconds-or-unparseable). */
+        const val MIN_AUDIO_DURATION_SECONDS = 60.0
+
+        /** The total download attempts per audio variant (1 original + 2 retries). */
+        const val AUDIO_DOWNLOAD_ATTEMPTS = 3
     }
 }

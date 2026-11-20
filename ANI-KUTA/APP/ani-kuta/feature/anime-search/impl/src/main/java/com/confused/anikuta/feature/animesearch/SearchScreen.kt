@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,9 +26,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.horizontalScroll
@@ -338,6 +340,17 @@ fun SearchScreen(
                     is SearchUiState.CloudflareBlocked -> SearchUiState.Loading
                     else -> uiState
                 }
+                // ROUND 160 (WS-SEARCH): the TMDB/Jikan tabs — the extension
+                // states and the AniList error must never render cross-mode.
+                SearchSource.TMDB, SearchSource.JIKAN -> when (uiState) {
+                    is SearchUiState.ExtensionSuccess,
+                    is SearchUiState.ExtensionBrowseSuccess,
+                    is SearchUiState.ExtensionBrowseLoading,
+                    is SearchUiState.ExtensionError,
+                    is SearchUiState.ExtensionEmpty,
+                    SearchUiState.Error -> SearchUiState.Loading
+                    else -> uiState
+                }
                 SearchSource.EXTENSION -> when (uiState) {
                     is SearchUiState.Success,
                     SearchUiState.Empty,
@@ -346,6 +359,12 @@ fun SearchScreen(
                 }
             }
             when (effectiveState) {
+                is SearchUiState.ExternalSuccess -> {
+                    ExternalResultsGrid(
+                        sourceLabel = effectiveState.sourceLabel,
+                        items = effectiveState.items,
+                    )
+                }
                 is SearchUiState.Idle -> {
                     Column(
                         modifier = Modifier
@@ -797,6 +816,95 @@ private fun ResultsGrid(
                 span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
             ) {
                 LoadingMoreFooter()
+            }
+        }
+    }
+}
+
+/**
+ * ROUND 160 (WS-SEARCH): the TMDB / Jikan results grid — the generic poster
+ * cards. The tap opens the source's web page (the honest v1: the details
+ * screens are the AniList/extension territory).
+ */
+@Composable
+private fun ExternalResultsGrid(
+    sourceLabel: String,
+    items: List<ExternalResult>,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (items.isEmpty()) {
+        Text(
+            text = "No results found.",
+            fontFamily = RobotoFamily,
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(24.dp),
+        )
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(items.size, key = { items[it].mediaType + "-" + items[it].id + "-" + it }) { index ->
+            val item = items[index]
+            Column(
+                modifier = Modifier
+                    .clickable {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    },
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer),
+                ) {
+                    if (item.posterUrl != null) {
+                        AsyncImage(
+                            model = item.posterUrl,
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Text(
+                    text = item.title,
+                    fontFamily = RobotoFamily,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Row(modifier = Modifier.padding(top = 2.dp)) {
+                    item.year?.let {
+                        Text(
+                            text = it.toString(),
+                            fontFamily = RobotoFamily,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    item.rating?.takeIf { it > 0 }?.let {
+                        Text(
+                            text = (if (item.year != null) " · ★" else "★") +
+                                "%.1f".format(it),
+                            fontFamily = RobotoFamily,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
         }
     }

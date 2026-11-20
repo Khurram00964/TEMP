@@ -58,6 +58,9 @@ class SearchViewModel(
     private val extensionManager: ExtensionManager,
     private val cloudstreamRepository: CloudstreamContentRepository,
     private val activityTracker: com.confused.anikuta.core.activitytracker.ActivityTracker,
+    // ROUND 160 (WS-SEARCH): the external sources' clients.
+    private val tmdbApi: com.confused.anikuta.core.tmdb.TmdbApi,
+    private val jikanApi: com.confused.anikuta.core.tmdb.JikanApi,
 ) : ViewModel() {
 
     companion object {
@@ -114,6 +117,8 @@ class SearchViewModel(
         private const val KEY_SEARCH_SOURCE = "search_selected_source"
         private const val SOURCE_ANILIST = "anilist"
         private const val SOURCE_EXTENSION = "extension"
+        private const val SOURCE_TMDB = "tmdb"
+        private const val SOURCE_JIKAN = "jikan"
     }
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -127,10 +132,13 @@ class SearchViewModel(
     // on every switch. Previously it lived only in memory, so a full app restart
     // always landed back on AniList.
     private val _source = MutableStateFlow(
-        if (preferenceStore.getString(KEY_SEARCH_SOURCE, SOURCE_ANILIST) == SOURCE_EXTENSION) {
-            SearchSource.EXTENSION
-        } else {
-            SearchSource.ANILIST
+        // ROUND 160 (WS-SEARCH): the persisted source restores across all
+        // four (AniList / Extension / TMDB / Jikan).
+        when (preferenceStore.getString(KEY_SEARCH_SOURCE, SOURCE_ANILIST)) {
+            SOURCE_EXTENSION -> SearchSource.EXTENSION
+            SOURCE_TMDB -> SearchSource.TMDB
+            SOURCE_JIKAN -> SearchSource.JIKAN
+            else -> SearchSource.ANILIST
         },
     )
     val source: StateFlow<SearchSource> = _source.asStateFlow()
@@ -443,8 +451,22 @@ class SearchViewModel(
         // Task 47: persist the tab so it survives a full app restart.
         preferenceStore.putString(
             KEY_SEARCH_SOURCE,
-            if (source == SearchSource.EXTENSION) SOURCE_EXTENSION else SOURCE_ANILIST,
+            when (source) {
+                SearchSource.EXTENSION -> SOURCE_EXTENSION
+                SearchSource.TMDB -> SOURCE_TMDB
+                SearchSource.JIKAN -> SOURCE_JIKAN
+                else -> SOURCE_ANILIST
+            },
         )
+        // ROUND 160 (WS-SEARCH): the external sources resolve on select.
+        if (source == SearchSource.TMDB || source == SearchSource.JIKAN) {
+            if (_query.value.isNotBlank()) {
+                search(_query.value)
+            } else {
+                loadExternalDefaults()
+            }
+            return
+        }
         if (source == SearchSource.EXTENSION) {
             // D-305: with a live query, SEARCH the selected source immediately.
             // Previously this always loaded popular and then DISCARDED it at the
@@ -664,6 +686,15 @@ class SearchViewModel(
             return
         }
 
+        // ROUND 160 (WS-SEARCH): the TMDB/Jikan branches — the external
+        // results render as the generic poster grid (the tap opens the
+        // source's web page; the details screens are the AniList/extension
+        // territory).
+        if (_source.value == SearchSource.TMDB || _source.value == SearchSource.JIKAN) {
+            searchExternal(q)
+            return
+        }
+
         // D-192: track the search event
         activityTracker.track(
             eventType = com.confused.anikuta.core.activitytracker.ActivityEventType.SEARCH,
@@ -721,12 +752,15 @@ class SearchViewModel(
         if (_query.value.isNotBlank()) return
         if (defaultsJob?.isActive == true) return
         if (showingDefaults) return
-        defaultsJob = if (_source.value == SearchSource.ANILIST) {
-            loadTrending()
-        } else if (_selectedKind.value == SelectedSourceKind.CLOUDSTREAM) {
-            loadCloudstreamPopular()
-        } else {
-            loadExtensionPopular()
+        defaultsJob = when (_source.value) {
+            SearchSource.ANILIST -> loadTrending()
+            SearchSource.TMDB, SearchSource.JIKAN -> loadExternalDefaults()
+            SearchSource.EXTENSION ->
+                if (_selectedKind.value == SelectedSourceKind.CLOUDSTREAM) {
+                    loadCloudstreamPopular()
+                } else {
+                    loadExtensionPopular()
+                }
         }
     }
 
@@ -745,6 +779,78 @@ class SearchViewModel(
      *   (success → Success(fresh)) / (fail + cache was shown → keep cache) /
      *   (fail + no cache → Idle).
      */
+    /**
+     * ROUND 160 (WS-SEARCH): the TMDB / Jikan search — the generic results
+     * state. The TMDB multi search covers movies + series (incl. the Chinese
+     * and Korean content); Jikan covers the anime with the MAL ids (keyless —
+     * the MAL data without the MAL registration).
+     */
+    private fun searchExternal(q: String) {
+        showingDefaults = false
+        val gen = beginRequest()
+        _uiState.value = SearchUiState.Loading
+        searchJob = viewModelScope.launch {
+            try {
+                val source = _source.value
+                Logger.i(TAG) { "Searching $source for '$q'" }
+                val results = if (source == SearchSource.TMDB) {
+                    tmdbApi.search(q).map { it.toExternalResult() }
+                } else {
+                    jikanApi.search(q).map { it.toExternalResult() }
+                }
+                if (_query.value.isBlank()) return@launch
+                if (!isCurrent(gen)) return@launch
+                pagingMode = null  // ROUND 160: the external grid has no paging
+                _uiState.value = if (results.isEmpty()) {
+                    SearchUiState.Empty
+                } else {
+                    SearchUiState.ExternalSuccess(
+                        sourceLabel = source.displayName,
+                        items = results,
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Logger.e(TAG, e) { "searchExternal failed for '$q': ${e.message}" }
+                if (_query.value.isBlank()) return@launch
+                if (!isCurrent(gen)) return@launch
+                _uiState.value = SearchUiState.Error
+            }
+        }
+    }
+
+    /** The blank-query defaults for the external sources (their own top feeds). */
+    private fun loadExternalDefaults(): Job {
+        val gen = beginRequest()
+        _uiState.value = SearchUiState.Loading
+        return viewModelScope.launch {
+            try {
+                val results = if (_source.value == SearchSource.TMDB) {
+                    (tmdbApi.trending() + tmdbApi.popularTv()).distinctBy { it.id to it.mediaType }
+                        .map { it.toExternalResult() }
+                } else {
+                    jikanApi.topAnime().map { it.toExternalResult() }
+                }
+                if (_query.value.isNotBlank()) return@launch
+                if (!isCurrent(gen)) return@launch
+                pagingMode = null  // ROUND 160: the external grid has no paging
+                _uiState.value = if (results.isEmpty()) {
+                    SearchUiState.Error
+                } else {
+                    SearchUiState.ExternalSuccess(
+                        sourceLabel = _source.value.displayName,
+                        items = results,
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Logger.e(TAG, e) { "loadExternalDefaults failed: ${e.message}" }
+                if (!isCurrent(gen)) return@launch
+                _uiState.value = SearchUiState.Error
+            }
+        }
+    }
+
     private fun loadTrending(): Job {
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
@@ -1647,6 +1753,14 @@ class SearchViewModel(
      */
     fun refreshCurrent() {
         when (_source.value) {
+            // ROUND 160 (WS-SEARCH): the external sources re-run their own flow.
+            SearchSource.TMDB, SearchSource.JIKAN -> {
+                if (_query.value.isNotBlank()) {
+                    search(_query.value)
+                } else {
+                    loadExternalDefaults()
+                }
+            }
             SearchSource.ANILIST -> {
                 if (_query.value.isNotBlank()) {
                     search(_query.value)
@@ -1735,6 +1849,43 @@ data class ExtensionBrowseSlot(
 
 // ── UI state ──
 
+/**
+ * ROUND 160 (WS-SEARCH): one generic web-source result (TMDB / Jikan) — the
+ * poster grid's item. [url] opens the source's web page (the honest v1 tap —
+ * the dedicated details screens are the AniList/extension territory).
+ */
+data class ExternalResult(
+    val id: Int,
+    val title: String,
+    val posterUrl: String?,
+    val year: Int?,
+    val rating: Double?,
+    val mediaType: String?,
+    val url: String,
+)
+
+fun com.confused.anikuta.core.tmdb.TmdbApi.TmdbItem.toExternalResult(): ExternalResult =
+    ExternalResult(
+        id = id,
+        title = title,
+        posterUrl = posterUrl,
+        year = year,
+        rating = rating,
+        mediaType = mediaType,
+        url = "https://www.themoviedb.org/$mediaType/$id",
+    )
+
+fun com.confused.anikuta.core.tmdb.JikanApi.JikanItem.toExternalResult(): ExternalResult =
+    ExternalResult(
+        id = malId,
+        title = title,
+        posterUrl = posterUrl,
+        year = year,
+        rating = score,
+        mediaType = type,
+        url = "https://myanimelist.net/anime/$malId",
+    )
+
 sealed interface SearchUiState {
     /** No query yet — show recents (if any) or the popular-anime prompt. */
     data object Idle : SearchUiState
@@ -1749,6 +1900,15 @@ sealed interface SearchUiState {
     ) : SearchUiState
     /** AniList failed — friendly "tsundere" message per spec. */
     data object Error : SearchUiState
+
+    /**
+     * ROUND 160 (WS-SEARCH): the TMDB / Jikan results — the generic poster
+     * grid ([ExternalResult] items; the tap opens the source's web page).
+     */
+    data class ExternalSuccess(
+        val sourceLabel: String,
+        val items: List<ExternalResult>,
+    ) : SearchUiState
     /** Extension source selected but no source chosen, or source uninstalled. */
     data object ExtensionNotAvailable : SearchUiState
     /**
@@ -1828,6 +1988,11 @@ enum class SelectedSourceKind {
 
 enum class SearchSource(val displayName: String) {
     ANILIST("AniList"),
+    // ROUND 160 (WS-SEARCH): the web-data sources — the "pick a source" menu
+    // the user asked for. TMDB = series & movies (incl. Chinese/Korean).
+    // Jikan = the keyless MyAnimeList data mirror.
+    TMDB("TMDB"),
+    JIKAN("Jikan"),
     EXTENSION("Extension"),
 }
 

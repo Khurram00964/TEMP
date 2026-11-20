@@ -185,6 +185,7 @@ dependencies {
     implementation(project(":core:tracker-anilist"))
     implementation(project(":core:tracker-trakt"))  // ROUND 157 (WS-C)
     implementation(project(":core:tracker-mal"))  // ROUND 159 (WS-MAL)
+    implementation(project(":core:tmdb"))  // ROUND 160 (WS-TMDB)
     implementation(project(":core:smart-matcher"))
     // Round 101 (WS-C): the share system (:core:share — MainActivity deep-link intake).
     implementation(project(":core:share"))
