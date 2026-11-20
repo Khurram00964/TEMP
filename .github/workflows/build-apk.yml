@@ -17,11 +17,15 @@
 #     RETIRED — no x86 APK is built anywhere on this path anymore.
 #
 # Status:
-#   - Debug build: active — the unit tests gate every push, then
-#     assembleDebug, then the ABI check, then the anikuta-apk artifact
-#     (the debug APK only; the debug co-install line — .debug
-#     applicationIdSuffix, the lime icon, "ANI-KUTA Debug" — lives in
+#   - Debug build: active — assembleDebug, then the ABI check, then the
+#     anikuta-apk artifact (the debug APK only; the debug co-install line —
+#     .debug applicationIdSuffix, the lime icon, "ANI-KUTA Debug" — lives in
 #     app/src/debug).
+#   - NOTE (D-465): NO routine unit-test step runs here — routine CI tests
+#     were removed by user order (they run only when explicitly requested or
+#     when changed code warrants a pass). The older header line claiming
+#     "the unit tests gate every push" was stale comment drift (fixed
+#     2026-11-21).
 #
 # NOTE: Per CORE_RULES §4, all project zones live inside a single wrapper folder
 # `ANI-KUTA/`. The `.github/` folder stays at repo root (GitHub Actions constraint).

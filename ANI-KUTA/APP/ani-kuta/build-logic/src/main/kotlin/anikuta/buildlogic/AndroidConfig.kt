@@ -610,12 +610,13 @@ object AndroidConfig {
     // SIMPLER DESCRIPTION — the notification reads TITLE / "New Episode"
     // ("maybe we can simplify it more to just 'New Episode'. Let's make it
     // simpler like that.").
-    // D-430 (round 37): the version STAYS 0.4.20/85 on main — version
-    // discipline (D-425: the version never moves without the user's explicit
-    // instruction). The release line (release/1.1.1) carries 1.1.1/10101;
-    // main is the dev line where the v1.x features converge between
-    // releases. A version bump on main happens only when the user asks for
-    // the next release cut.
+    // D-430 (round 37, values re-verified 2026-11-21): the mainline carries
+    // 1.1.20/10120 — version discipline (D-425: the version never moves
+    // without the user's explicit instruction; bumps ride the RELEASE branch
+    // only, and the next release must land at >= 10200 to update in place
+    // over the installed v1.1.99 debug line — IMPROVEMENTS-TO-DO.md §8).
+    // The release branches carry the bumps; main is the dev line where the
+    // v1.x features converge between releases.
 
     // ABI POLICY (CORE_RULES.md §8, D-430 round 37 — the D-423 port): arm64-v8a
     // for the dev/CI verification line (main pushes: assembleDebug + the

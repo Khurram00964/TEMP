@@ -11,16 +11,18 @@ The **frontend (UI layer)** must be customizable without touching the **backend 
    - Lime #B1F256 primary accent + warm-dark surface ramp (#14111F → #3D3656).
    - **10 functional accent presets + CUSTOM** (D-053): seed color → full color family derived via `lerp(seed, surface/text, fraction)`.
    - Light / Dark / AMOLED modes.
-   - Adaptive colors (optional).
-   - Header blur effect (toggleable).
-   - Typography, shapes, motion tokens.
+   - Adaptive colors (optional) — Palette-extracted cover accents re-tint only the primary quartet (`AdaptiveAccentTheme`).
+   - Header blur effect: the settings toggle EXISTS but is currently DEAD — no `ScrollBlurOverlay` call site reads it (see DESIGN-LANGUAGE §2.2).
+   - Typography: Roboto body/UI + Bricolage Grotesque variable display face.
+   - Shapes, motion tokens (100/150/300/400/450/600ms on the Emphasized curve).
 
 2. **Component variants** (`:core:designsystem`):
-   - Floating pill bottom nav (4 tabs: Browse | Library | Search | More).
-   - Translucent cards (no shadow).
-   - Collapsible headers (`CollapsingHeader`).
-   - Scroll blur overlay (`ScrollBlurOverlay` — gradient scrim, not real blur).
-   - Scale-on-press button feedback.
+   - Floating pill bottom nav (4 tabs: Browse | Library | Search | More) — opaque `surfaceVariant` pill + 8dp shadow, active tab 0.95f press scale.
+   - Settings/list cards: the `surfaceVariant@0.4` recipe (the "translucent cards" idea shipped this way, not as a separate card class).
+   - Collapsing headers (`CollapsingHeader` — the title+back arrow are ONE leading element since D-559).
+   - Scroll blur overlay (`ScrollBlurOverlay` — 7-stop gradient scrim, not real blur).
+   - Cover badges: SOFT PILLS (D-480 — pointed tips + outlines retired) colored by the luminance-adaptive `BadgeColorScheme`.
+   - `AppToast` (3 tones, thread-safe host above the nav) — the ONE toast primitive.
    - Pull-to-refresh with haptic.
 
 3. **Layout customization** (feature modules + `:core:preferences`):
@@ -50,6 +52,8 @@ The **frontend (UI layer)** must be customizable without touching the **backend 
    - The GRID details-list branch chunks the episodes into paired rows INSIDE the existing LazyColumn (the outer list remains THE virtualizer — no nested grid); TIMELINE drops the per-item vertical gap at the call site so the spine reads as ONE continuous rail.
    - The pure algebra (`fromKey` leniency + the legacy DETAILED/COMPACT/MINIMAL → CLASSIC migration + `pillsRowVisible` + `formatShortDate`/`timelineNodeLabel`/`ghostEpisodeNumber`) is unit-locked in `EpisodeListStyleTest` (13 locks).
    - Coexists with the details-page list-settings SHEET: the sheet is list SHAPING (sort/filter/grouping), the page is list APPEARANCE.
+
+7. **Player episode-list appearance** (`PlayerEpisodeListPreferences` + `PlayerEpisodeListLayouts.kt`, 1962 ln in designsystem) — a SECOND 4-layout system, separate from the details-page one: **CLASSIC / TRACKLIST / GRID / BANNER** (lenient `fromKey` migration). Presented inside the player's episodes browser sheet; the SAME panels render as bottom sheets in portrait and fullscreen side drawers in landscape (`asDrawer` flag, `PlayerSideDrawer`).
 
 ## Contract Between UI and Data
 - UI talks to data only through **repository interfaces** (in `:core:*` modules).

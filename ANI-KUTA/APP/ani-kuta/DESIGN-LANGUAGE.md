@@ -54,8 +54,14 @@ fades in at the header's bottom edge:
 - **Implementation:** `ScrollBlurOverlay` composable in `:core:designsystem`.
   Takes a `scrollOffset: () -> Float` lambda. Fades in based on the offset.
   Aligned `TopCenter` over the content Box.
-- **Toggle:** Respects `ThemePreferences.headerBlurEffect` — when `false`, no
-  overlay renders.
+- **Scrim shape (verified 2026-11-21):** a 7-stop top-to-bottom gradient
+  (alpha 1.0 / 0.92 / 0.70 / 0.42 / 0.18 / 0.05 / 0.0) at a default 36dp
+  height, 24dp corner radius, smoothstepped over 24px.
+- **Toggle:** `ThemePreferences.headerBlurEffect` is currently a **DEAD
+  setting** — the switch renders in Settings, but NO `ScrollBlurOverlay` call
+  site passes it (the only `enabled=` usage in the repo is an unrelated tab
+  check in UpdatesScreen). The overlay always renders. Wiring the toggle in
+  (or removing the switch) is pending a user decision.
 
 ### 2.3 — Hide-on-Scroll Top Bar (Search page specific)
 
@@ -95,10 +101,11 @@ rides the tile's top-end corner.
   recipe everywhere is the entire point (that was D-250's real lesson).
 - **Typography:** title `RobotoFamily ExtraBold 16sp`, subtitle `Normal 13sp`,
   trailing `Icons.Filled.ChevronRight`. All inherited from `MoreListRow`.
-- **Back button:** every settings sub-screen's `CollapsingHeader` `actions` slot
-  uses the shared `BackAction` from `:core:designsystem` (36dp `CircleShape`
-  `surfaceVariant` button + 18dp `Icons.AutoMirrored.Filled.ArrowBack`). No
-  per-screen copies.
+- **Back button:** SUPERSEDED by D-558/D-559 — `CollapsingHeader` now takes an
+  `onBack` param and renders the arrow + the title as ONE combined leading
+  clickable element (the heading text IS the back button). The standalone
+  shared `BackAction` composable still exists in `:core:designsystem` but is
+  used by only one screen (SettingsScreen).
 - **History:** D-250 (2026-08-24) banned the tile — but the offending pattern
   was per-screen `primaryContainer` CHIP VARIANTS that made Settings look like
   a different format from the More page, not tiles per se; the fix unified the
@@ -111,19 +118,22 @@ rides the tile's top-end corner.
 
 ---
 
-### 2.5 — Cover Badge Language (pointed tags, D-252)
+### 2.5 — Cover Badge Language (soft pills, D-480)
 
 Badges overlaid on cover art (Library grid modes, Browse cards) share one
-visual language:
+visual language. **Current state (D-480, superseding the D-252 pointed tags):**
 
-- **Pointed tip**: the chip nearest the cover CENTER tapers into a 45°
-  triangle tip (`PointedTagShape` in `:core:designsystem:badge`) — badges
-  read as pointed flags pointing INTO the cover. Text keeps +4dp padding on
-  the pointed side so it never overlaps the transparent tip.
-- **Corner-flush**: the badge row sits flush with the cover corner; its outer
-  corner clips to the cover's corner radius (12dp rounded modes, 0dp for
-  COVER_ONLY's square covers — `coverCornerRadius` param). No floating
-  badges with inset padding on grid covers.
+- **SOFT PILLS**: every chip is a fully-rounded pill (`RoundedCornerShape(50)`)
+  with a soft shadow (shadowElevation 4dp) for legibility on busy art. The
+  user retired the 45° pointed tips (`PointedTagShape`) and the D-257 1dp
+  outlines — "the badges look sharp and don't match the theme."
+  `PointedTagShape.kt` still exists in `:core:designsystem:badge` as DEAD
+  legacy (delete candidate).
+- **Floating variant (D-533/D-489)**: a TOP_CENTER floating badge with a 2dp
+  inset exists beside the corner-flush rows.
+- **Corner-flush rows**: the badge row sits flush with the cover corner; its
+  outer corner clips to the cover's corner radius (12dp rounded modes, 0dp for
+  COVER_ONLY's square covers — `coverCornerRadius` param).
 - **Shared colors**: `BadgeColorScheme` (designsystem) — SUB blue / DUB
   orange / Total green / Score amber / All-Caught-Up red, hand-picked Material
   pairs that adapt to the APPLIED theme (background luminance, not the system
@@ -132,13 +142,6 @@ visual language:
 - **Compound badges** (SUB+DUB split) draw their split background with
   `drawBehind` — always `Modifier.clip(shape).drawBehind { ... }` (clip BEFORE
   draw), because M3 Surface applies its own shape-clip AFTER user modifiers.
-- **Outlined (D-257)**: every cover badge carries a 1dp outline at the chip's
-  own content color @ 50% alpha (Browse score tag + Library simple chips via
-  the m3 `Surface(border=…)` param — the stroke follows `PointedTagShape`
-  incl. the 45° tip; the compound sub|dub badge draws its outline as a manual
-  stroked Path inside the same drawBehind, replicating the pointed geometry —
-  a Surface border can't trace hand-drawn paint). Keeps the tags crisp
-  against busy cover art.
 
 ### 2.6 — Custom Theme (D-254 / D-261)
 
@@ -185,22 +188,70 @@ Editor + picker sheet rules (D-259 / D-261):
 - The editor forces alpha opaque — translucent theme surfaces are not
   supported.
 
+### 2.7 — Shipped Systems the Early Doc Eras Never Ruled (verified 2026-11-21)
+
+One-line each; these are real, shipped design systems in `:core:designsystem`
+/ feature modules:
+
+- **Honeycomb suggestion field** (`HomeSuggestionField.kt`, anime-browse) —
+  7×5 = 35-cover honeycomb, odd rows offset half a cell, 60×90dp tiles r14
+  with 10dp gutter, lens magnification (center 1.5×, corners 0.72×),
+  drag/tap physics, 30-pass pairwise min-gap solver.
+- **Adaptive accent theming** (`AdaptiveAccent.kt` + `CoverColorExtractor.kt`)
+  — AndroidX Palette on a 100×100 cover bitmap (vibrant→darkVibrant→muted→
+  dominant, sat ≥ 0.40 / lightness 0.40–0.65), cached per-anime in DB;
+  `AdaptiveAccentTheme` re-tints ONLY the primary quartet (details page,
+  episode sheets, player) while app surfaces stay.
+- **Accent preset engine** (`AccentPreset.kt`) — 10 accent-only presets
+  (Lime, Coral, Rose, Amber, Red, Teal, Blue, Cyan, Violet, Emerald) + CUSTOM;
+  `AccentColors.from(seed)` derives the 8-slot primary family via lerps.
+- **Random palette generator** (`RandomPalette.kt`) — Dark/Light/Chaos;
+  dark+light replicate the app's own ramp structure at a random family hue
+  (±25°, WCAG-checked); chaos is fully random with alpha forced opaque.
+- **AppToast** (`component/toast/AppToast.kt`) — the ONE themed toast:
+  thread-safe StateFlow host above the nav bar, 3 tones (NEUTRAL/SUCCESS/
+  ERROR), slide-up 280ms / 2.4s hold / sink-out 320ms. No raw
+  `Toast.makeText` in feature UI.
+- **Player drawer-vs-sheet presentation** (`PlayerSideDrawer.kt`) — portrait
+  keeps bottom-up sheets; fullscreen/landscape presents the SAME panels as a
+  fullscreen side drawer (callers pass `asDrawer`).
+- **Player episode-list layouts** (`PlayerEpisodeListLayouts.kt`) — a SECOND
+  4-layout system beside the details-page one:
+  `CLASSIC / TRACKLIST / GRID / BANNER` (lenient `fromKey` migration).
+- **Shared-element system** (`SharedTransitionLocals.kt`) — namespaced keys
+  per screen (§6), 450ms page crossfade vs 600ms cover morph.
+
 ---
 
-## 3. Future Rules (pending user confirmation)
+## 3. Shipped Rules (device-confirmed) + Pending
 
-Rules the user has hinted at but not yet confirmed. Don't implement until
-confirmed.
+### 3.1 — Shipped (promoted from pending — verified in code 2026-11-21)
 
-- *Button press feedback* (scale-down + ripple).
-- *Card press animation* (scale 0.95f on press, no ripple).
-- *Section card backgrounds* (dedicated surface per section, minimal padding).
-- *Bottom-up sheet* cap at 70% screen height (D-052).
-- *Floating pill bottom nav* (4 tabs, translucent).
-- *Translucent cards* (no shadow, surfaceVariant at low alpha).
-- *Hero pager* — IMPLEMENTED (D-253 full-bleed → D-256 poster+banner → **D-257 hero v3**:
-  inset 16:9 rounded 20dp card, infinite forward-only auto-advance, dots below
-  the card). Promote to a confirmed rule after user device verification of v3.
+- **Floating pill bottom nav** — SHIPPED: `AnikutaBottomNavBar` in
+  `:core:designsystem`, 4 tabs (Browse | Library | Search | More) in
+  MainActivity. Nuance: the pill is OPAQUE `surfaceVariant` + 8dp shadow —
+  not translucent as first sketched. Active tab gets a fully-rounded 28dp
+  pill; scale 0.95f on press, no ripple.
+- **Button/card press feedback** — SHIPPED (the no-ripple variant):
+  NavPill scales 0.95f, MoreListRow 0.97f on press.
+- **Section card backgrounds** — SHIPPED as the `surfaceVariant@0.4` recipe
+  (settings rows, list cards).
+- **Bottom-up sheet cap** — shipped per-screen (e.g. TrackSheet caps at
+  85% screen height).
+- **Translucent cards** — shipped as the surfaceVariant-at-reduced-alpha
+  recipe, not a distinct "no shadow" card class.
+- **Hero carousel (v4 — the current truth, superseding D-257's 16:9 note)**:
+  a 302:404 portrait card, 28dp corners, neighbor peek scaling (0.88/0.66
+  read inside `graphicsLayer`), glass chips, two-layer scrim, dots BELOW the
+  card, bidirectional infinite auto-advance (5.5s cycle, 8s manual hold-off,
+  3×N copies with silent middle re-anchor — direction-aware seam wrap both
+  ways, NOT forward-only) over the **HeroWashUnderlay** — the active cover's
+  art blurred 20dp + dimmed as a wash behind the hero AND the merged top
+  bar, crossfading with the FRACTIONAL carousel position (round 155/156).
+
+### 3.2 — Pending (not yet confirmed)
+
+- (none currently queued)
 
 ---
 
@@ -210,8 +261,12 @@ confirmed.
 rules solidify.)
 
 - **Dark theme (default):** Warm-purple-tinted darks. Background `#14111F`,
-  5-tier surface ramp → `#3D3656`. Primary lime `#B1F256`.
-- **Light theme:** Warm-neutral backgrounds. Background `#FAF9F6`.
+  5-tier surface ramp → `#3D3656`. Primary lime `#B1F256`. Error pair themed
+  (`ErrorDark`/`OnErrorDark`).
+- **Light theme:** Warm-neutral backgrounds. Background `#FAF9F6`, 4-tier
+  surface ramp (`Surface1-4Light`), error pair themed (`ErrorLight`
+  `#B3261E` / `OnErrorLight` white — 2026-11-21; the scheme previously fell
+  back to M3 defaults).
 - **AMOLED:** Pure black backgrounds/surfaces when `amoled = true` + dark.
 - **Accent override:** `AnikutaTheme(accentSeed = ...)` overrides the primary
   family (D-053). Background/surface ramp stays fixed.
@@ -222,9 +277,13 @@ rules solidify.)
 
 ## 5. Typography
 
-- **Font:** Roboto (bundled — 4 TTF files: regular, medium, bold, black). Fixes
-  bold-text rendering on all devices.
-- **Family:** `RobotoFamily` in `:core:designsystem`.
+- **Body/UI font:** Roboto (bundled — 4 TTF files: regular, medium, bold,
+  black). Fixes bold-text rendering on all devices. `RobotoFamily` in
+  `:core:designsystem`.
+- **Display font:** **Bricolage Grotesque** (bundled variable TTF
+  `BricolageGrotesque[opsz,wdth,wght].ttf`, ROUND 152) — `DisplayFamily`/
+  `BricolageFamily` used for the Browse hero title lockup + browse section
+  heads.
 - **Titles:** ExtraBold (800). Section labels: 14sp ExtraBold primary color.
 - **Body:** Medium (500). 14-15sp.
 - **Captions:** 11-12sp. onSurfaceVariant color.

@@ -42,6 +42,28 @@ After completing a task, give the user a **short summary**:
 - Reference file paths, not file contents (the user opens files if they want detail).
 - **Test checklist**: After implementing improvements/fixes, ALWAYS provide a **test checklist** the user can follow to verify each fix on their device. Format: grouped by category (e.g. Playback, Error Handling, Episode Switching), each item as a checkbox `[ ]` with a clear description of what to test + what the expected result is. The user tests, reports back (✅/❌/⚠️), and the agent fixes any remaining issues. This closes the feedback loop and ensures nothing is missed.
 
+### 3.1 — The Response Format (the user-confirmed shape, locked 2026-11-21)
+
+The user confirmed this exact report shape ("this format was quite well") —
+use it for task summaries AND analysis/review reports:
+
+1. **Lead with the outcome** — a one-line ✅ header saying what is now true.
+2. **Emoji section markers** — every section header carries a topical emoji
+   (🚨 issues, 🏗️ architecture, ⚙️ pipeline, ➡️ next steps). Sections stay short.
+3. **Critical items are VISUALLY flagged** — blockquotes (`>`) or bold lead-ins
+   for anything the user MUST read (dead credentials, blockers, breaking
+   findings). Never bury a critical item mid-bullet.
+4. **Tables for comparisons** — doc-vs-reality drift, before/after states,
+   issue lists with severity grouping (🔴 critical / 🟠 should-fix / 🟡 minor / ✅ good).
+5. **Short bullets, easy wording** — one idea per bullet; no walls of text;
+   speech-to-text friendly (the user reads these aloud).
+6. **Close with a decision block** — `➡️ Next:` the concrete options or the
+   single next action, so the user can reply with a one-word go.
+
+Analysis reports additionally follow: verified-correct items kept SHORT, every
+reported issue carries `file:line` evidence, and inconsistencies are never
+softened (§2 honesty).
+
 ---
 
 ## 4. Project Structure

@@ -1,9 +1,9 @@
 # Module Map
 
-> Every Gradle module: name, job, dependencies. Verified against `settings.gradle.kts` + every module's `build.gradle.kts` at **Round 115 (2026-10-02)**.
+> Every Gradle module: name, job, dependencies. Verified against `settings.gradle.kts` + every module's `build.gradle.kts` at **Round 115 (2026-10-02)**, re-verified post-revert (**2026-11-21** — the round-115 counts had drifted: :core:backup and :core:torrent were missing, the DB/tables/Koin/MainActivity facts were stale).
 > The architecture **design/concept** (layer diagrams, module graph) lives in `architecture.md`.
 
-## Status: 57 modules — ALL BUILT ✅
+## Status: 59 modules — ALL BUILT ✅
 
 ```
 :app  ──→  :feature:*:{api,impl}  ──→  :core:*  ──→  :core:common
@@ -23,15 +23,16 @@
 ## :app (1 module)
 | Module | Job | Depends On |
 |--------|-----|------------|
-| `:app` | App shell — `AnikutaApp` (Koin **30 modules** + `debugKoinModules()` 2 more in debug + Injekt registration + crash handler), `MainActivity` (hand-rolled nav — **44 NavKey branches**, 3075 lines), BrowsePreloader, non-modularized screens (More, Profile, Settings, Notifications, updates, download, error, webview, pluginimport) | all `:core:*` (except `:core:seasons`, transitive via common) + `:data:extension` + `:data:cloudstream` + all `:feature:*` (debug-bubble via `debugImplementation`) |
+| `:app` | App shell — `AnikutaApp` (Koin **33 modules** + `debugKoinModules()` 2 more in debug + Injekt registration + crash handler), `MainActivity` (hand-rolled nav — **52 NavKey branches**, 3321 lines), BrowsePreloader, non-modularized screens (More, Profile, Settings, Notifications, updates, download, error, webview, pluginimport) | all `:core:*` (except `:core:seasons`, transitive via common) + `:data:extension` + `:data:cloudstream` + all `:feature:*` (debug-bubble via `debugImplementation`) |
 
-## :core (33 modules)
+## :core (35 modules)
 | Module | Job | Key Files | Depends On |
 |--------|-----|-----------|------------|
 | `:core:common` | Logger, DispatcherProvider, ContentType, EpisodeTitleParser, EpisodeGridTitles, HapticHelper, UnifiedAnime models, DASH-manifest helpers | `Logger.kt`, `EpisodeTitleParser.kt`, `model/UnifiedAnime.kt` | `:core:seasons` (EpisodeTitleParser consumes SeasonDetector) |
 | `:core:seasons` | D-312 dedicated season-management engine — SeasonDetector pattern registry + provider-hint fusion | `SeasonDetector.kt`, `SeasonPatterns.kt`, `SeasonModels.kt` | — |
 | `:core:designsystem` | AnikutaTheme (lime #B1F256, 10 accent presets + CUSTOM — D-053, warm-dark ramp, AMOLED), components, SharedTransitionLocals (D-320), Palette-based adaptive accent (D-223), the shared episode-list kit (D-727) | `Theme.kt`, `AccentPreset.kt`, `AdaptiveAccent.kt` | `:core:common`, `:core:video-resolver` (model types only — D-721) |
-| `:core:database` | SQLDelight schema — **25 tables / 17 .sq files** (app.sq intentionally empty since D-198). `DatabaseDriverFactory` (onOpen idempotent migration: FK enforcement, hasColumn-guarded ALTERs) | `DatabaseDriverFactory.kt`, `content.sq`, `watch.sq` | — |
+| `:core:backup` | Round 134 BACKUP & RESTORE — `BackupManager` (the `.anikuta` ZIP: 20 DB tables dumped/restored generically + the full SharedPreferences layer incl. the AniList token + optional cover images, merge-restore via INSERT OR IGNORE), `BackupWorker` (WorkManager 6h/12h/daily/weekly, newest-3 prune), `BackupPreferences`, `ExtensionBackupBridge`, `OfflineImageStore` | `BackupManager.kt`, `BackupWorker.kt` | `:core:common`, `:core:database`, `:core:preferences`, `:core:download` |
+| `:core:database` | SQLDelight schema — **26 tables / 17 .sq files**, schema version 4 (3 versioned migrations: `1.sqm` played_time_ms, `2.sqm` watch_session, `3.sqm` tracking-table FK rebuild — round 127/137/144; schema-migration lock tests in the module's build.gradle.kts). app.sq intentionally empty since D-198. `DatabaseDriverFactory` (onOpen idempotent migration: FK enforcement, hasColumn-guarded ALTERs) | `DatabaseDriverFactory.kt`, `content.sq`, `watch.sq` | — |
 | `:core:preferences` | `PreferenceStore` (reactive Flow accessors) + per-domain preference objects (App, Player, EpisodeList, PlayerEpisodeList, Notification, AutoLink, AppIcon, Update, Debug) + SettingsRepository + NsfwFilterMode | `PreferenceStore.kt`, `SettingsRepository.kt` | `:core:common`, `:core:database` |
 | `:core:navigation-api` | `NavKey` sealed-class contracts (hand-rolled D-150 — NOT Nav3), `\u001F` delimiter constant | `NavKey.kt` | — |
 | `:core:network` | OkHttp `HttpClientFactory` (browser UA; default + download-qualified clients) | `HttpClientFactory.kt` | — |
@@ -61,11 +62,12 @@
 | `:core:debug-api` | `DebugContext`, `DbReference`, `DebugAction`, `LocalDebugContext` — types-only, always on classpath (D-162) | `DebugContext.kt` | `:core:common` |
 | `:core:cloudstream-api` | CloudStream V2 — clean-room CS3 plugin binary-compat surface (`com.lagradost.cloudstream3.*` — MainAPI, plugins, extractors, syncproviders) | the `com/lagradost/cloudstream3/` tree | — |
 | `:core:cs-player` | CloudStream V2 (task 52) — Media3 ExoPlayer playback engine host; CS links NEVER touch MPV | `CsPlayerEngine.kt`, `CsHttpDataSourceFactory.kt`, `LocalDashDataSource.kt` | `:core:common` |
+| `:core:torrent` | Torrent seam for the CS pipeline (D-858) — `TorrentGateway` contract + `TorrentServerApi` + `TorrentModels` + `TorrentPreferences`: a TORRENT link never reaches the player raw, the gateway hands over a playable stream | `TorrentGateway.kt`, `TorrentServerApi.kt` | `:core:common`, `:core:preferences` |
 
 ## :data (2 modules)
 | Module | Job | Depends On |
 |--------|-----|------------|
-| `:data:extension` | Aniyomi extension system runtime — `ExtensionLoader` (child-first classloader), `ExtensionManager`, `TrustService`, repo management (`ExtensionRepoRepository`/`Api`), installer (+ provider bridge, AnimeExtensionApi) | `:core:common`, `:core:database`, `:core:network`, `:core:preferences`, `:core:provider-api`, `:core:source-api` |
+| `:data:extension` | Aniyomi extension system runtime — `ExtensionLoader` (**parent-first PathClassLoader** — D-294, exactly like the reference Aniyomi), `ExtensionManager`, `TrustService`, repo management (`ExtensionRepoRepository`/`Api`), installer (+ provider bridge, AnimeExtensionApi) | `:core:common`, `:core:database`, `:core:network`, `:core:preferences`, `:core:provider-api`, `:core:source-api` |
 | `:data:cloudstream` | CloudStream V2 extension runtime (loader/manager/repos/bridge) — `CloudstreamPluginManager`/`Loader`/`Installer` (+CsSharedPluginFormat), repo mgmt, content bridge (`CloudstreamContentRepository` + `CloudstreamAnimeSourceBridge` + `CsBrowseLoader`), playback (`CloudstreamLinkResolver`, `CsSourceMemory`) | `:core:cloudstream-api` (api), `:core:provider-api` (api), `:core:source-api` (api), `:core:common`, `:core:preferences`, `:core:cs-player` |
 
 ## :feature (21 modules — 12 features)
@@ -79,7 +81,7 @@
 | `:feature:download` | Downloads screens — live queue (drag-reorder), bulk actions, downloaded files page, download settings | `:core:{download, debug-api, designsystem, common, preferences, navigation-api, video-resolver}` | (single module) |
 | `:feature:onboarding` | D-403 (round 28) first-run setup wizard (single module — the feature:download precedent) — theme picker (live re-theme) + permissions | `:core:{download, preferences, designsystem, common, navigation-api}` | (single module) |
 | `:feature:watch` | Watch screen (MPV) — player surface + controls + episode switching + subtitle/audio sheets + manual subtitle import. ADR-025 carve-out: screen owns MPV lifecycle | `:core:navigation-api`, `:core:common` (WatchKey — 17 fields) | own api + `:core:{debug-api, designsystem, common, navigation-api, player, player-mpv-lib, preferences, video-resolver, watch-progress, ratings, download, playback-cache, activity-tracker, source-api}` + `:data:extension` |
-| `:feature:cs-watch` | CloudStream V2 (task 52) — the dedicated CS watch screen (Media3 ExoPlayer via `:core:cs-player`): loadLinks resolution, resolve sheet, subtitle fetch/overlay/settings, DASH quality probe — mirrors the watch UX, zero aniyomi code shared | `:core:navigation-api`, `:core:common` (CsWatchKey + CsSubDubSiblings) | own api + `:core:{cs-player, designsystem, common, navigation-api, preferences, watch-progress, ratings, download}` + `:data:cloudstream` |
+| `:feature:cs-watch` | CloudStream V2 (task 52) — the dedicated CS watch screen (Media3 ExoPlayer via `:core:cs-player`): loadLinks resolution, resolve sheet, subtitle fetch/overlay/settings, DASH quality probe — mirrors the watch UX, zero aniyomi code shared | `:core:navigation-api`, `:core:common` (CsWatchKey + CsSubDubSiblings) | own api + `:core:{cs-player, designsystem, common, navigation-api, preferences, watch-progress, ratings, download, torrent}` + `:data:cloudstream` |
 | `:feature:anime-history` | History screen — watch history list + swipe-to-delete | `:core:navigation-api` | own api + `:feature:anime-details:api` + `:feature:watch:api` + `:core:{navigation-api, designsystem, common, content, watch-progress, preferences}` |
 | `:feature:updates` | Updates feed + schedule screens (list + calendar) | `:core:navigation-api` | own api + `:feature:anime-details:api` + `:core:{navigation-api, designsystem, common, content, updates, preferences, schedule}` |
 | `:feature:debug-bubble` | Debug Bubble — floating draggable overlay, 5-tab panel (Screen/Database/Console/Network/App Info). **debugImplementation only** (D-163) — zero code in release builds | `:core:{debug-api, common, designsystem, preferences, database, network}` | (single module) |
@@ -88,10 +90,11 @@
 | Layer | Count |
 |-------|-------|
 | `:app` | 1 |
-| `:core:*` | 33 |
+| `:core:*` | 35 |
 | `:data:*` | 2 |
 | `:feature:*` | 21 (12 features: 9 api/impl splits — anime-browse, anime-details, anime-library, anime-search, extensions-settings, watch, cs-watch, anime-history, updates — + 3 singles: download, onboarding, debug-bubble) |
-| **Total** | **57** |
+| **Total** | **59** |
 
 ---
 *Round-115 refresh (2026-10-02): fully re-verified against settings.gradle.kts + every module's build.gradle.kts by a read-only research sub-agent (task 2-a). The previous version carried three eras of drift at once (header 50 / core section 26 / summary 30) — the summary is now single-sourced.*
+*Post-revert refresh (2026-11-21): re-verified again — added the missing `:core:backup` + `:core:torrent` rows, corrected 57→59 / 33→35 core, the Koin count 30→33, MainActivity 44 branches/3075 ln → 52/3321, DB 25→26 tables + the 3 `.sqm` migrations (v1→v4), the `:data:extension` loader is parent-first (D-294), and `:feature:cs-watch`'s impl deps gained `:core:torrent` (D-858).*

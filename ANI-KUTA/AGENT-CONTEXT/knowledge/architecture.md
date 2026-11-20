@@ -23,7 +23,7 @@ The app is split into two independent layers per screen/feature. The UI can be c
 │  BACKEND (Data Layer)                    │
 │  - Fetches data (AniList GraphQL / ext)  │
 │  - Processes / transforms / caches       │
-│  - Persists to SQLDelight (25 tables)    │
+│  - Persists to SQLDelight (26 tables)    │
 │  - Exposes Flow<T> / StateFlow<UiState>  │
 └─────────────────────────────────────────┘
 ```
@@ -36,10 +36,11 @@ Both are valid. The contract (interface) is what matters.
 
 ### Player Screen Carve-Out (ADR-025)
 The watch page is **exempt** from strict UI/backend separation due to the single-MPV-instance constraint. The screen composable owns the MPV view cache + event bridge + lifecycle effects; `PlayerStateHolder` (plain class, NOT ViewModel) holds observable state; `PlayerObserver` decouples MPV events via a Callback interface. This is the old project's proven pattern (D-044). The watch page's *surrounding* UI (top nav, episode list, episode details) is still split into separate composables.
+**The CS watch screen has the IDENTICAL carve-out** (verified 2026-11-21): `CsWatchScreen.kt` owns the Media3 engine (`CsPlayerEngine` created in a `remember {}`, single `PlayerView` re-parented between modes) — same pattern, different engine. Two playback pipelines (MPV for Aniyomi/AniList, Media3 ExoPlayer for CloudStream) share ZERO player code; they share only the data spine (watch-progress, preferences, ratings, download, designsystem).
 
 ---
 
-## Actual Module Graph (57 modules — count verified Round 115; the per-module list in module-map.md is canonical)
+## Actual Module Graph (59 modules — count verified post-revert 2026-11-21; the per-module list in module-map.md is canonical)
 
 ```
                          ┌──────────┐
@@ -49,7 +50,7 @@ The watch page is **exempt** from strict UI/backend separation due to the single
             ▼                  ▼                  ▼
    ┌─────────────────┐  ┌─────────────┐  ┌──────────────┐
    │ :feature:*:impl │  │ :data:ext + │  │  :core:*     │
-   │ (12 features /  │  │ :data:cs    │  │  (33 mods)   │
+   │ (12 features /  │  │ :data:cs    │  │  (35 mods)   │
    │  21 modules)    │  │ (loaders)   │  │              │
    └────────┬────────┘  └──────┬──────┘  └──────┬───────┘
             │                  │                │
@@ -71,10 +72,10 @@ The watch page is **exempt** from strict UI/backend separation due to the single
 ### Layer responsibilities
 | Layer | Modules | Responsibility |
 |-------|---------|---------------|
-| **App** | `:app` | Application class (Koin 30 modules + `debugKoinModules()` 2 more in debug + Injekt + crash handler), MainActivity (hand-rolled nav), ViewModels for non-modularized screens |
+| **App** | `:app` | Application class (Koin 33 modules + `debugKoinModules()` 2 more in debug + Injekt + crash handler), MainActivity (hand-rolled nav), ViewModels for non-modularized screens |
 | **Feature** | 12 features (21 Gradle modules — 9 api/impl splits + 3 singles) | One per user-facing screen. UI + ViewModel. Calls core repositories. |
 | **Data** | `:data:extension` + `:data:cloudstream` | Aniyomi extension loader/manager/trust/installer + the CloudStream plugin runtime (loader/manager/repos/bridge) |
-| **Core** | 33 modules | Contracts, repositories, SQLDelight, network, player, resolver, download engine, metadata, trackers, content, cache, ratings, notifications, schedule, updates, debug-api + the later adds (seasons, share, app-update, ads, playback-cache, cloudstream-api, cs-player) |
+| **Core** | 35 modules | Contracts, repositories, SQLDelight, network, player, resolver, download engine, metadata, trackers, content, cache, ratings, notifications, schedule, updates, debug-api + the later adds (seasons, share, app-update, ads, playback-cache, cloudstream-api, cs-player, backup, torrent) |
 
 ---
 
@@ -88,7 +89,7 @@ when (currentKey) {                          ← single dispatch in AppRoot()
     is AnimeBrowseKey    -> BrowseScreen(...)
     is AnimeDetailsKey   -> DetailsScreen(...)
     is WatchKey          -> WatchScreen(...)
-    ... (44 top-level NavKey branches + nested AnimeDetailsKey.AniList/Extension sub-dispatch — MainActivity.kt `when(currentKey)`)
+    ... (52 top-level NavKey branches + nested AnimeDetailsKey.AniList/Extension sub-dispatch — MainActivity.kt `when(currentKey)`, 3321 lines)
 }
 ```
 
@@ -99,22 +100,27 @@ when (currentKey) {                          ← single dispatch in AppRoot()
 
 ---
 
-## Database (SQLDelight — 25 tables / 17 .sq files)
+## Database (SQLDelight — 26 tables / 17 .sq files, schema version 4)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  SQLDelight 2.0.2  (AndroidSqliteDriver — system SQLite)│
-│  25 tables across 17 .sq files                          │
+│  26 tables across 17 .sq files                          │
+│  Schema version 4 — 3 versioned migrations:             │
+│    1.sqm (v1→v2, r127 played_time_ms)                   │
+│    2.sqm (v2→v3, r137 watch_session)                    │
+│    3.sqm (v3→v4, r144 tracking FK rebuild)              │
 │  PRAGMA foreign_keys = ON (D-166)                        │
-│  onOpen migration (idempotent: hasColumn + IF [NOT] EX)  │
+│  onOpen guard (idempotent: hasColumn + IF [NOT] EX)      │
+│  + schema-migration lock tests in core/database          │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Table groups (Round-115 verified)
+### Table groups (re-verified post-revert 2026-11-21)
 | Group | .sq file | Tables | Count |
 |-------|----------|--------|-------|
 | App settings | `appSettings.sq` | app_settings | 1 |
-| Watch | `watch.sq` | watch_progress | 1 |
+| Watch | `watch.sq` | watch_progress, watch_session | 2 |
 | Activity | `tracking.sq` | activity_event | 1 |
 | Library | `library.sq` | library_category, library_item | 2 |
 | Content (identity) | `content.sq` | main_entry, content_details, data_source, system | 4 |
@@ -128,14 +134,14 @@ when (currentKey) {                          ← single dispatch in AppRoot()
 | Tracking | `track.sq` | track_entry, content_tracking_state | 2 |
 | Playback cache | `playbackCache.sq` | playback_cache_entry | 1 |
 | App | `app.sq` | (intentionally empty since D-198) | 0 |
-| **Total** | **17 files** | | **25 tables** |
+| **Total** | **17 files** | | **26 tables** |
 
 *Dropped since the D-192 era: app_metadata, user_customization, anime_metadata_cache, anilist_detail/extension_detail/other_source_detail/content_ext\* (consolidated into the content two-ID system).*
 
 ### SQLite constraints
 - minSdk 24 → API 24-28 ships SQLite 3.9-3.22 → **no UPSERT** (needs 3.24+). `INSERT OR REPLACE` used instead.
 - CHECK constraints can't be ALTER-TABLE'd onto existing installs (deferred — D-166).
-- Debug builds rebuild schema freely (CORE_RULES §30) — no `.sqm` migration files needed yet.
+- Debug builds still hold §30 schema freedom, but the schema NOW carries 3 versioned `.sqm` migrations (v1→v4) with lock tests — the "no .sqm needed yet" era ended in round 127.
 
 ---
 
@@ -173,6 +179,6 @@ Tracked in `memory/progress.md` → "Deferred Concerns" section. Summary:
 3. `HttpDownloader.reResolver` orphaned (D-149) — built but not wired; signatures mismatched.
 4. Dead download code: `DownloadVideoPickerSheet`, `setRetryingStatus` (D-151).
 5. Main-thread `runBlocking` in Downloads→Watch SAF scan (ANR risk).
-6. 4 god-class .kt files >2000 lines (LibraryScreen, DetailsScreen, DetailsViewModel, WatchScreen).
-7. DB migrations use `onOpen` instead of `.sqm` files (acceptable for debug per §30; needs `.sqm` before production).
+6. 5 god-class .kt files >2000 lines (LibraryScreen, DetailsScreen, DetailsViewModel, WatchScreen, MainActivity).
+7. ~~DB migrations use `onOpen` instead of `.sqm` files~~ → PARTIALLY RESOLVED: 3 versioned `.sqm` migrations exist (v1→v4, rounds 127/137/144); the `onOpen` pattern remains as the idempotent index/column guard.
 8. ~~AniList tracker is a placeholder~~ → RESOLVED: `:core:tracker-anilist` is fully implemented (OAuth + GraphQL sync + the tracking bridges, 1471 lines — verified Round 115).
