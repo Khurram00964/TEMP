@@ -4,6 +4,10 @@
 
 ## Decisions
 
+## D-924 (round 162): THE v1.1.100 DEBUG RELEASE — the new versioning starts
+The user's explicit order ("do the debug release too with the version 1.1.100") — Routine A on TEMP: release/1.1.100 cut from the round-162 head 49983800, ONE bump commit (9fd0eec6: 10200/"1.1.100" — the IMPROVEMENTS-TO-DO.md §8 floor met exactly, so it updates in place over the installed v1.1.99/10199), the annotated tag v1.1.100 (its message = the release body, no tables), the release-apk.yml dispatch {"ref":"main","inputs":{"tag":"v1.1.100"}} → run 44812886314 GREEN (the version gate, the arm64-only ABI gate, the apksigner gate all passed), the release LIVE stable + not-prerelease with the APK + SHA256SUMS.txt, the downloaded APK sha256-verified (d66bc3e4...08bfab both sides — the verify copy in planning/verify_v1100/). The mainline stays 1.1.20/10120 (D-430). WHAT IT CARRIES: the clean post-v1.1.8 base + the round-162 code-quality round (no new features — the foundation release before the redo).
+
+
 ## D-921 (round 162): THE DRIFT-FIX SWEEP + THE RESPONSE FORMAT + THE SPECIALIZED AGENTS
 The user confirmed the round-160 report format ("this format was quite well") — it is locked into CORE_RULES §3.1 (the lead-with-outcome / emoji-sections / critical-flagged / tables / short-bullets / decision-block shape). The knowledge files re-verified against code (59 modules — :core:backup + :core:torrent were missing from module-map.md; 26 tables; 3 .sqm v1→v4; Koin 33; MainActivity 52 branches/3321 ln; :data:extension parent-first D-294; cs-watch impl deps + :core:torrent). DESIGN-LANGUAGE.md corrected to the shipped truth (11 stale claims — the D-480 soft pills, the dead headerBlurEffect toggle, the D-559 header-back, the hero v4 specs, the Bricolage face, the 7-stop scrim) + the never-documented systems added (§2.7). The build-apk.yml test-claim + the AndroidConfig version comment fixed. FOUR specialized agents (.zcode/agents): anikuta-verifier (read-only code-truth), anikuta-docs-medic (drift repair), anikuta-splitter (verbatim god-file normalization), anikuta-ci-runner (TEMP push→dispatch→poll).
 
