@@ -3,6 +3,18 @@
 > One-line lessons from mistakes, corrections, and insights.
 > Read at task start (grep for tags matching your task type). Append when you learn something.
 
+## THE SWEPT-DECLARATIONS MISS (round 162)
+A region map built from section markers is NOT a declaration inventory: the tracking cluster's cut (the openTrackSheet KDoc → markSeriesAsWatched close) carried TWO FIELD declarations (_trackSheetError/_trackSheetSaving) that sat INSIDE the method region between two methods — they landed in the extension file as invalid top-level members and the screen's `by viewModel.collectAsState()` lost its properties (CI 44808332206 RED, 4 symptoms, one root cause). RULE: before any verbatim cut, enumerate EVERY declaration in the range (`grep -nE "^\s{4}(private |internal )?(val|var|fun|class)"`) and classify field vs method — fields stay, methods move; and after the move, grep the target file for 4-space-indented declarations (a class-body signature at top level = a swept member).
+
+## THE HAND-DOWN DOC LESSON (round 162)
+A design-language doc restructured in one era silently outlived its own section numbers AND its facts: code comments cited §5/§5.9/§8 that no longer existed, and 11 claims described devices removed rounds ago (pointed badges, outlines, the pending-but-shipped nav). The user's instinct ("verify, don't hand down") was right. RULE: when a doc cites sections or states facts, verify against code in the same pass; a stale claim found by an agent must be fixed THAT session (§26), and code comments citing doc sections get re-anchored when the doc moves.
+
+## THE EXTENSION-SPLIT INVARIANT (round 162)
+Kotlin extension functions can see internal members but an extension PROPERTY re-instantiates its value on every access — initialized-once state (MutableStateFlow fields, stateIn flows, isTracked) and init blocks MUST stay in the class during a god-file split; only METHODS move. Private helpers that only the moved cluster called stay `private` as file-scoped extensions (narrower reachability for free). Visibility widening private→internal is module-only and behavior-neutral.
+
+## THE DEAD-CREDENTIAL FAIL MODE (round 162)
+A flagged GitHub account degrades FURTHER over time: the owner's PAT that still worked at flag time (2026-11-17) returned 401 four days later (2026-11-21) — the repo, Actions, and Pages all invisible. Verify the live line FIRST each session (the credential API check is one curl), never assume last round's access state; the CRLF strip matters only for well-formed tokens (this one was genuinely dead).
+
 ## THE REPLACE-CASCADE TRAP (round 134)
 INSERT OR REPLACE in SQLite DELETES the conflicting row first — with foreign_keys ON, every ON DELETE CASCADE child of that row dies with it. A backup-restore built on REPLACE doesn't "update" — it silently ERASES local rows newer than the backup (children the backup doesn't carry, like rows added to a table after the backup was taken). RULE: any restore into a live database is INSERT OR IGNORE (+ per-row column lists so missing keys hit their schema DEFAULTs), merge semantics only, and the UI must say exactly what that means. Also: a dump of related tables needs a read transaction around the WHOLE dump, or a mid-dump write orphans a parent in the archive.
 
