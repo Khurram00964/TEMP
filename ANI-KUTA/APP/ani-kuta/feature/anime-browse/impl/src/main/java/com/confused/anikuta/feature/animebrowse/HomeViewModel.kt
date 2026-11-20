@@ -220,6 +220,47 @@ class HomeViewModel(
     /** The airs source the timeline currently serves (mirrors the toggle). */
     val airsSource: StateFlow<HomeAirsSource> = homePreferences.airsSource
 
+    // ── The CS "Series & movies" home block (WS-D2) ─────────────────────────
+
+    /**
+     * The CloudStream provider's browse shelves, rendered as the home's
+     * Series & movies block (SERIES_MOVIES / BOTH modes; hidden in ANIME).
+     * The loader is the search page's phased pipeline verbatim — the skeleton
+     * arrives first, shelves fill as they land, [CloudstreamBrowseCache] holds
+     * the 10-minute snapshot. In-memory only here: the search page's cache
+     * serves the same provider within its TTL, and a home-grade cache is a
+     * later round once the shelf layout settles.
+     */
+    // ROUND 158 V3 (the P0): these declarations MUST precede the init block —
+    // the contentMode observer's collect fires IMMEDIATELY (Dispatchers.Main
+    // .immediate runs the first emission synchronously inside the
+    // constructor), and touching a property declared after the init block is
+    // a NULL StateFlow — the v1.1.97 black-screen crash.
+    private val _csSections = kotlinx.coroutines.flow.MutableStateFlow<List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>>(emptyList())
+    val csSections: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>> = _csSections.asStateFlow()
+
+    private val _csProviderName = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val csProviderName: kotlinx.coroutines.flow.StateFlow<String?> = _csProviderName.asStateFlow()
+
+    private val _csLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val csLoading: kotlinx.coroutines.flow.StateFlow<Boolean> = _csLoading.asStateFlow()
+
+    /** ROUND 158 (V1): the honest failure state — a Cloudflare block or a
+     * network miss is NOT "install a plugin"; the block says what happened. */
+    private val _csError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val csError: kotlinx.coroutines.flow.StateFlow<String?> = _csError.asStateFlow()
+
+    /** ROUND 157 (WS-D1): the home's content mode, exposed for the screen. */
+    val contentMode: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.preferences.HomeContentMode> =
+        homePreferences.contentMode
+
+    private var csSectionsFetched = false
+
+    // ROUND 158 (the round-2 critic): one load job at a time — a
+    // pull-to-refresh during a streaming load ran TWO collectors appending
+    // into the same list (duplicate shelves).
+    private var csLoadJob: kotlinx.coroutines.Job? = null
+
     init {
         // ROUND 157 (WS-D1/D2): the content mode gates the DISCOVERY fetches.
         // ANIME/BOTH run today's AniList path; SERIES_MOVIES skips it entirely
@@ -757,31 +798,6 @@ class HomeViewModel(
      * serves the same provider within its TTL, and a home-grade cache is a
      * later round once the shelf layout settles.
      */
-    private val _csSections = kotlinx.coroutines.flow.MutableStateFlow<List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>>(emptyList())
-    val csSections: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.data.cloudstream.content.CsBrowseSection>> = _csSections.asStateFlow()
-
-    private val _csProviderName = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
-    val csProviderName: kotlinx.coroutines.flow.StateFlow<String?> = _csProviderName.asStateFlow()
-
-    private val _csLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
-    val csLoading: kotlinx.coroutines.flow.StateFlow<Boolean> = _csLoading.asStateFlow()
-
-    /** ROUND 158 (V1): the honest failure state — a Cloudflare block or a
-     * network miss is NOT "install a plugin"; the block says what happened. */
-    private val _csError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
-    val csError: kotlinx.coroutines.flow.StateFlow<String?> = _csError.asStateFlow()
-
-    /** ROUND 157 (WS-D1): the home's content mode, exposed for the screen. */
-    val contentMode: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.preferences.HomeContentMode> =
-        homePreferences.contentMode
-
-    private var csSectionsFetched = false
-
-    // ROUND 158 (the round-2 critic): one load job at a time — a
-    // pull-to-refresh during a streaming load ran TWO collectors appending
-    // into the same list (duplicate shelves).
-    private var csLoadJob: kotlinx.coroutines.Job? = null
-
     fun loadCsSections(force: Boolean = false) {
         val repo = cloudstreamRepository ?: return
         if (csSectionsFetched && !force) return

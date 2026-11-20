@@ -23,6 +23,15 @@ const val PLUGIN_TAG = "PluginInstance"
 abstract class BasePlugin {
 
     /**
+     * ROUND 159: the compose-compiler stability stamp — the same binary-compat
+     * field [Plugin] carries (the plugins' generated code may read the
+     * superclass chain's $stable). 0 = the stable mark.
+     */
+    @JvmField
+    public var `$stable`: Int = 0
+
+
+    /**
      * Used to register provider instances of MainAPI.
      * @param element MainAPI provider you want to register
      */

@@ -152,6 +152,16 @@ class PlayerPreferences(private val store: PreferenceStore) {
         set(value) = store.putInt(KEY_AUDIO_DELAY, value)
 
     /**
+     * ROUND 159 (WS-BG): keep an episode playing when the app leaves the
+     * foreground — the background service carries the media notification
+     * (play/pause/±10s). Default ON (the user's explicit ask); OFF restores
+     * the classic pause-on-leave.
+     */
+    var backgroundPlayback: Boolean
+        get() = store.getBoolean(KEY_BACKGROUND_PLAYBACK, true)
+        set(value) = store.putBoolean(KEY_BACKGROUND_PLAYBACK, value)
+
+    /**
      * Task 59 (round 19) — resets EVERY subtitle preference to its default in
      * one write (the shared backing for BOTH subtitle settings sheets' Reset
      * buttons — the aniyomi sheet and the CS sheet). Defaults per the user's
@@ -600,6 +610,7 @@ class PlayerPreferences(private val store: PreferenceStore) {
         private const val KEY_OVERRIDE_ASS = "pref_override_subtitles_ass"
         private const val KEY_SUB_DELAY = "pref_subtitles_delay"
     private const val KEY_AUDIO_DELAY = "player_audio_delay_ms"
+    private const val KEY_BACKGROUND_PLAYBACK = "player_background_playback"
         private const val KEY_RESOLVE_SHEET_FORMATTED = "pref_resolve_sheet_formatted"
         private const val KEY_PREF_SUB_LANGS = "pref_preferred_subtitle_languages"
         private const val KEY_GESTURES = "player_gestures"

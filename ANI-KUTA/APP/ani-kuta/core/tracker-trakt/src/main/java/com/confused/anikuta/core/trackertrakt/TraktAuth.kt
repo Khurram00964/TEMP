@@ -16,8 +16,9 @@ import java.security.SecureRandom
  * token exchange; the SHA-256 challenge rides the authorize URL.
  */
 object TraktAuth {
-    /** The registered app's client id — PENDING the user's registration. */
-    const val CLIENT_ID = ""
+    /** The registered app's client id — TrackerKeys.TRAKT_CLIENT_ID (see
+     * that file's instructions). Blank = dormant. */
+    val CLIENT_ID: String get() = com.confused.anikuta.core.common.TrackerKeys.TRAKT_CLIENT_ID
 
     const val REDIRECT_URI = "anikuta://trakt-auth"
     const val AUTHORIZE_URL = "https://trakt.tv/oauth/authorize"

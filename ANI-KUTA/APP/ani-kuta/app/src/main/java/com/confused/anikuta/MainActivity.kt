@@ -286,6 +286,33 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
     // leaving the app (home/recents) auto-enters PiP instead of pausing. The
     // explicit PiP button in the controls calls [enterPip] directly.
 
+    override fun onStart() {
+        super.onStart()
+        // ROUND 159 (WS-BG): back in the foreground — the player UI owns
+        // everything again; the background service is redundant.
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.setForeground(true)
+        com.confused.anikuta.core.player.playback.PlaybackService.stop(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // ROUND 159 (WS-BG): leaving the foreground — start the background
+        // service when something is playing AND the user wants background
+        // playback. The screens' ON_STOP observers no longer pause (they read
+        // the same pref), so audio continues under the notification.
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.setForeground(false)
+        try {
+            val prefs = org.koin.core.context.GlobalContext.get()
+                .get<com.confused.anikuta.core.preferences.PlayerPreferences>()
+            val controls = com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value
+            if (prefs.backgroundPlayback && controls?.isPlaying == true) {
+                com.confused.anikuta.core.player.playback.PlaybackService.start(this)
+            }
+        } catch (t: Throwable) {
+            Logger.w("Anikuta:MainActivity") { "background service start failed: ${t.message}" }
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // ROUND 157 (WS-E3): auto-PiP when a player marked itself eligible.

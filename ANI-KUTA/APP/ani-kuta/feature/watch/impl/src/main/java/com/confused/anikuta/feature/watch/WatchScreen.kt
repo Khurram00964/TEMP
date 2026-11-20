@@ -645,11 +645,65 @@ fun WatchScreen(
     // below (after the last sheet declaration — the sheets-open guard needs
     // them all in scope).
     val isInPip by com.confused.anikuta.core.common.PipState.isInPip.collectAsState()
+    LaunchedEffect(isPlaying) {
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             com.confused.anikuta.core.common.PipState.eligible.value = false
             com.confused.anikuta.core.common.PipState.setInPip(false)
             com.confused.anikuta.core.common.PipState.setVideoSize(0, 0)
+        }
+    }
+
+    // ROUND 159 (WS-BG): the playback controls registration — the background
+    // service routes its notification actions through these.
+    // ROUND 159 (WS-BG): the skip handler is declared LATER in this scope —
+    // the controls object captures it through this holder (set once it exists).
+    val skipForwardHolder = remember { mutableListOf<() -> Unit>() }
+    DisposableEffect(watchKey.mainId, watchKey.episodeNumber) {
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value =
+            object : com.confused.anikuta.core.common.playback.PlaybackControls {
+                override val title: String = watchKey.animeTitle
+                override val subtitle: String =
+                    "Episode " + formatEpisodeNumber(currentEpisodeNumber) +
+                        (currentEpisodeTitle.takeIf { it.isNotBlank() }?.let { " — $it" } ?: "")
+                override val posterUrl: String? = watchKey.coverUrl
+                override val isPlaying: Boolean
+                    get() = stateHolder.isPlaying.value
+
+                override fun play() {
+                    stateHolder.updateUserPaused(false)
+                    runCatching { MPVLib.setPropertyBoolean("pause", false) }
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                }
+
+                override fun pause() {
+                    stateHolder.updateUserPaused(true)
+                    runCatching { MPVLib.setPropertyBoolean("pause", true) }
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                }
+
+                override fun seekRelative(deltaSeconds: Int) {
+                    runCatching {
+                        MPVLib.command(
+                            arrayOf("seek", deltaSeconds.toString(), "relative"),
+                        )
+                    }
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                }
+
+                override fun playNext(): Boolean {
+                    skipForwardHolder.firstOrNull()?.invoke()
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                    return true
+                }
+            }
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+        onDispose {
+            com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value = null
+            com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
         }
     }
     // ROUND 157 (the critic's P1-5): the controls hide while IN PiP (the
@@ -663,11 +717,18 @@ fun WatchScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
-                    Logger.i(TAG) { "App backgrounded — pausing playback" }
-                    // D-749: counts as a deliberate pause for the watchdog
-                    // (backgrounding at 0:00 must not read as "server stuck").
-                    stateHolder.updateUserPaused(true)
-                    runCatching { MPVLib.setPropertyBoolean("pause", true) }
+                    // ROUND 159 (WS-BG): the pref decides — ON keeps playing
+                    // (the service carries the notification), OFF restores the
+                    // classic pause-on-leave.
+                    if (!playerPreferences.backgroundPlayback) {
+                        Logger.i(TAG) { "App backgrounded — pausing playback" }
+                        // D-749: counts as a deliberate pause for the watchdog
+                        // (backgrounding at 0:00 must not read as "server stuck").
+                        stateHolder.updateUserPaused(true)
+                        runCatching { MPVLib.setPropertyBoolean("pause", true) }
+                    } else {
+                        Logger.i(TAG) { "App backgrounded — background playback keeps playing" }
+                    }
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_START -> {
                     Logger.i(TAG) { "App foregrounded" }
@@ -2860,6 +2921,12 @@ val onExternalAudioPicked: (com.confused.anikuta.core.videoresolver.ResolverSubt
             Logger.i(TAG) { "Skip forward — no next episode (at end of list)" }
         }
     }
+
+    // ROUND 159 (WS-BG): the holder the notification's next-action reads
+    // (the controls object is declared earlier in the scope — the deferred
+    // capture; also survives the val's per-recomposition rebuild).
+    skipForwardHolder.clear()
+    skipForwardHolder.add(onSkipForward)
 
     // ROUND 121: the prev-episode twin (the top-right navigation pair).
     // ROUND 122 (R3): number-based (nearest strictly-lower) — same rule.

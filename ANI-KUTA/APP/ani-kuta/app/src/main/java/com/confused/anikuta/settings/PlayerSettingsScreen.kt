@@ -212,6 +212,15 @@ fun PlayerSettingsScreen(
                                         autoPlayNextState = if (it) 1 else 0
                                     },
                                 )
+                                // ROUND 159 (WS-BG): the background-playback
+                                // option — the ON_STOP pause observer and the
+                                // service start both read this.
+                                SettingsSwitchRow(
+                                    title = "Background playback",
+                                    subtitle = "Keep playing when you leave the app — the notification carries the controls",
+                                    checked = preferences.backgroundPlayback,
+                                    onCheckedChange = { preferences.backgroundPlayback = it },
+                                )
                                 SettingsSwitchRow(
                                     title = "Next-episode card",
                                     subtitle = "Shows the next episode near the end",

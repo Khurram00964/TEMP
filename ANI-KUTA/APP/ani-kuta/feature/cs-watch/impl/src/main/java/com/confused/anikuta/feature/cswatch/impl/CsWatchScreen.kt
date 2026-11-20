@@ -252,6 +252,58 @@ fun CsWatchScreen(
             com.confused.anikuta.core.common.PipState.setVideoSize(0, 0)
         }
     }
+
+    // ROUND 159 (WS-BG): the CS controls registration (the service's actions
+    // route through these — the same bus the MPV stack uses).
+    DisposableEffect(key) {
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value =
+            object : com.confused.anikuta.core.common.playback.PlaybackControls {
+                override val title: String = uiState.animeTitle
+                override val subtitle: String =
+                    "Episode " + com.confused.anikuta.core.common.EpisodeTitleParser
+                        .formatEpisodeNumber(uiState.episodeNumber)
+                // No poster field in the CS state yet (the app icon shows).
+                override val posterUrl: String? = null
+                override val isPlaying: Boolean
+                    get() = engineState.isPlaying
+
+                override fun play() {
+                    engine.playPause()
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                }
+
+                override fun pause() {
+                    engine.playPause()
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                }
+
+                override fun seekRelative(deltaSeconds: Int) {
+                    engine.seekTo(
+                        engineState.positionMs + deltaSeconds * 1000L,
+                    )
+                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                }
+
+                override fun playNext(): Boolean {
+                    val next = viewModel.nextEpisode()
+                    return if (next != null) {
+                        viewModel.selectEpisode(next)
+                        com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+                        true
+                    } else false
+                }
+            }
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+        onDispose {
+            com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value = null
+            com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+        }
+    }
+
+    // The playback-state change refreshes the background notification.
+    LaunchedEffect(engineState.isPlaying) {
+        com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
+    }
     var controlsLocked by remember { mutableStateOf(false) }
 
     // Keep-screen-on while the screen is alive.
@@ -277,8 +329,13 @@ fun CsWatchScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
-                    Logger.i(TAG) { "App backgrounded — pausing playback" }
-                    runCatching { engine.pause() }
+                    // ROUND 159 (WS-BG): the pref decides (MPV parity).
+                    if (!playerPreferences.backgroundPlayback) {
+                        Logger.i(TAG) { "App backgrounded — pausing playback" }
+                        runCatching { engine.pause() }
+                    } else {
+                        Logger.i(TAG) { "App backgrounded — background playback keeps playing" }
+                    }
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_START -> {
                     Logger.i(TAG) { "App foregrounded (no auto-resume — MPV parity)" }

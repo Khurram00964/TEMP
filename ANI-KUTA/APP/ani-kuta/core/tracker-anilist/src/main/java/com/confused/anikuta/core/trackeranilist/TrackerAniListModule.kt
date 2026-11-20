@@ -46,6 +46,10 @@ val trackerAniListModule = module {
     ) {
         listOf(
             com.confused.anikuta.core.trackermal.MalLinkResolver(get()),
+            // ROUND 159 (WS-C completion): the Trakt resolver — reads the
+            // extension-captured TMDB ids; the TMDB search fallback lands
+            // with the API key.
+            com.confused.anikuta.core.trackertrakt.TraktLinkResolver(get()),
         )
     }
 

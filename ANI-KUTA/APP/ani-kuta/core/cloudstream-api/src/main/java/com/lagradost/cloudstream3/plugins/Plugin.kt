@@ -13,6 +13,10 @@ import com.lagradost.cloudstream3.utils.atomicListOf
  * extend the cross-platform BasePlugin). Adds context-aware load + optional
  * resources + a settings hook. Referenced by our loader when dispatching lifecycle.
  */
+// ROUND 159 (the device report — "NoSuchFieldError: No field $stable"): the
+// compose-compiler stability stamp now lives on [BasePlugin] (this class's
+// superclass) — every plugin instance inherits the exact public int `$stable`
+// field the plugins' Compose-generated code reads. See BasePlugin's KDoc.
 abstract class Plugin : BasePlugin() {
 
     /**

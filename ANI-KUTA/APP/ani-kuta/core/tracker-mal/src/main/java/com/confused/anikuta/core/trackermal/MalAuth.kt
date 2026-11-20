@@ -20,8 +20,9 @@ import java.security.SecureRandom
  *   none of this.
  */
 object MalAuth {
-    /** The registered app's client id — PENDING the user's registration. */
-    const val CLIENT_ID = ""
+    /** The registered app's client id — TrackerKeys.MAL_CLIENT_ID (see that
+     * file's instructions). Blank = dormant. */
+    val CLIENT_ID: String get() = com.confused.anikuta.core.common.TrackerKeys.MAL_CLIENT_ID
 
     const val REDIRECT_URI = "anikuta://mal-auth"
     const val AUTHORIZE_URL = "https://myanimelist.net/v1/oauth2/authorize"

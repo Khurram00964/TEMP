@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- ROUND 159 (WS-BG): the background-playback service. Foreground
+             mediaPlayback (NOT dataSync — the 6h timeout would kill a long
+             episode). Stack-agnostic: it talks only to PlaybackCommandBus. -->
+        <service
+            android:name="com.confused.anikuta.core.player.playback.PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+    </application>
+</manifest>
