@@ -3,6 +3,12 @@
 > One-line lessons from mistakes, corrections, and insights.
 > Read at task start (grep for tags matching your task type). Append when you learn something.
 
+## THE COHORT-AWARE MIGRATION LESSON (round 163)
+A migration chain guards on version NUMBERS, not SHAPES: the generated `oldVersion <= 4` guard skipped 4.sqm for the v1.1.96-99 cohort (their user_version was 5 with a DIFFERENT column set — the reverted round's 4.sqm), so the new chain never delivered the column the new mapper reads → a crash loop for exactly the devices that exist on TEMP. The adversarial reviewer caught what the implementer's own contract rule ("no new hasColumn probes") had made unreachable. RULE: enumerate EVERY schema version any released build ever stamped (git tag --contains the migration commits) and write a shape-repair pre-flight for each non-chain shape (DatabaseDriverFactory.migrateV5ShapeIfNeeded — the documented exception); a version-only view of migrations is a cohort blind spot.
+
+## THE RESTORE-MIRRORS-KEY LESSON (round 163)
+A NOT NULL DEFAULT that mirrors a KEY (watch_progress.episode_number = the key's tail) is wrong on restore: pre-v6 archives restore at 0 and the reactive tracking bridge relays the difference BOTH ways — a restored tracked content's AniList progress would be wiped to 0. RULE: every key-mirroring denormalization re-runs its backfill inside restoreBackup's transaction (the reviewer's P1), and any relay-that-syncs-both-ways must be audited against the restore path before shipping a new default-bearing column.
+
 ## THE SWEPT-DECLARATIONS MISS (round 162)
 A region map built from section markers is NOT a declaration inventory: the tracking cluster's cut (the openTrackSheet KDoc → markSeriesAsWatched close) carried TWO FIELD declarations (_trackSheetError/_trackSheetSaving) that sat INSIDE the method region between two methods — they landed in the extension file as invalid top-level members and the screen's `by viewModel.collectAsState()` lost its properties (CI 44808332206 RED, 4 symptoms, one root cause). RULE: before any verbatim cut, enumerate EVERY declaration in the range (`grep -nE "^\s{4}(private |internal )?(val|var|fun|class)"`) and classify field vs method — fields stay, methods move; and after the move, grep the target file for 4-space-indented declarations (a class-body signature at top level = a swept member).
 

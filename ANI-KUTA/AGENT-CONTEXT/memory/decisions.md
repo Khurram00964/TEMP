@@ -4,6 +4,19 @@
 
 ## Decisions
 
+## D-925 (round 163): THE AIRS-TODAY FIX + OPTION A
+The pad rows now fill AFTER the upcoming body (both composers) — slot 3 is always the next to air (the old order displaced it whenever released>=3 && upcoming<=3, the Library mode's steady state); the library released pool gained the 24h bound; the next-to-air pill's 4-layer strobe became Option A per the user's pick (the static accent time + the subtle border + the row-keyed one-shot 450ms entrance — no scroll-return replay per the review).
+
+## D-926 (round 163): THE DB v4→v6 HARDENING + THE STANDING MIGRATION DISCIPLINE
+4.sqm re-lands the reverted v5 denorm (episode_number — kills the reactive scan on every 10s save) + season_number; 5.sqm rebuilds track_entry + content_tracking_state FK-free (THE TRACKING-SURVIVAL FIX — library removal no longer erases the tracker link + the opt-in flag; the user's "very huge issue") + times_watched + the UNIQUE (tracker_type, tracker_id); DatabaseMaintenance bounds watch_session 400d / data_cache_episode 180d / sweeps expired browse rows; EpisodeKeys gains the 3-part season format + the dual-format parsers; DATABASE-CONTRACT.md re-lands. THE STANDING ORDER: proper versioned migrations for EVERY schema change (CORE_RULES §30 updated) — the debug-wipe remains the dev fallback only.
+
+## D-927 (round 163): THE SIMKL TRACKER (movies + TV) — anime stays AniList+MAL
+core/tracker-simkl: the AUTH-V2 PKCE S256-only OAuth (no secret; 7d access/180d sliding refresh), the sync family + the /redirect bridge accepting anilist/tmdb ids (the anime-continuity bridge), SimklTracker (the resolved-kind mapping; movies skip watching/hold; the 0-100→1-10 boundary), the honest not-configured state (TrackerKeys.SIMKL_CLIENT_ID = "" pending the user's simkl.com/apps registration), the composition-root tracker aggregation, the manifest redirect + the dispatch, the TrackersScreen card in the AniList language. TMDB-as-tracker rejected (no episode marks) — metadata only. Trakt stays a later export target.
+
+## D-928 (round 163): THE DATA SOURCES + THE SEARCH PICKER + THE CS-FIRST HAND-OFF
+core/tmdb re-landed (the key ships configured) + core/tvmaze NEW (KEYLESS: the schedule-by-date/search/next-episode; no movies/trending — the complement). BOTH DATA-ONLY: no streams — a metadata result's tap opens find-where-to-watch → the user picks a CloudStream provider from the EXISTING sheet → the title becomes that provider's live search (the user's priority rule). The search picker: the AniList segment mirrors the Extension side (the dead tap fixed), DataSourcePickerSheet with the disabled graying, the persisted data-source axis, the unified DataSourceResult grid (coil3), TMDB trending / TVmaze schedule defaults. The toggles (TmdbPreferences/TvmazePreferences) ride reactive flows; the Settings page for them lands with Step 3d.
+
+
 ## D-924 (round 162): THE v1.1.100 DEBUG RELEASE — the new versioning starts
 The user's explicit order ("do the debug release too with the version 1.1.100") — Routine A on TEMP: release/1.1.100 cut from the round-162 head 49983800, ONE bump commit (9fd0eec6: 10200/"1.1.100" — the IMPROVEMENTS-TO-DO.md §8 floor met exactly, so it updates in place over the installed v1.1.99/10199), the annotated tag v1.1.100 (its message = the release body, no tables), the release-apk.yml dispatch {"ref":"main","inputs":{"tag":"v1.1.100"}} → run 44812886314 GREEN (the version gate, the arm64-only ABI gate, the apksigner gate all passed), the release LIVE stable + not-prerelease with the APK + SHA256SUMS.txt, the downloaded APK sha256-verified (d66bc3e4...08bfab both sides — the verify copy in planning/verify_v1100/). The mainline stays 1.1.20/10120 (D-430). WHAT IT CARRIES: the clean post-v1.1.8 base + the round-162 code-quality round (no new features — the foundation release before the redo).
 
