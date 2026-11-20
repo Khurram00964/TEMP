@@ -12,6 +12,13 @@
 - RELEASED on **Khurram00964/TEMP** (the flagged-account fallback; the debug updater still points at testplay-byte — sideload this build): stable + latest, ani-kuta-v1.1.90-debug-arm64-v8a.apk (76,203,792 bytes, checksum 67f627f5... verified). Routine A adapted: release/1.1.90 + the bump 7f381ad6 (10190/1.1.90) + the tag v1.1.90 on the bump; the Release APK run 43931582924 GREEN via workflow_dispatch (the flag-blocked account; the fresh-account push triggers do not fire). Carries rounds 126-149.
 ## 1.1.93 / 10193 — RELEASE (round 153 — ON THE TEMP MIRROR; testplay-byte is flagged)
 - RELEASED on **Khurram00964/TEMP**: stable + latest, ani-kuta-v1.1.93-debug-arm64-v8a.apk (76,620,144 bytes, checksum 6df50dc2... verified). release/1.1.93 + the bump 3bb68f0c + the tag v1.1.93 on the bump; the Release APK run 44153597596 GREEN (dispatched). Carries rounds 126-153: the variant truth, the one-shot autoplay, ADD AUDIO FILE, the offline audio names, the home feel, plus everything from v1.1.92 and before.
+## 1.1.98 / 10198 — RELEASE (round 159 — ON THE TEMP MIRROR; the device-report round)
+- RELEASED on **Khurram00964/TEMP**: stable, ani-kuta-v1.1.98-debug-arm64-v8a.apk (checksum b4f1b907... verified). The Release run 44767410995 GREEN. Carries: the TWO device-report P0 fixes (the black-screen startup crash — the init-order; the CloudStream plugin load failure — the $stable static stamp), MYANIMELIST (the full tracker, dormant until the app registration), BACKGROUND PLAYBACK (the foreground service + the notification controls + the Player-settings option), and the Trakt/TMDB groundwork completed to keys-only (TrackerKeys.kt).
+## Round 159 (released — carried by v1.1.98)
+- The two P0 device-report crashes fixed at the mechanism.
+- MAL: the full tracker implementation (dormant pending the registration).
+- Background playback with the notification controls and the Settings option.
+- The tracking translation layer completed: the resolvers registered, the keys centralized in TrackerKeys.kt.
 ## 1.1.97 / 10197 — RELEASE (round 158 — ON THE TEMP MIRROR; the verification round)
 - RELEASED on **Khurram00964/TEMP**: stable, ani-kuta-v1.1.97-debug-arm64-v8a.apk (checksum b9c39ff4... verified). The Release run 44636421601 GREEN. Carries the round-158 verification fixes: the CS home block waits for the plugin scan (no more false 'install a plugin'), the pull-to-refresh shelf duplication dead, the auto-PiP picker trap dead, the PiP window follows the video's aspect, the honest provider error, the debug gate's hint, the doc drift corrected.
 ## Round 158 (released — carried by v1.1.97)
