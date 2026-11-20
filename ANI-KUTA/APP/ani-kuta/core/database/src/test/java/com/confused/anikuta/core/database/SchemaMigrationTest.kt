@@ -128,7 +128,12 @@ class SchemaMigrationTest {
 
     @Test
     fun `migration 1 to 2 preserves existing watch progress data`() {
-        AnikutaDatabase.Schema.migrate(driver, 1, 2)
+        // ROUND 163 review fix: the chain runs to the CURRENT version (6) —
+        // the generated row mapper reads the FULL v6 shape positionally, so a
+        // chain that stops at v2 hands it a 12-column table (the reviewer's
+        // P1: "tests that read through the generated code must end the chain
+        // at the CURRENT schema version").
+        AnikutaDatabase.Schema.migrate(driver, 1, 6)
 
         val database = AnikutaDatabase(driver)
         val row = database.watchQueries.getWatchProgress("main-1|00001").executeAsOneOrNull()
@@ -143,7 +148,7 @@ class SchemaMigrationTest {
 
     @Test
     fun `migrated database is fully usable by the generated code`() {
-        AnikutaDatabase.Schema.migrate(driver, 1, 2)
+        AnikutaDatabase.Schema.migrate(driver, 1, 6)
 
         val database = AnikutaDatabase(driver)
         // A save through the typed API on the MIGRATED database must work —
@@ -577,5 +582,132 @@ class SchemaMigrationTest {
         // The expired row sweeps away; the table stays queryable.
         database.dataCacheQueries.deleteExpiredBrowseCache(10L)
         assertEquals(null, database.dataCacheQueries.getBrowseCache("home_trending").executeAsOneOrNull())
+    }
+
+    // ── ROUND 163 (the adversarial review's P0): the WS-A-v5 COHORT ──────────
+    //
+    // v1.1.96-99 shipped schema v5 with watch_progress.episode_number ONLY
+    // (no season_number). The versioned chain skips 4.sqm for oldVersion == 5
+    // (the generated guard: oldVersion <= 4), so the cohort's shape repair
+    // lives in DatabaseDriverFactory.migrateV5ShapeIfNeeded — an onUpgrade
+    // pre-flight that cannot be exercised through Schema.migrate (which owns
+    // only the .sqm chain). This test pins the COHORT SHAPE itself: a v5
+    // table (episode_number present, season_number missing) must NOT be
+    // accepted as-is — the detector's precondition column must be provably
+    // missing so the guard fires on the real device. The detector's ALTER is
+    // DB-driver SQL (SupportSQLiteDatabase), verified on device; the unit
+    // lock here is the SHAPE CONTRACT: the v5 shape differs from the v4 shape
+    // by exactly episode_number, and 5.sqm alone (what the cohort runs)
+    // yields a season-carrying table.
+
+    @Test
+    fun "the WS-A v5 cohort shape is recoverable by 5.sqm after the detector adds season_number"() {
+        // The faithful WS-A-v5 shape: 13 columns — the v4 table + episode_number.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE watch_progress (
+                episode_key TEXT NOT NULL PRIMARY KEY,
+                position INTEGER NOT NULL,
+                duration INTEGER NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0,
+                completed_at INTEGER,
+                last_watched_at INTEGER NOT NULL,
+                main_id TEXT,
+                watch_count INTEGER NOT NULL DEFAULT 0,
+                first_watched_at INTEGER,
+                auto_mark_suppressed INTEGER NOT NULL DEFAULT 0,
+                user_marked_watched INTEGER NOT NULL DEFAULT 0,
+                played_time_ms INTEGER NOT NULL DEFAULT 0,
+                episode_number INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO watch_progress(episode_key, position, duration, completed, completed_at, last_watched_at, main_id, watch_count, first_watched_at, auto_mark_suppressed, user_marked_watched, played_time_ms, episode_number) " +
+                "VALUES ('main-1|00003', 600, 1440, 1, 1729800001000, 1729800000000, 'main-1', 1, 1729800000000, 0, 0, 2520000, 3)",
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE track_entry (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracker_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                score INTEGER,
+                progress INTEGER NOT NULL DEFAULT 0,
+                total_episodes INTEGER,
+                list_id INTEGER,
+                started_at INTEGER,
+                completed_at INTEGER,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type)
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_tracking_state (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracked INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type)
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE browse_cache (
+                section_key TEXT NOT NULL PRIMARY KEY,
+                data_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, score, progress, total_episodes, list_id, started_at, completed_at, updated_at) " +
+                "VALUES ('main-1', 'anilist', 555, 'WATCHING', 85, 3, 12, 9001, NULL, NULL, 1729800000000)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO content_tracking_state(main_id, tracker_type, tracked, updated_at) " +
+                "VALUES ('main-1', 'anilist', 1, 1729800000000)",
+            0,
+        )
+        // The detector's move (what migrateV5ShapeIfNeeded does on device):
+        // season_number lands BEFORE the chain runs 5.sqm.
+        driver.execute(
+            null,
+            "ALTER TABLE watch_progress ADD COLUMN season_number INTEGER NOT NULL DEFAULT 1",
+            0,
+        )
+
+        // The cohort's chain: 4.sqm is SKIPPED (oldVersion 5) — only 5.sqm runs.
+        AnikutaDatabase.Schema.migrate(driver, 5, 6)
+
+        val database = AnikutaDatabase(driver)
+        val row = database.watchQueries.getWatchProgress("main-1|00003").executeAsOneOrNull()
+        assertNotNull("the cohort's rows must survive", row)
+        assertEquals("the detector's default stamps season 1", 1L, row!!.season_number)
+        assertEquals("the WS-A backfilled values are untouched", 3L, row.episode_number)
+        assertTrue(
+            "the tracker tables are FK-free for the cohort too",
+            foreignKeysOf("track_entry").isEmpty(),
+        )
+        val entry = database.trackQueries.getTrackEntry("main-1", "anilist").executeAsOneOrNull()
+        assertNotNull("the tracker link survives", entry)
     }
 }

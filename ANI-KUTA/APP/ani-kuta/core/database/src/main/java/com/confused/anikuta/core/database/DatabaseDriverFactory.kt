@@ -55,7 +55,28 @@ class DatabaseDriverFactory(private val context: Context) {
                 // one-time-uninstall cohort, v0.2.16-and-earlier.)
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
                     migrateSchemaIfNeeded(db)
+                    migrateV5ShapeIfNeeded(db, oldVersion)
                     super.onUpgrade(db, oldVersion, newVersion)
+                }
+
+                /**
+                 * ROUND 163 (STEP-1, the adversarial review's P0 fix): the
+                 * WS-A-v5 COHORT — v1.1.96..99 shipped schema v5 with
+                 * watch_progress.episode_number ONLY (no season_number: the
+                 * reverted round-157 4.sqm). The versioned chain's generated
+                 * guard (`oldVersion <= 4`) SKIPS 4.sqm for oldVersion == 5, so
+                 * the v6 row mapper's positional reads would crash-loop that
+                 * cohort on every query. This is the ONE documented exception
+                 * to the contract's no-probes rule: a SHAPE detector scoped to
+                 * exactly oldVersion == 5, adding ONLY the missing column
+                 * (season_number; episode_number already exists there with its
+                 * correct backfilled values — all v5 rows are 2-part anime
+                 * keys, so season 1 is the honest default).
+                 */
+                private fun migrateV5ShapeIfNeeded(db: SupportSQLiteDatabase, oldVersion: Int) {
+                    if (oldVersion != 5) return
+                    if (hasColumn(db, "watch_progress", "season_number")) return
+                    db.execSQL("ALTER TABLE watch_progress ADD COLUMN season_number INTEGER NOT NULL DEFAULT 1")
                 }
 
                 /**

@@ -457,15 +457,20 @@ fun HomeScreen(
                         // by the episode identity, so the release transition
                         // (Modifier.animateItem) plays at the home-list level:
                         // the released top row fades out, the rest glide up, the
-                        // bottom gains the next episode. ──
-                        item(key = "airs_head") {
-                            HomeSectionHead(
-                                title = "Airs today",
-                                actionLabel = "Schedule",
-                                // ROUND 152: the Schedule push LANDS on the updates
-                                // screen's Schedule tab (the key carries the tab).
-                                onAction = { onNavigate(UpdatesKey(initialTab = 1)) },
-                            )
+                        // bottom gains the next episode. The head GATES on the
+                        // rows (the review's P2: the 24h released bound makes a
+                        // nothing-in-window day common — a bare title is worse
+                        // than no section). ──
+                        if (airsToday.isNotEmpty()) {
+                            item(key = "airs_head") {
+                                HomeSectionHead(
+                                    title = "Airs today",
+                                    actionLabel = "Schedule",
+                                    // ROUND 152: the Schedule push LANDS on the updates
+                                    // screen's Schedule tab (the key carries the tab).
+                                    onAction = { onNavigate(UpdatesKey(initialTab = 1)) },
+                                )
+                            }
                         }
                         itemsIndexed(
                             airsToday,
@@ -1580,12 +1585,24 @@ private fun HomeContinueCard(
  * single gentle fade/scale-in when a row BECOMES the next one, then
  * everything holds still. Returns 0→1; 1 = settled (also the resting value
  * for non-next rows).
+ *
+ * The [rowIdentity] gate (the review's P2 fix): the plays-once flag rides a
+ * rememberSaveable keyed on the row — a scroll-out-and-back does NOT replay
+ * the entrance (the plain remember keying on isNext re-seeded 0f on every
+ * recomposition of a scrolled-back row), while a NEW episode becoming next
+ * (a different identity) still plays its own one-shot.
  */
 @Composable
-private fun nextRowEntrance(isNext: Boolean): Float {
-    val entrance = remember(isNext) { Animatable(if (isNext) 0f else 1f) }
-    LaunchedEffect(isNext) {
-        if (isNext) entrance.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
+private fun nextRowEntrance(rowIdentity: String, isNext: Boolean): Float {
+    var hasPlayed by androidx.compose.runtime.saveable.rememberSaveable(rowIdentity) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    val entrance = remember(isNext) { Animatable(if (isNext && !hasPlayed) 0f else 1f) }
+    LaunchedEffect(isNext, hasPlayed) {
+        if (isNext && !hasPlayed) {
+            entrance.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
+            hasPlayed = true
+        }
     }
     return entrance.value
 }
@@ -1609,7 +1626,7 @@ private fun HomeAirsRow(
     // time + a subtle accent border, revealed by the ONE-SHOT entrance (the
     // round-152/154 strobe is gone; see nextRowEntrance).
     val pulsing = isNext && !item.released
-    val entrance = nextRowEntrance(pulsing)
+    val entrance = nextRowEntrance(item.episodeKey, pulsing)
     // ROUND 153 (the device round): the row outline is GONE — the user: the
     // highlight belongs ONLY to the release-time node (the pulsing halo stays).
     // THE RAIL CONTINUITY: the old segment drew INSIDE the 7dp-padded row (the

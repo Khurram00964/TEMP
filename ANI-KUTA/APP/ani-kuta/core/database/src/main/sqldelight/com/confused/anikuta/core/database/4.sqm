@@ -5,8 +5,12 @@
 --    (getHighestWatchedEpisodeNumber + getAllHighestWatchedNumbers) used to
 --    CAST(SUBSTR(episode_key, ...)) per row; the batch twin is re-emitted
 --    reactively on EVERY watch_progress write (the player's 10s saves) → a
---    table-wide expression scan per save. The column kills that. Follows the
---    1.sqm pattern: guarded-shape ALTER + in-file backfill.
+--    table-wide expression scan per save. The column kills that.
+--    ⚠ RUNS ONLY FOR oldVersion == 4 (the generated chain guards it). The
+--    v1.1.96-99 cohort (oldVersion == 5, episode_number present, season_number
+--    missing) skips THIS file — their shape repair lives in
+--    DatabaseDriverFactory.migrateV5ShapeIfNeeded (the documented no-probes
+--    exception).
 --
 -- 2. THE SEASON AXIS — season_number lands beside the number so TV-series
 --    progress is representable. EVERY existing row is anime (the flat

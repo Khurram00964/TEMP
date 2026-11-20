@@ -40,10 +40,26 @@ class TrackEntryRepository(
      */
     suspend fun upsert(entry: TrackEntry, trackerType: TrackerType = TrackerType.ANILIST) {
         withContext(Dispatchers.IO) {
-            // ROUND 163 (v6): times_watched is DB-level (not on the TrackEntry
-            // model — an additive model field would ripple every tracker's
-            // entry.copy). The sync overwrite PRESERVES the stored count; the
-            // dedicated increment method owns the writes.
+            // ROUND 163 (v6, the review's P2 guard): the UNIQUE
+            // (tracker_type, tracker_id) index makes INSERT OR REPLACE delete
+            // a CONFLICTING row — if another content already claims this
+            // remote id, the replace would silently erase THAT content's
+            // link (its times_watched with it). Refuse loudly instead.
+            val foreign = database.trackQueries.getTrackEntryByTrackerId(
+                trackerType.id,
+                entry.trackerId.toLong(),
+            ).executeAsOneOrNull()
+            if (foreign != null && foreign.main_id != entry.contentKey) {
+                Logger.w(TAG) {
+                    "upsert REFUSED — remote id ${entry.trackerId} ($trackerType) already belongs to " +
+                        "mainId=${foreign.main_id}; content ${entry.contentKey} tried to claim it (a double-link bug upstream)"
+                }
+                return@withContext
+            }
+            // times_watched is DB-level (not on the TrackEntry model — an
+            // additive model field would ripple every tracker's entry.copy).
+            // The sync overwrite PRESERVES the stored count; the dedicated
+            // increment method owns the writes.
             val storedTimesWatched = database.trackQueries.getTrackEntry(
                 entry.contentKey,
                 trackerType.id,
