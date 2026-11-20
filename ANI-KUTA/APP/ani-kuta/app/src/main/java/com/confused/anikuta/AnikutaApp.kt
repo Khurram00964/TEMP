@@ -177,6 +177,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 downloadFeatureModule,
                 metadataModule,
                 trackerAniListModule,
+                com.confused.anikuta.core.trackersimkl.trackerSimklModule, // ROUND 163 (STEP-2): the Simkl tracker (movies + TV)
                 watchProgressModule,
                 smartMatcherModule,
                 shareModule,  // Round 101 (WS-C): the share system (:core:share)
@@ -184,6 +185,20 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 dataCacheModule,
                 playbackCacheModule,
                 appModule,
+                // ROUND 163 (STEP-2): the composition root owns the tracker
+                // aggregation (the named("trackers") list moved OUT of the
+                // anilist module — the Simkl tracker joins without that module
+                // growing a tracker-simkl dependency).
+                org.koin.dsl.module {
+                    single<List<com.confused.anikuta.core.trackerapi.Tracker>>(
+                        org.koin.core.qualifier.named("trackers"),
+                    ) {
+                        listOf(
+                            get<com.confused.anikuta.core.trackeranilist.AniListTracker>(),
+                            get<com.confused.anikuta.core.trackersimkl.SimklTracker>(),
+                        )
+                    }
+                },
             )
             // Debug-only Koin modules (debug-bubble, etc.). No-op in release
             // builds — debugKoinModules() returns emptyList() there.

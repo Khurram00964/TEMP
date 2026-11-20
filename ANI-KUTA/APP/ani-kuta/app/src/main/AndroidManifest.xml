@@ -106,6 +106,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="anikuta" android:host="anilist-auth" />
             </intent-filter>
+            <!-- ROUND 163 (STEP-2): the Simkl OAuth2 AUTH-V2 redirect (PKCE S256). -->
+            <!-- Simkl redirects to anikuta://simkl-auth?code=... (the code in the -->
+            <!-- QUERY — the token exchange POSTs it with the PKCE verifier). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="anikuta" android:host="simkl-auth" />
+            </intent-filter>
             <!-- ROUND 101 (WS-C): the app's OWN share links — -->
             <!-- anikuta://content/{mainId} opens ANI-KUTA straight on the -->
             <!-- shared content (MainActivity resolves the mainId through the -->
