@@ -34,7 +34,7 @@ import com.confused.anikuta.core.designsystem.theme.Motion
 /**
  * A collapsing header — a title that shrinks when content scrolls.
  *
- * From DESIGN-LANGUAGE.md §5.9 (CollapsingHeader):
+ * From DESIGN-LANGUAGE.md §2.1 (Collapsing Header):
  * - **Expanded:** 32sp, ExtraBold (800), letterSpacing -0.02sp. When at top.
  * - **Collapsed:** 24sp, ExtraBold (800). When scrolled past 20px.
  * - **Pinned:** Always visible (sits OUTSIDE the scroll). Never scrolls away.

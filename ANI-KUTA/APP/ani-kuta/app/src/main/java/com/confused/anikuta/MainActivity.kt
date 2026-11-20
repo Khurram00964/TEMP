@@ -1252,30 +1252,55 @@ fun AppRoot() {
                     is AnimeDetailsKey.AniList -> DetailsScreen(
                         detailsKey = currentKey,
                         onBack = pop,
-                        onNavigateToWatch = { mainId, videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, subTracks, audioTracks, epMeta, coverAccent, coverUrl, audioVariant ->
-                            pushKey(WatchKey(videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, mainId, subTracks, audioTracks, epMeta, coverAccentArgb = coverAccent, coverUrl = coverUrl, // ROUND 153: the clicked episode's audio variant (the ladder's truth).
-                            episodeAudioVariant = audioVariant))
+                        // 2026-11-21: the 17-positional lambda became the
+                        // WatchLaunchArgs bundle; the WatchKey construction is
+                        // NAMED now too (the former call passed 14 fields
+                        // positionally — the exact transposition risk the
+                        // args-class fix removes).
+                        onNavigateToWatch = { args ->
+                            pushKey(
+                                WatchKey(
+                                    videoUrl = args.videoUrl,
+                                    animeTitle = args.animeTitle,
+                                    quality = args.quality,
+                                    episodeUrl = args.episodeUrl,
+                                    episodeNumber = args.episodeNumber,
+                                    episodeTitle = args.episodeTitle,
+                                    episodeListSerialized = args.episodeListSerialized,
+                                    videoHeaders = args.videoHeaders,
+                                    resolvedVideosKey = args.resolvedVideosKey,
+                                    sourceId = args.sourceId,
+                                    mainId = args.mainId,
+                                    subtitleTracksSerialized = args.subtitleTracksSerialized,
+                                    audioTracksSerialized = args.audioTracksSerialized,
+                                    episodeMetadataSerialized = args.episodeMetadataSerialized,
+                                    coverAccentArgb = args.coverAccentArgb,
+                                    coverUrl = args.coverUrl,
+                                    // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                                    episodeAudioVariant = args.audioVariant,
+                                )
+                            )
                         },
                         // Task 52: CloudStream episodes → the resolve sheet
                         // (Task 53 / RC-6): the details page stays visible under
                         // an AnymeX-style bottom sheet; the selected stream + the
                         // full pre-resolved list hand off to the CS watch screen.
                         // The aniyomi watch stack is untouched by this branch.
-                        onNavigateToCsWatch = { providerName, animeTitle, episodeData, epNum, epTitle, epList, mainId, sourceId, epMeta, coverAccent, coverUrl ->
+                        onNavigateToCsWatch = { args ->
                             csResolveRequest = com.confused.anikuta.feature.cswatch.api.CsWatchKey(
-                                providerName = providerName,
-                                animeTitle = animeTitle,
-                                episodeData = episodeData,
-                                episodeNumber = epNum,
-                                episodeTitle = epTitle,
-                                episodeListSerialized = epList,
-                                mainId = mainId,
-                                sourceId = sourceId,
-                                episodeMetadataSerialized = epMeta,
+                                providerName = args.providerName,
+                                animeTitle = args.animeTitle,
+                                episodeData = args.episodeData,
+                                episodeNumber = args.episodeNumber,
+                                episodeTitle = args.episodeTitle,
+                                episodeListSerialized = args.episodeListSerialized,
+                                mainId = args.mainId,
+                                sourceId = args.sourceId,
+                                episodeMetadataSerialized = args.episodeMetadataSerialized,
                                 // ROUND 101 (WS-D): the details accent rides the key.
-                                coverAccentArgb = coverAccent,
+                                coverAccentArgb = args.coverAccentArgb,
                                 // ROUND 108 (D-713): the cover rides the key too.
-                                coverUrl = coverUrl,
+                                coverUrl = args.coverUrl,
                             )
                         },
                         // D-539 (D-548): a downloaded DASH episode plays through
@@ -1286,23 +1311,23 @@ fun AppRoot() {
                         // (NOT csResolveRequest: that opens the resolve sheet,
                         // which would re-resolve an already-downloaded episode
                         // online and dead-end it).
-                        onNavigateToCsOfflineWatch = { offlineMediaUri, providerName, animeTitle, episodeData, epNum, epTitle, epList, mainId, sourceId, epMeta, coverAccent, coverUrl ->
+                        onNavigateToCsOfflineWatch = { args ->
                             pushKey(
                                 com.confused.anikuta.feature.cswatch.api.CsWatchKey(
-                                    providerName = providerName,
-                                    animeTitle = animeTitle,
-                                    episodeData = episodeData,
-                                    episodeNumber = epNum,
-                                    episodeTitle = epTitle,
-                                    episodeListSerialized = epList,
-                                    mainId = mainId,
-                                    sourceId = sourceId,
-                                    episodeMetadataSerialized = epMeta,
-                                    offlineMediaUri = offlineMediaUri,
+                                    providerName = args.providerName,
+                                    animeTitle = args.animeTitle,
+                                    episodeData = args.episodeData,
+                                    episodeNumber = args.episodeNumber,
+                                    episodeTitle = args.episodeTitle,
+                                    episodeListSerialized = args.episodeListSerialized,
+                                    mainId = args.mainId,
+                                    sourceId = args.sourceId,
+                                    episodeMetadataSerialized = args.episodeMetadataSerialized,
+                                    offlineMediaUri = args.offlineMediaUri,
                                     // ROUND 101 (WS-D): the details accent rides the key.
-                                    coverAccentArgb = coverAccent,
+                                    coverAccentArgb = args.coverAccentArgb,
                                     // ROUND 108 (D-713): the cover rides the key too.
-                                    coverUrl = coverUrl,
+                                    coverUrl = args.coverUrl,
                                 ),
                             )
                         },
@@ -1310,17 +1335,17 @@ fun AppRoot() {
                         // download button on a CS-bridged episode — the SAME
                         // sheet in DOWNLOAD mode; a pick enqueues via
                         // handleCsDownloadPick (no player, no navigation).
-                        onDownloadCsEpisode = { providerName, animeTitle, episodeData, epNum, epTitle, epList, mainId, sourceId, epMeta ->
+                        onDownloadCsEpisode = { args ->
                             csResolveRequest = com.confused.anikuta.feature.cswatch.api.CsWatchKey(
-                                providerName = providerName,
-                                animeTitle = animeTitle,
-                                episodeData = episodeData,
-                                episodeNumber = epNum,
-                                episodeTitle = epTitle,
-                                episodeListSerialized = epList,
-                                mainId = mainId,
-                                sourceId = sourceId,
-                                episodeMetadataSerialized = epMeta,
+                                providerName = args.providerName,
+                                animeTitle = args.animeTitle,
+                                episodeData = args.episodeData,
+                                episodeNumber = args.episodeNumber,
+                                episodeTitle = args.episodeTitle,
+                                episodeListSerialized = args.episodeListSerialized,
+                                mainId = args.mainId,
+                                sourceId = args.sourceId,
+                                episodeMetadataSerialized = args.episodeMetadataSerialized,
                             )
                             csResolveDownloadMode = true
                         },
@@ -1362,27 +1387,52 @@ fun AppRoot() {
                     is AnimeDetailsKey.Extension -> DetailsScreen(
                         detailsKey = currentKey,
                         onBack = pop,
-                        onNavigateToWatch = { mainId, videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, subTracks, audioTracks, epMeta, coverAccent, coverUrl, audioVariant ->
-                            pushKey(WatchKey(videoUrl, animeTitle, quality, epUrl, epNum, epTitle, epList, videoHeaders, resolvedVideosKey, sourceId, mainId, subTracks, audioTracks, epMeta, coverAccentArgb = coverAccent, coverUrl = coverUrl, // ROUND 153: the clicked episode's audio variant (the ladder's truth).
-                            episodeAudioVariant = audioVariant))
+                        // 2026-11-21: the 17-positional lambda became the
+                        // WatchLaunchArgs bundle; the WatchKey construction is
+                        // NAMED now too (the former call passed 14 fields
+                        // positionally — the exact transposition risk the
+                        // args-class fix removes).
+                        onNavigateToWatch = { args ->
+                            pushKey(
+                                WatchKey(
+                                    videoUrl = args.videoUrl,
+                                    animeTitle = args.animeTitle,
+                                    quality = args.quality,
+                                    episodeUrl = args.episodeUrl,
+                                    episodeNumber = args.episodeNumber,
+                                    episodeTitle = args.episodeTitle,
+                                    episodeListSerialized = args.episodeListSerialized,
+                                    videoHeaders = args.videoHeaders,
+                                    resolvedVideosKey = args.resolvedVideosKey,
+                                    sourceId = args.sourceId,
+                                    mainId = args.mainId,
+                                    subtitleTracksSerialized = args.subtitleTracksSerialized,
+                                    audioTracksSerialized = args.audioTracksSerialized,
+                                    episodeMetadataSerialized = args.episodeMetadataSerialized,
+                                    coverAccentArgb = args.coverAccentArgb,
+                                    coverUrl = args.coverUrl,
+                                    // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                                    episodeAudioVariant = args.audioVariant,
+                                )
+                            )
                         },
                         // Task 52: CloudStream episodes → the resolve sheet
                         // (Task 53 / RC-6, AnymeX entry pattern).
-                        onNavigateToCsWatch = { providerName, animeTitle, episodeData, epNum, epTitle, epList, mainId, sourceId, epMeta, coverAccent, coverUrl ->
+                        onNavigateToCsWatch = { args ->
                             csResolveRequest = com.confused.anikuta.feature.cswatch.api.CsWatchKey(
-                                providerName = providerName,
-                                animeTitle = animeTitle,
-                                episodeData = episodeData,
-                                episodeNumber = epNum,
-                                episodeTitle = epTitle,
-                                episodeListSerialized = epList,
-                                mainId = mainId,
-                                sourceId = sourceId,
-                                episodeMetadataSerialized = epMeta,
+                                providerName = args.providerName,
+                                animeTitle = args.animeTitle,
+                                episodeData = args.episodeData,
+                                episodeNumber = args.episodeNumber,
+                                episodeTitle = args.episodeTitle,
+                                episodeListSerialized = args.episodeListSerialized,
+                                mainId = args.mainId,
+                                sourceId = args.sourceId,
+                                episodeMetadataSerialized = args.episodeMetadataSerialized,
                                 // ROUND 101 (WS-D): the details accent rides the key.
-                                coverAccentArgb = coverAccent,
+                                coverAccentArgb = args.coverAccentArgb,
                                 // ROUND 108 (D-713): the cover rides the key too.
-                                coverUrl = coverUrl,
+                                coverUrl = args.coverUrl,
                             )
                         },
                         // D-539 (D-548): a downloaded DASH episode plays through
@@ -1393,23 +1443,23 @@ fun AppRoot() {
                         // (NOT csResolveRequest: that opens the resolve sheet,
                         // which would re-resolve an already-downloaded episode
                         // online and dead-end it).
-                        onNavigateToCsOfflineWatch = { offlineMediaUri, providerName, animeTitle, episodeData, epNum, epTitle, epList, mainId, sourceId, epMeta, coverAccent, coverUrl ->
+                        onNavigateToCsOfflineWatch = { args ->
                             pushKey(
                                 com.confused.anikuta.feature.cswatch.api.CsWatchKey(
-                                    providerName = providerName,
-                                    animeTitle = animeTitle,
-                                    episodeData = episodeData,
-                                    episodeNumber = epNum,
-                                    episodeTitle = epTitle,
-                                    episodeListSerialized = epList,
-                                    mainId = mainId,
-                                    sourceId = sourceId,
-                                    episodeMetadataSerialized = epMeta,
-                                    offlineMediaUri = offlineMediaUri,
+                                    providerName = args.providerName,
+                                    animeTitle = args.animeTitle,
+                                    episodeData = args.episodeData,
+                                    episodeNumber = args.episodeNumber,
+                                    episodeTitle = args.episodeTitle,
+                                    episodeListSerialized = args.episodeListSerialized,
+                                    mainId = args.mainId,
+                                    sourceId = args.sourceId,
+                                    episodeMetadataSerialized = args.episodeMetadataSerialized,
+                                    offlineMediaUri = args.offlineMediaUri,
                                     // ROUND 101 (WS-D): the details accent rides the key.
-                                    coverAccentArgb = coverAccent,
+                                    coverAccentArgb = args.coverAccentArgb,
                                     // ROUND 108 (D-713): the cover rides the key too.
-                                    coverUrl = coverUrl,
+                                    coverUrl = args.coverUrl,
                                 ),
                             )
                         },
@@ -1417,17 +1467,17 @@ fun AppRoot() {
                         // download button on a CS-bridged episode — the SAME
                         // sheet in DOWNLOAD mode; a pick enqueues via
                         // handleCsDownloadPick (no player, no navigation).
-                        onDownloadCsEpisode = { providerName, animeTitle, episodeData, epNum, epTitle, epList, mainId, sourceId, epMeta ->
+                        onDownloadCsEpisode = { args ->
                             csResolveRequest = com.confused.anikuta.feature.cswatch.api.CsWatchKey(
-                                providerName = providerName,
-                                animeTitle = animeTitle,
-                                episodeData = episodeData,
-                                episodeNumber = epNum,
-                                episodeTitle = epTitle,
-                                episodeListSerialized = epList,
-                                mainId = mainId,
-                                sourceId = sourceId,
-                                episodeMetadataSerialized = epMeta,
+                                providerName = args.providerName,
+                                animeTitle = args.animeTitle,
+                                episodeData = args.episodeData,
+                                episodeNumber = args.episodeNumber,
+                                episodeTitle = args.episodeTitle,
+                                episodeListSerialized = args.episodeListSerialized,
+                                mainId = args.mainId,
+                                sourceId = args.sourceId,
+                                episodeMetadataSerialized = args.episodeMetadataSerialized,
                             )
                             csResolveDownloadMode = true
                         },

@@ -23,6 +23,11 @@ val PrimaryContainerDark = Color(0xFF4A6B1A)
 val OutlineDark = Color(0xFF938F99)
 val OutlineVariantDark = Color(0xFF49454F)
 val ErrorDark = Color(0xFFF2B8B5)
+// The on-error counterpart of ErrorDark (the M3 dark pair — ErrorDark is M3's
+// dark `error` #F2B8B5, whose paired container-text is #601410). 2026-11-21:
+// the scheme previously left `onError` at the M3 default while `error` was
+// themed — now the pair is complete in both modes.
+val OnErrorDark = Color(0xFF601410)
 val WarnDark = Color(0xFFFFCC80)
 val SuccessDark = Color(0xFFA5D6A7)
 
@@ -31,6 +36,10 @@ val BgLight = Color(0xFFFAF9F6)
 val Surface1Light = Color(0xFFF2F0EB)
 val Surface2Light = Color(0xFFECEAE3)
 val Surface3Light = Color(0xFFE3E0D7)
+// The 4th ramp tier (2026-11-21): the light scheme previously stopped at
+// Surface3, leaving `surfaceContainerHighest` at the M3 default while dark
+// themed it — mirrors Surface4Dark's role in the dark scheme.
+val Surface4Light = Color(0xFFD8D4C8)
 
 val TextLight = Color(0xFF1C1B18)
 val TextMutedLight = Color(0xFF5C5A54)
@@ -43,6 +52,11 @@ val PrimaryContainerLight = Color(0xFFD4F5A0)
 
 val OutlineLight = Color(0xFF79747E)
 val OutlineVariantLight = Color(0xFFCAC4D0)
+// The light error pair (the M3 light baseline #B3261E / white onError — the
+// warm-neutral palette's red). 2026-11-21: LightColorScheme previously defined
+// NO error/onError at all and silently fell back to the M3 defaults.
+val ErrorLight = Color(0xFFB3261E)
+val OnErrorLight = Color(0xFFFFFFFF)
 
 // ROUND 103 (D-696): the light-theme counterpart of SuccessDark — the
 // tracking-connected state's greenish tone needs a readable green on the warm

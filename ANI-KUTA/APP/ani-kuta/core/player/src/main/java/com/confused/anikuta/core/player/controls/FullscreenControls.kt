@@ -90,7 +90,7 @@ private val ANIM_DURATION = 200
  *  - Top-left: lock + anime title + episode/quality pills
  *  - Top-right: frosted glass row (server, subtitles, audio, quality, more)
  *  - Center: -10s skip + play/pause (themed-dark glass) + +10s skip
- *  - Bottom: Canvas-drawn seekbar + time + speed/rotate/skip/pip/exit
+ *  - Bottom: Canvas-drawn seekbar + time + speed/rotate/skip/exit
  *    (ROUND 152: the tray order is zoom → speed → ROTATE → skip)
  *
  * Lock mode: only an unlock button at top-left.
@@ -123,7 +123,10 @@ fun FullscreenControls(
     onPrevEpisode: () -> Unit = {},
     onNextEpisode: () -> Unit = {},
     onSkipForward: () -> Unit = {},
-    onPiPClick: () -> Unit = {},
+    // (the pre-revert onPiPClick param removed 2026-11-21 — it was declared
+    // with a default and NEVER wired by any call site; no PiP exists on main.
+    // The reverted round-157 PiP work lives on release/1.1.96+ and will
+    // re-add its own wiring when re-landed.)
     // ROUND 145 (P-M3): the DEAD Rotate button removed (same rationale — the
     // MPV stack never wired a rotation handler).
     // ROUND 150: it is BACK and WIRED — the bottom-right cluster's rotation

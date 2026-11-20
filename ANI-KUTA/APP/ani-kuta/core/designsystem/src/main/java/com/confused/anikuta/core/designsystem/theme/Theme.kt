@@ -28,6 +28,7 @@ private val DarkColorScheme = darkColorScheme(
     outline = OutlineDark,
     outlineVariant = OutlineVariantDark,
     error = ErrorDark,
+    onError = OnErrorDark,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -43,8 +44,11 @@ private val LightColorScheme = lightColorScheme(
     onSurfaceVariant = TextMutedLight,
     surfaceContainer = Surface2Light,
     surfaceContainerHigh = Surface3Light,
+    surfaceContainerHighest = Surface4Light,
     outline = OutlineLight,
     outlineVariant = OutlineVariantLight,
+    error = ErrorLight,
+    onError = OnErrorLight,
 )
 
 /**

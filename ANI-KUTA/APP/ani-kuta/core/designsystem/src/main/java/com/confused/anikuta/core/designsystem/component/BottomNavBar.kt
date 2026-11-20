@@ -48,7 +48,7 @@ import com.confused.anikuta.core.designsystem.theme.Motion
 /**
  * ANI-KUTA bottom navigation bar — a floating pill overlay.
  *
- * From DESIGN-LANGUAGE.md §8 (BottomNavBar):
+ * From DESIGN-LANGUAGE.md §3.1 (Floating pill bottom nav — shipped):
  * - **Floating overlay** — NOT in Scaffold.bottomBar. Content scrolls BEHIND it.
  * - **Shape:** 28dp rounded pill (BottomNavPillShape).
  * - **Background:** surfaceVariant, shadow elevation 8dp.

@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 /**
  * A reusable scroll-driven gradient scrim overlay.
  *
- * From DESIGN-LANGUAGE.md §5.9 (ScrollBlurOverlay):
+ * From DESIGN-LANGUAGE.md §2.2 (Scroll Blur Overlay):
  * Sits at the bottom edge of a pinned header. When content scrolls underneath,
  * a gradient (solid background → transparent) fades in smoothly with rounded
  * bottom corners. When scrolled to top, the effect fades out.

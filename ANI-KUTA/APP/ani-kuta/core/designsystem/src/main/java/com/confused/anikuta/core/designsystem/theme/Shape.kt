@@ -4,9 +4,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
-// DESIGN-LANGUAGE.md §5: 12 distinct radii. Key ones:
-// Cards: 16dp, Buttons: 12dp, Sheets: 20-24dp top corners, Pills: full
-// Bottom nav pill: 28dp
+// The shape tiers (DESIGN-LANGUAGE.md; cards 16dp, buttons 12dp, sheets
+// 20-24dp top corners, pills full, bottom-nav pill 28dp). Key ones:
 val AnikutaShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp),
     small = RoundedCornerShape(8.dp),

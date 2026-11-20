@@ -141,29 +141,24 @@ fun DetailsScreen(
     onBack: () -> Unit,
     // ROUND 108 (D-713): the trailing coverUrl — the player rows' thumbnail
     // fallback (the details page's cover), riding the key like coverAccent.
-    onNavigateToWatch: (mainId: String, videoUrl: String, animeTitle: String, quality: String, episodeUrl: String, episodeNumber: Float, episodeTitle: String, episodeListSerialized: String, videoHeaders: String, resolvedVideosKey: String, sourceId: Long, subtitleTracksSerialized: String, audioTracksSerialized: String, episodeMetadataSerialized: String, coverAccentArgb: Long, coverUrl: String, audioVariant: String) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
+    // 2026-11-21: the 17 positional params became the [WatchLaunchArgs] bundle
+    // (named-arg construction at every call site — transposition-proof).
+    onNavigateToWatch: (WatchLaunchArgs) -> Unit = {},
     // Task 52 (round 12 — the playback port): CloudStream episode taps route
-    // here INSTEAD of the classic resolver/watch pipeline. Primitives (not
-    // CsWatchKey) to keep :feature:anime-details free of feature-to-feature
-    // deps — MainActivity builds the key. Args: providerName, animeTitle,
-    // episodeData (the CS data handle), episodeNumber, episodeTitle,
-    // episodeListSerialized, mainId, sourceId, episodeMetadataSerialized
-    // (task 54 / round 14 — the CS watch page's per-episode metadata, same
-    // wire format as the aniyomi watch key's field).
-    onNavigateToCsWatch: (String, String, String, Float, String, String, String, Long, String, Long, String) -> Unit = { _, _, _, _, _, _, _, _, _, _, _ -> },
-    // Task 58 (round 18 — downloads): the CS download entry. SAME 9-arg
-    // context as [onNavigateToCsWatch] (provider/title/handle/number/name/
-    // list/mainId/sourceId/metadata) — the host opens the CS resolve sheet in
-    // DOWNLOAD mode; a pick enqueues through the CS-aware download path.
-    onDownloadCsEpisode: (String, String, String, Float, String, String, String, Long, String) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
+    // here INSTEAD of the classic resolver/watch pipeline. The bundle (not
+    // CsWatchKey) keeps :feature:anime-details free of feature-to-feature
+    // deps — MainActivity builds the key. 2026-11-21: the 11 positional
+    // params became the [CsEpisodeLaunchArgs] bundle.
+    onNavigateToCsWatch: (CsEpisodeLaunchArgs) -> Unit = {},
+    // Task 58 (round 18 — downloads): the CS download entry. SAME episode
+    // context as [onNavigateToCsWatch] — the host opens the CS resolve sheet
+    // in DOWNLOAD mode; a pick enqueues through the CS-aware download path.
+    onDownloadCsEpisode: (CsEpisodeLaunchArgs) -> Unit = {},
     // D-539: the OFFLINE DASH route — a downloaded DASH-cache episode plays
-    // through the CS watch screen's offline player. PRIMITIVES (the module's
-    // no-feature-to-feature-deps rule — same shape as [onNavigateToCsWatch]):
-    // manifestUrl, providerName, animeTitle, episodeData, episodeNumber,
-    // episodeTitle, episodeListSerialized, mainId, sourceId, epMeta — the host
-    // builds the CsWatchKey with offlineMediaUri set (the csdash: payload —
-    // a legacy manifest URL or a D-548 .dashmeta sidecar uri).
-    onNavigateToCsOfflineWatch: (String, String, String, String, Float, String, String, String, Long, String, Long, String) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _ -> },
+    // through the CS watch screen's offline player. The host builds the
+    // CsWatchKey with offlineMediaUri set (the csdash: payload — a legacy
+    // manifest URL or a D-548 .dashmeta sidecar uri).
+    onNavigateToCsOfflineWatch: (CsEpisodeLaunchArgs) -> Unit = {},
     onDownloadEpisode: (eu.kanade.tachiyomi.animesource.model.SEpisode) -> Unit = {},
     onDownloadSpecificVideo: (eu.kanade.tachiyomi.animesource.model.SEpisode, com.confused.anikuta.core.videoresolver.ResolvedVideo, String, String, String) -> Unit = { _, _, _, _, _ -> },
     // D-209: Cloudflare manual solver — launched from the episode error card.
@@ -641,31 +636,33 @@ fun DetailsScreen(
                         }
                         pendingAutoPlay = false
                         onNavigateToWatch(
-                            mid,
-                            hit.upstreamUrl,
-                            (state as? DetailsState.Success)?.anime?.displayName ?: hit.animeTitle,
-                            hit.quality,
-                            ep.url,
-                            ep.episode_number,
-                            ep.name,
-                            epListStr,
-                            hit.upstreamHeaders,
-                            // The registry is EMPTY for a cache replay (the
-                            // MainActivity precedent passes "" too) — the watch
-                            // screen recovers the cache identity via
-                            // PlaybackCacheManager.knownIdentityFor.
-                            "",
-                            hit.sourceId,
-                            hit.subtitleTracks,
-                            hit.audioTracks,
-                            epMetaStr,
-                            // ROUND 101 (WS-D): the details accent rides the nav.
-                            coverAccent?.toLong() ?: 0L,
-                            // ROUND 108 (D-713): the cover rides the nav — the
-                            // player rows' thumbnail fallback.
-                            ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
-                            // ROUND 153: the clicked episode's audio variant (the ladder's truth).
-                            episodeAudioVariantOf(ep.scanlator, ep.name),
+                            WatchLaunchArgs(
+                                mainId = mid,
+                                videoUrl = hit.upstreamUrl,
+                                animeTitle = (state as? DetailsState.Success)?.anime?.displayName ?: hit.animeTitle,
+                                quality = hit.quality,
+                                episodeUrl = ep.url,
+                                episodeNumber = ep.episode_number,
+                                episodeTitle = ep.name,
+                                episodeListSerialized = epListStr,
+                                videoHeaders = hit.upstreamHeaders,
+                                // The registry is EMPTY for a cache replay (the
+                                // MainActivity precedent passes "" too) — the watch
+                                // screen recovers the cache identity via
+                                // PlaybackCacheManager.knownIdentityFor.
+                                resolvedVideosKey = "",
+                                sourceId = hit.sourceId,
+                                subtitleTracksSerialized = hit.subtitleTracks,
+                                audioTracksSerialized = hit.audioTracks,
+                                episodeMetadataSerialized = epMetaStr,
+                                // ROUND 101 (WS-D): the details accent rides the nav.
+                                coverAccentArgb = coverAccent?.toLong() ?: 0L,
+                                // ROUND 108 (D-713): the cover rides the nav — the
+                                // player rows' thumbnail fallback.
+                                coverUrl = ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                                // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                                audioVariant = episodeAudioVariantOf(ep.scanlator, ep.name),
+                            )
                         )
                         viewModel.clearResolver()
                         return@LaunchedEffect
@@ -707,27 +704,29 @@ fun DetailsScreen(
                                 "Auto-play: navigating to watch with ${autoVideo.quality} (url=${autoVideo.url.take(60)}...)"
                             }
                             onNavigateToWatch(
-                                viewModel.currentMainId ?: "",
-                                autoVideo.url,
-                                anime.displayName,
-                                autoVideo.quality,
-                                ep.url,
-                                ep.episode_number,
-                                ep.name,
-                                epListStr,
-                                autoVideo.headers,
-                                resolvedVideosKey,
-                                linked.sourceId,
-                                subTracksStr,
-                                audioTracksStr,
-                                epMetaStr,
-                                // ROUND 101 (WS-D): the details accent rides the nav.
-                                coverAccent?.toLong() ?: 0L,
-                                // ROUND 108 (D-713): the cover rides the nav — the player
-                                // rows' thumbnail fallback.
-                                ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
-                                // ROUND 153: the clicked episode's audio variant (the ladder's truth).
-                                episodeAudioVariantOf(ep.scanlator, ep.name),
+                                WatchLaunchArgs(
+                                    mainId = viewModel.currentMainId ?: "",
+                                    videoUrl = autoVideo.url,
+                                    animeTitle = anime.displayName,
+                                    quality = autoVideo.quality,
+                                    episodeUrl = ep.url,
+                                    episodeNumber = ep.episode_number,
+                                    episodeTitle = ep.name,
+                                    episodeListSerialized = epListStr,
+                                    videoHeaders = autoVideo.headers,
+                                    resolvedVideosKey = resolvedVideosKey,
+                                    sourceId = linked.sourceId,
+                                    subtitleTracksSerialized = subTracksStr,
+                                    audioTracksSerialized = audioTracksStr,
+                                    episodeMetadataSerialized = epMetaStr,
+                                    // ROUND 101 (WS-D): the details accent rides the nav.
+                                    coverAccentArgb = coverAccent?.toLong() ?: 0L,
+                                    // ROUND 108 (D-713): the cover rides the nav — the player
+                                    // rows' thumbnail fallback.
+                                    coverUrl = ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                                    // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                                    audioVariant = episodeAudioVariantOf(ep.scanlator, ep.name),
+                                )
                             )
                             viewModel.clearResolver()
                         }
@@ -893,21 +892,23 @@ fun DetailsScreen(
                                 "onEpisodeClick — DASH offline episode, offline CS playback: $offlineMedia"
                             }
                             onNavigateToCsOfflineWatch(
-                                offlineMedia,
-                                effectiveLinkedSource?.sourceName ?: "",
-                                anime?.displayName ?: "Downloaded",
-                                episode.url,
-                                episode.episode_number,
-                                episode.name,
-                                epListStr,
-                                mainId,
-                                effectiveLinkedSource?.sourceId ?: 0L,
-                                epMetaStr,
-                                // ROUND 101 (WS-D): the details accent rides the nav.
-                                coverAccent?.toLong() ?: 0L,
-                                // ROUND 108 (D-713): the cover rides the nav — the player
-                                // rows' thumbnail fallback.
-                                ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                                CsEpisodeLaunchArgs(
+                                    providerName = effectiveLinkedSource?.sourceName ?: "",
+                                    animeTitle = anime?.displayName ?: "Downloaded",
+                                    episodeData = episode.url,
+                                    episodeNumber = episode.episode_number,
+                                    episodeTitle = episode.name,
+                                    episodeListSerialized = epListStr,
+                                    mainId = mainId,
+                                    sourceId = effectiveLinkedSource?.sourceId ?: 0L,
+                                    episodeMetadataSerialized = epMetaStr,
+                                    // ROUND 101 (WS-D): the details accent rides the nav.
+                                    coverAccentArgb = coverAccent?.toLong() ?: 0L,
+                                    // ROUND 108 (D-713): the cover rides the nav — the player
+                                    // rows' thumbnail fallback.
+                                    coverUrl = ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                                    offlineMediaUri = offlineMedia,
+                                )
                             )
                             return@onEpisodeClick
                         }
@@ -979,27 +980,29 @@ fun DetailsScreen(
                         val audioTracksStr = audioTracks
                             .joinToString("\n") { "${it.uri}${delim}${it.label}" }
                         onNavigateToWatch(
-                            mainId ?: "",
-                            localUri,
-                            anime?.displayName ?: "Downloaded",
-                            "Downloaded",
-                            episode.url,
-                            episode.episode_number,
-                            episode.name,
-                            epListStr,
-                            "", // no headers for local file
-                            "", // no resolvedVideosKey
-                            effectiveLinkedSource?.sourceId ?: 0L,
-                            subtitleTracksStr, // D-407: the downloaded subs, serialized
-                            audioTracksStr, // ROUND 150: the downloaded audio versions, serialized
-                            epMetaStr,
-                            // ROUND 101 (WS-D): the details accent rides the nav.
-                            coverAccent?.toLong() ?: 0L,
-                            // ROUND 108 (D-713): the cover rides the nav — the player
-                            // rows' thumbnail fallback.
-                            ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
-                            // ROUND 153: the clicked episode's audio variant (the ladder's truth).
-                            episodeAudioVariantOf(episode.scanlator, episode.name),
+                            WatchLaunchArgs(
+                                mainId = mainId ?: "",
+                                videoUrl = localUri,
+                                animeTitle = anime?.displayName ?: "Downloaded",
+                                quality = "Downloaded",
+                                episodeUrl = episode.url,
+                                episodeNumber = episode.episode_number,
+                                episodeTitle = episode.name,
+                                episodeListSerialized = epListStr,
+                                videoHeaders = "", // no headers for local file
+                                resolvedVideosKey = "", // no resolvedVideosKey
+                                sourceId = effectiveLinkedSource?.sourceId ?: 0L,
+                                subtitleTracksSerialized = subtitleTracksStr, // D-407: the downloaded subs, serialized
+                                audioTracksSerialized = audioTracksStr, // ROUND 150: the downloaded audio versions, serialized
+                                episodeMetadataSerialized = epMetaStr,
+                                // ROUND 101 (WS-D): the details accent rides the nav.
+                                coverAccentArgb = coverAccent?.toLong() ?: 0L,
+                                // ROUND 108 (D-713): the cover rides the nav — the player
+                                // rows' thumbnail fallback.
+                                coverUrl = ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                                // ROUND 153: the clicked episode's audio variant (the ladder's truth).
+                                audioVariant = episodeAudioVariantOf(episode.scanlator, episode.name),
+                            )
                         )
                     }
                     return@onEpisodeClick
@@ -1035,20 +1038,22 @@ fun DetailsScreen(
                     "(EP ${episode.episode_number}, provider=${effectiveLinkedSource?.sourceName})"
             }
             onNavigateToCsWatch(
-                effectiveLinkedSource?.sourceName ?: "",
-                anime?.displayName ?: "",
-                episode.url, // the CS data handle
-                episode.episode_number,
-                stripSubDubTag(episode.name),
-                epListStr,
-                viewModel.currentMainId ?: "",
-                effectiveLinkedSource?.sourceId ?: 0L,
-                csMetaStr,
-                // ROUND 101 (WS-D): the details accent rides the nav.
-                coverAccent?.toLong() ?: 0L,
-                // ROUND 108 (D-713): the cover rides the nav — the player
-                // rows' thumbnail fallback.
-                ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                CsEpisodeLaunchArgs(
+                    providerName = effectiveLinkedSource?.sourceName ?: "",
+                    animeTitle = anime?.displayName ?: "",
+                    episodeData = episode.url, // the CS data handle
+                    episodeNumber = episode.episode_number,
+                    episodeTitle = stripSubDubTag(episode.name),
+                    episodeListSerialized = epListStr,
+                    mainId = viewModel.currentMainId ?: "",
+                    sourceId = effectiveLinkedSource?.sourceId ?: 0L,
+                    episodeMetadataSerialized = csMetaStr,
+                    // ROUND 101 (WS-D): the details accent rides the nav.
+                    coverAccentArgb = coverAccent?.toLong() ?: 0L,
+                    // ROUND 108 (D-713): the cover rides the nav — the player
+                    // rows' thumbnail fallback.
+                    coverUrl = ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                )
             )
             return@onEpisodeClick
         }
@@ -1087,15 +1092,17 @@ fun DetailsScreen(
                 "picker (EP ${episode.episode_number}, provider=${effectiveLinkedSource?.sourceName})"
         }
         onDownloadCsEpisode(
-            effectiveLinkedSource?.sourceName ?: "",
-            anime?.displayName ?: "",
-            episode.url, // the CS data handle
-            episode.episode_number,
-            stripSubDubTag(episode.name),
-            epListStr,
-            viewModel.currentMainId ?: "",
-            effectiveLinkedSource?.sourceId ?: 0L,
-            csMetaStr,
+            CsEpisodeLaunchArgs(
+                providerName = effectiveLinkedSource?.sourceName ?: "",
+                animeTitle = anime?.displayName ?: "",
+                episodeData = episode.url, // the CS data handle
+                episodeNumber = episode.episode_number,
+                episodeTitle = stripSubDubTag(episode.name),
+                episodeListSerialized = epListStr,
+                mainId = viewModel.currentMainId ?: "",
+                sourceId = effectiveLinkedSource?.sourceId ?: 0L,
+                episodeMetadataSerialized = csMetaStr,
+            )
         )
     }
 
@@ -1982,27 +1989,29 @@ fun DetailsScreen(
                         else -> ""
                     }
                     onNavigateToWatch(
-                        viewModel.currentMainId ?: "",
-                        video.url,
-                        anime.displayName,
-                        video.quality,
-                        ep.url,
-                        ep.episode_number,
-                        ep.name,
-                        epListStr,
-                        video.headers,
-                        resolvedVideosKey,
-                        linked.sourceId,
-                        subTracksStr,
-                        audioTracksStr,
-                        epMetaStr,
-                        // ROUND 101 (WS-D): the details accent rides the nav.
-                        coverAccent?.toLong() ?: 0L,
-                        // ROUND 108 (D-713): the cover rides the nav — the player
-                        // rows' thumbnail fallback.
-                        ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
-                        // ROUND 154: the resolver-sheet pick's own variant (above).
-                        pickedVariant,
+                        WatchLaunchArgs(
+                            mainId = viewModel.currentMainId ?: "",
+                            videoUrl = video.url,
+                            animeTitle = anime.displayName,
+                            quality = video.quality,
+                            episodeUrl = ep.url,
+                            episodeNumber = ep.episode_number,
+                            episodeTitle = ep.name,
+                            episodeListSerialized = epListStr,
+                            videoHeaders = video.headers,
+                            resolvedVideosKey = resolvedVideosKey,
+                            sourceId = linked.sourceId,
+                            subtitleTracksSerialized = subTracksStr,
+                            audioTracksSerialized = audioTracksStr,
+                            episodeMetadataSerialized = epMetaStr,
+                            // ROUND 101 (WS-D): the details accent rides the nav.
+                            coverAccentArgb = coverAccent?.toLong() ?: 0L,
+                            // ROUND 108 (D-713): the cover rides the nav — the player
+                            // rows' thumbnail fallback.
+                            coverUrl = ((state as? DetailsState.Success)?.anime?.coverUrl ?: ""),
+                            // ROUND 154: the resolver-sheet pick's own variant (above).
+                            audioVariant = pickedVariant,
+                        )
                     )
                 }
                 showResolverSheet = false
