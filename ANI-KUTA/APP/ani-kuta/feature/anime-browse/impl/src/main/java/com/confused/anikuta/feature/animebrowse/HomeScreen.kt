@@ -3,11 +3,7 @@ package com.confused.anikuta.feature.animebrowse
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -1575,20 +1571,23 @@ private fun HomeContinueCard(
  * user watches.
  */
 
-/** The 1200ms reverse pulse the NEXT row shares — the outline's alpha and the node halo ride one transition. */
+/**
+ * ROUND 163 (the device round): the NEXT row's ONE-SHOT entrance — the old
+ * 1200ms reverse pulse drove FOUR layers at once (halo 10→45%, wash 10→28%,
+ * border 30→85%, a gray→accent text lerp) and the user's verdict killed it:
+ * "its flashing UI does not look good." OPTION A — the treatment is now
+ * STATIC (the accent-colored release time + a subtle accent border) with a
+ * single gentle fade/scale-in when a row BECOMES the next one, then
+ * everything holds still. Returns 0→1; 1 = settled (also the resting value
+ * for non-next rows).
+ */
 @Composable
-private fun nodePulseAlpha(): Float {
-    val transition = rememberInfiniteTransition(label = "airsNodePulse")
-    val alpha by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(1200, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse,
-        ),
-        label = "airsNodePulseAlpha",
-    )
-    return alpha
+private fun nextRowEntrance(isNext: Boolean): Float {
+    val entrance = remember(isNext) { Animatable(if (isNext) 0f else 1f) }
+    LaunchedEffect(isNext) {
+        if (isNext) entrance.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
+    }
+    return entrance.value
 }
 
 @Composable
@@ -1606,11 +1605,11 @@ private fun HomeAirsRow(
     val railColor = MaterialTheme.colorScheme.outlineVariant
     val railWidthPx = with(density) { 2.dp.toPx() }
     val railEndInsetPx = with(density) { 20.dp.toPx() }
-    // ROUND 152: the NEXT row's animated outline — a 1.5dp primary border whose
-    // alpha rides the SAME 1200ms pulse as the node halo (the device report:
-    // the next row was not highlighted properly). The halo keeps its glow.
+    // ROUND 163 (Option A): the NEXT row's accent treatment — static accent
+    // time + a subtle accent border, revealed by the ONE-SHOT entrance (the
+    // round-152/154 strobe is gone; see nextRowEntrance).
     val pulsing = isNext && !item.released
-    val pulse = if (pulsing) nodePulseAlpha() else 0f
+    val entrance = nextRowEntrance(pulsing)
     // ROUND 153 (the device round): the row outline is GONE — the user: the
     // highlight belongs ONLY to the release-time node (the pulsing halo stays).
     // THE RAIL CONTINUITY: the old segment drew INSIDE the 7dp-padded row (the
@@ -1659,41 +1658,32 @@ private fun HomeAirsRow(
                     .offset(y = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                // The pulsing halo on the NEXT episode (node-pulse, shared alpha).
-                // ROUND 154 (the device round): the swing DEEPENS (0.10→0.45 — the
-                // report: "the time was highlighted, but very subtly") and the
-                // pill's own background rides the pulse (a primary wash) so the
-                // next node is unmistakable.
-                if (pulsing) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 80.dp, height = 28.dp)
-                            .clip(PillShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f + 0.35f * pulse)),
-                    )
-                }
+                // The NEXT episode's pill (ROUND 163, Option A): no halo, no
+                // wash — the pill holds a STATIC subtle accent border and the
+                // time text sits in the accent color; the one-shot entrance
+                // fades the border in and settles the pill with a gentle scale.
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier
+                        .graphicsLayer {
+                            val settled = if (pulsing) entrance else 1f
+                            scaleX = 0.92f + 0.08f * settled
+                            scaleY = 0.92f + 0.08f * settled
+                        }
                         .clip(PillShape)
                         .background(
-                            when {
-                                released -> MaterialTheme.colorScheme.primary
-                                pulsing -> MaterialTheme.colorScheme.primary.copy(
-                                    alpha = 0.10f + 0.18f * pulse,
-                                )
-                                else -> MaterialTheme.colorScheme.background
-                            },
+                            if (released) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.background,
                         )
                         .border(
                             BorderStroke(
                                 1.5.dp,
                                 when {
                                     released -> MaterialTheme.colorScheme.primary
-                                    pulsing -> MaterialTheme.colorScheme.primary.copy(
-                                        alpha = 0.30f + 0.55f * pulse,
-                                    )
+                                    // "the border will be a little bit highlighted" —
+                                    // a static subtle accent line, faded in ONCE.
+                                    pulsing -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f * entrance)
                                     else -> MaterialTheme.colorScheme.outlineVariant
                                 },
                             ),
@@ -1717,11 +1707,8 @@ private fun HomeAirsRow(
                         letterSpacing = 0.2.sp,
                         color = when {
                             released -> MaterialTheme.colorScheme.onPrimary
-                            pulsing -> lerp(
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                                MaterialTheme.colorScheme.primary,
-                                pulse,
-                            )
+                            // "the release time will be accent colored" — static.
+                            pulsing -> MaterialTheme.colorScheme.primary
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         // nowrap enforced — the 78dp column guarantees the fit.

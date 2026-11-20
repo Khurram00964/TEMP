@@ -516,7 +516,13 @@ class HomeViewModel(
         val releasedPad = released.drop(releasedHead.size)
             .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
 
-        return (releasedHead + releasedPad + upcomingBody).map { row ->
+        // The CONTRACT (round-163 device fix): slot 3 is ALWAYS the next to
+        // air — the released pad rows fill AFTER the upcoming body. The old
+        // `releasedHead + releasedPad + upcomingBody` displaced the next-to-air
+        // below released filler whenever released >= 3 and upcoming <= 3 (the
+        // steady state of a small airing library — the device verdict "it
+        // shows three of the ones which have been released").
+        return (releasedHead + upcomingBody + releasedPad).map { row ->
             HomeAirsItem(
                 mainId = "anilist-${row.anilistId}",
                 title = row.title,
@@ -533,15 +539,19 @@ class HomeViewModel(
      * The user's composition must: EXACTLY 6 rows = 2 released (the most
      * recently aired, desc) + the NEXT to air + the 3 after it (asc). Fewer
      * released than 2 → take what exists and fill with upcoming; fewer
-     * upcoming → pad from the released. All released rows keep the top of the
-     * timeline (desc), the upcoming rows follow (asc). Enriched in one pass
-     * (runCatching per item — a row without a main_entry skips itself).
+     * upcoming → pad from the released — AFTER the upcoming body (slot 3 is
+     * ALWAYS the next to air; the round-163 device fix). The released pool is
+     * bounded to [GLOBAL_AIRS_WINDOW_MS] like the global composer — the ±7d
+     * observation window let week-old episodes pose as "released today" AND
+     * displace the next-to-air (the schedule table only ever receives future
+     * episodes which age into this pool and are never pruned). Enriched in one
+     * pass (runCatching per item — a row without a main_entry skips itself).
      */
     private suspend fun composeAirsToday(entries: List<ScheduleEntry>, now: Long): List<HomeAirsItem> {
         val deduped = entries
             .distinctBy { Triple(it.mainId, it.episodeNumber, it.scheduledAt) }
         val released = deduped
-            .filter { it.scheduledAt <= now }
+            .filter { it.scheduledAt <= now && now - it.scheduledAt <= GLOBAL_AIRS_WINDOW_MS }
             .sortedByDescending { it.scheduledAt }
         val upcoming = deduped
             .filter { it.scheduledAt > now }
@@ -551,7 +561,7 @@ class HomeViewModel(
         val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
         val releasedPad = released.drop(releasedHead.size)
             .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
-        val window = releasedHead + releasedPad + upcomingBody
+        val window = releasedHead + upcomingBody + releasedPad
 
         val items = mutableListOf<HomeAirsItem>()
         for (entry in window) {
