@@ -231,6 +231,26 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             Logger.e("AnikutaApp", e) { "Failed to start the tracking watch-sync bridge" }
         }
 
+        // ── ROUND 163 (STEP-1): the growth-bound maintenance pass — throttled
+        // to once per day on the app-open path (the preference stamp; 0 = the
+        // first open runs it). The sweeps are failure-isolated inside
+        // DatabaseMaintenance, so this can never take the boot down. ──
+        try {
+            val koin = org.koin.core.context.GlobalContext.get()
+            val database = koin.get<com.confused.anikuta.core.database.AnikutaDatabase>()
+            val appPreferences = koin.get<com.confused.anikuta.core.preferences.AppPreferences>()
+            appScope.launch {
+                val now = System.currentTimeMillis()
+                if (now - appPreferences.lastDatabaseMaintenanceAt >= 24L * 60L * 60L * 1000L) {
+                    com.confused.anikuta.core.database.DatabaseMaintenance.run(database, now)
+                    appPreferences.lastDatabaseMaintenanceAt = now
+                    Logger.i("AnikutaApp") { "Database maintenance pass complete" }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.e("AnikutaApp", e) { "Failed to run the database maintenance pass" }
+        }
+
         // D-562 (round 74): the launcher-icon self-heal. PackageManager
         // component states CAN reset to the manifest defaults on an app
         // update while SharedPreferences survive — without this, a user who

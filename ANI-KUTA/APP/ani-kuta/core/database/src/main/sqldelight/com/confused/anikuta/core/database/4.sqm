@@ -1,0 +1,21 @@
+-- Schema v4 → v5 (ROUND 163, STEP-1 re-land of the reverted round-157 WS-A2
+-- denorm + the season axis):
+--
+-- 1. THE DENORMALIZED episode_number COLUMN — the highest-watched queries
+--    (getHighestWatchedEpisodeNumber + getAllHighestWatchedNumbers) used to
+--    CAST(SUBSTR(episode_key, ...)) per row; the batch twin is re-emitted
+--    reactively on EVERY watch_progress write (the player's 10s saves) → a
+--    table-wide expression scan per save. The column kills that. Follows the
+--    1.sqm pattern: guarded-shape ALTER + in-file backfill.
+--
+-- 2. THE SEASON AXIS — season_number lands beside the number so TV-series
+--    progress is representable. EVERY existing row is anime (the flat
+--    "{mainId}|{padded}" key, season 1 implicit) → the backfill stamps 1.
+--    The 3-part key format "{mainId}|{season}|{padded}" is written ONLY for
+--    season>=2 TV content (EpisodeKeys.buildSeasoned, activated with the
+--    movies/series work); parsers accept BOTH shapes from this version on.
+--    A movie = season 1, one episode row.
+ALTER TABLE watch_progress ADD COLUMN season_number INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE watch_progress ADD COLUMN episode_number INTEGER NOT NULL DEFAULT 0;
+UPDATE watch_progress SET episode_number = CAST(SUBSTR(episode_key, INSTR(episode_key, '|') + 1) AS INTEGER);
+CREATE INDEX IF NOT EXISTS idx_watch_progress_main_number ON watch_progress(main_id, season_number, episode_number);

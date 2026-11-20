@@ -103,6 +103,10 @@ class SqlDelightWatchProgressStore(
             auto_mark_suppressed = if (autoMarkSuppressed) 1L else 0L,
             user_marked_watched = if (userMarkedWatched) 1L else 0L,
             played_time_ms = cumulativePlayedMs,
+            // ROUND 163 (v5): the denormalized axis mirrors the key (both
+            // shapes parse — the 3-part TV keys carry their real season).
+            season_number = EpisodeKeys.parseSeasonNumber(episodeKey).toLong(),
+            episode_number = EpisodeKeys.parseEpisodeNumber(episodeKey).toLong(),
         )
 
         if (justCompleted) {
@@ -166,8 +170,9 @@ class SqlDelightWatchProgressStore(
         // was a silent no-op when the row didn't exist — the swipe "didn't work".
         val existing = database.watchQueries.getWatchProgress(episodeKey).executeAsOneOrNull()
         if (existing == null) {
-            // Row doesn't exist — INSERT with suppressed flag + extract mainId from the key.
-            val mainId = episodeKey.substringBeforeLast('|').takeIf { it != episodeKey }
+            // Row doesn't exist — INSERT with suppressed flag + extract mainId from the key
+            // (ROUND 163: via EpisodeKeys — both key shapes parse).
+            val mainId = EpisodeKeys.parseMainId(episodeKey).takeIf { it != episodeKey }
             val now = System.currentTimeMillis()
             database.watchQueries.upsertWatchProgress(
                 episode_key = episodeKey,
@@ -182,6 +187,8 @@ class SqlDelightWatchProgressStore(
                 auto_mark_suppressed = 1L,
                 user_marked_watched = 0L,
                 played_time_ms = 0L,
+                season_number = EpisodeKeys.parseSeasonNumber(episodeKey).toLong(),
+                episode_number = EpisodeKeys.parseEpisodeNumber(episodeKey).toLong(),
             )
             Logger.i(TAG) { "setAutoMarkSuppressed — INSERTED new row (was no-op before): key=$episodeKey mainId=$mainId → isWatched=false (suppressed)" }
         } else {
@@ -199,8 +206,9 @@ class SqlDelightWatchProgressStore(
         val existing = database.watchQueries.getWatchProgress(episodeKey).executeAsOneOrNull()
         if (existing == null) {
             // Row doesn't exist — INSERT with watched flags + extract mainId from the key.
-            // The episode_key format is "${mainId}|${padded_5_digit}" — extract the mainId.
-            val mainId = episodeKey.substringBeforeLast('|').takeIf { it != episodeKey }
+            // The episode_key format is "${mainId}|${padded_5_digit}" (or the 3-part
+            // season shape) — extract the mainId via EpisodeKeys (both shapes parse).
+            val mainId = EpisodeKeys.parseMainId(episodeKey).takeIf { it != episodeKey }
             val now = System.currentTimeMillis()
             database.watchQueries.upsertWatchProgress(
                 episode_key = episodeKey,
@@ -215,6 +223,8 @@ class SqlDelightWatchProgressStore(
                 auto_mark_suppressed = 0L,
                 user_marked_watched = 1L,
                 played_time_ms = 0L,
+                season_number = EpisodeKeys.parseSeasonNumber(episodeKey).toLong(),
+                episode_number = EpisodeKeys.parseEpisodeNumber(episodeKey).toLong(),
             )
             Logger.i(TAG) { "setUserMarkedWatched — INSERTED new row (was no-op before): key=$episodeKey mainId=$mainId → isWatched=true (sticky)" }
         } else {

@@ -33,6 +33,21 @@
   never ran) and `:core:video-resolver`'s test source set missing its junit
   dependency. Both fixed.
 
+## The round-163 wave (STEP-1 — the review-driven fixes)
+
+> The 2026-11-21 schema review (the read-only database agent) re-surfaced five
+> findings; the user ranked them and ordered the fixes. All land in 4.sqm/5.sqm
+> (v4 → v6) with lock tests.
+
+| # | Flaw | The fix (round 163) | Severity |
+|---|---|---|---|
+| R1 | The reactive highest-watched batch query CAST/SUBSTR-scanned every watch_progress row on EVERY 10s save (the reverted v5 regression) | the denormalized episode_number column + the (main_id, season_number, episode_number) index; both queries read the column now | HIGH |
+| R2 | track_entry + content_tracking_state still CASCADE-wiped with main_entry (the D-862 doctrine never covered the TRACKER data) — library removal silently erased the tracker link + opt-in flag | both tables rebuilt FK-free (the 5.sqm 3.sqm-shape rebuild); the lock test proves the survival | HIGH |
+| R3 | No growth bounds: watch_session/data_cache_episode never pruned; expired browse_cache rows lived forever | DatabaseMaintenance (the daily throttled app-open pass): 400d sessions, 180d metadata, expired-browse sweep + the expires index | MED-HIGH |
+| R4 | The content_type axis dormant (every writer hardcodes anime) + the playback_cache MIME name collision | the axis stays schema-ready; activation rides the movies/series work; the collision documented in the contract | MED |
+| R5 | No season axis anywhere (S1E1 == S2E1 in five tables) | the season_number column lands (v5) + the EpisodeKeys 3-part format + dual-format parsers; the tv writers activate with the movies/series work | MED |
+| R6 | track_entry remote links not unique (two contents could claim one remote entry; LIMIT 1 picked silently) | in-file dedup + the UNIQUE (tracker_type, tracker_id) index (v6) | MED |
+
 ## The standing rule
 
 The schema is the user's design — changes arrive through `.sqm` migrations

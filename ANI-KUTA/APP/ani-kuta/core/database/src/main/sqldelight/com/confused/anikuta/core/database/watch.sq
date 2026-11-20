@@ -30,11 +30,16 @@ CREATE TABLE IF NOT EXISTS watch_progress (
     first_watched_at INTEGER,                               -- the first time the user watched this episode
     auto_mark_suppressed INTEGER NOT NULL DEFAULT 0,        -- CF1: user manually un-marked → suppress auto-mark until next play
     user_marked_watched INTEGER NOT NULL DEFAULT 0,         -- CF1: user explicitly marked watched (sticky)
-    played_time_ms INTEGER NOT NULL DEFAULT 0              -- ROUND 127 (D-789): cumulative actually-played ms across all sessions (monotonic)
+    played_time_ms INTEGER NOT NULL DEFAULT 0,              -- ROUND 127 (D-789): cumulative actually-played ms across all sessions (monotonic)
+    season_number INTEGER NOT NULL DEFAULT 1,               -- ROUND 163 (v5): the season axis — 1 for every anime row; TV content writes >= 2 via the 3-part key format
+    episode_number INTEGER NOT NULL DEFAULT 0               -- ROUND 163 (v5): the denormalized per-season number (the key's numeric tail; kills the reactive CAST/SUBSTR scan)
     -- ROUND 144 (D-862): the FK to main_entry is REMOVED — tracking survives content/extension removal
 );
 
 CREATE INDEX IF NOT EXISTS idx_watch_progress_last_watched ON watch_progress(last_watched_at DESC);
+-- ROUND 163 (v5): the denorm index — the highest-watched reads (the reactive
+-- tracking bridge + the details relay) filter by main and aggregate the number.
+CREATE INDEX IF NOT EXISTS idx_watch_progress_main_number ON watch_progress(main_id, season_number, episode_number);
 CREATE INDEX IF NOT EXISTS idx_watch_progress_main_id ON watch_progress(main_id);
 -- Phase DB-OPT: partial index for getContinueWatching (O(log N) instead of O(N) table scan)
 CREATE INDEX IF NOT EXISTS idx_watch_progress_continue
@@ -49,11 +54,11 @@ upsertWatchProgress:
 INSERT OR REPLACE INTO watch_progress(
     episode_key, position, duration, completed, completed_at, last_watched_at,
     main_id, watch_count, first_watched_at, auto_mark_suppressed, user_marked_watched,
-    played_time_ms
+    played_time_ms, season_number, episode_number
 ) VALUES (
     :episode_key, :position, :duration, :completed, :completed_at, :last_watched_at,
     :main_id, :watch_count, :first_watched_at, :auto_mark_suppressed, :user_marked_watched,
-    :played_time_ms
+    :played_time_ms, :season_number, :episode_number
 );
 
 -- Get progress for a specific episode
@@ -123,12 +128,11 @@ SELECT COUNT(*) FROM watch_progress WHERE main_id = ? AND completed = 1;
 -- D-242-fix: Get the HIGHEST watched episode number for an anime.
 -- Used by DetailsViewModel.relayWatchProgressIfNeeded to compute AniList progress.
 -- AniList progress = the episode number the user has watched up to (not count).
--- Episode key format: "${mainId}|${padded_5_digit}" — extract the number after '|'.
+-- ROUND 163 (v5): reads the DENORMALIZED episode_number column (the reactive
+-- CAST/SUBSTR-per-row scan on every 10s save is gone). Anime rows are all
+-- season 1; season-aware callers filter season_number themselves.
 getHighestWatchedEpisodeNumber:
-SELECT COALESCE(
-    MAX(CAST(SUBSTR(episode_key, INSTR(episode_key, '|') + 1) AS INTEGER)),
-    0
-)
+SELECT COALESCE(MAX(episode_number), 0)
 FROM watch_progress
 WHERE main_id = :mainId
   AND ((completed = 1 AND auto_mark_suppressed = 0) OR user_marked_watched = 1);
@@ -164,7 +168,7 @@ GROUP BY main_id;
 -- AniList": the old relay only fired from details-page taps.
 getAllHighestWatchedNumbers:
 SELECT main_id,
-       COALESCE(MAX(CAST(SUBSTR(episode_key, INSTR(episode_key, '|') + 1) AS INTEGER)), 0) AS highest
+       COALESCE(MAX(episode_number), 0) AS highest
 FROM watch_progress
 WHERE main_id IS NOT NULL
   AND ((completed = 1 AND auto_mark_suppressed = 0) OR user_marked_watched = 1)
@@ -252,3 +256,10 @@ DELETE FROM watch_session;
 -- Library removal (S3) clears one content's sessions with its progress rows.
 deleteWatchSessionsByMainId:
 DELETE FROM watch_session WHERE main_id = :main_id;
+
+-- ROUND 163 (STEP-1 growth bound): the ledger's age prune — sessions older
+-- than the caller's cutoff (the app-level bound is 400 days, past any real
+-- reporting window the Profile's charts read) ride the idx_watch_session
+-- started index. Throttled daily by DatabaseMaintenance.
+deleteWatchSessionsOlderThan:
+DELETE FROM watch_session WHERE started_at < :cutoff;

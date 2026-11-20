@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS browse_cache (
     expires_at INTEGER NOT NULL
 );
 
+-- ROUND 163 (STEP-1 growth bound): the expired-row sweep's index — expired
+-- rows were previously NEVER deleted (stale sections for abandoned keys lived
+-- forever); DatabaseMaintenance sweeps them daily (throttled).
+CREATE INDEX IF NOT EXISTS idx_browse_cache_expires ON browse_cache(expires_at);
+
 -- ============================================================================
 -- Queries: data_cache_episode
 -- ============================================================================
@@ -85,6 +90,13 @@ INSERT OR REPLACE INTO data_cache_episode(
 deleteEpisodeMetadata:
 DELETE FROM data_cache_episode WHERE main_id = :mainId;
 
+-- ROUND 163 (STEP-1 growth bound): the metadata cache's age prune — the
+-- reverted WS-A bound (180 days; the library's audio pills read these rows so
+-- the window stays generous) rides fetched_at. Throttled daily by
+-- DatabaseMaintenance. Rows for a LIVE library entry are refetched on demand.
+deleteEpisodeMetadataOlderThan:
+DELETE FROM data_cache_episode WHERE fetched_at < :cutoff;
+
 -- ============================================================================
 -- Queries: browse_cache
 -- ============================================================================
@@ -100,3 +112,8 @@ DELETE FROM browse_cache WHERE section_key = :sectionKey;
 
 getAllBrowseCache:
 SELECT * FROM browse_cache;
+
+-- ROUND 163 (STEP-1 growth bound): the expired-row sweep — the read side
+-- treats expired rows as misses; this reclaims their storage daily.
+deleteExpiredBrowseCache:
+DELETE FROM browse_cache WHERE expires_at < :now;

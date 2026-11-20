@@ -525,6 +525,15 @@ APP/ani-kuta/DOCUMENTATION/database/
 
 ## 30. Debug-Build Schema Freedom
 
+> **ROUND 163 UPDATE (the user's standing order):** proper versioned migration
+> schemes are now the STANDARD for every schema change ("if we change the
+> database, implement proper database migration schemes so any other database
+> system can be migrated easily to this after the installation"). The
+> freedom below still covers the DEV-INSTALL workflow (a stale dev DB gets
+> wiped, not hand-migrated), but NO schema change may rely on it: every change
+> lands as a numbered `.sqm` per `DOCUMENTATION/database/DATABASE-CONTRACT.md`
+> §2, with a `SchemaMigrationTest` case. The contract doc WINS for DB matters.
+
 > The project is currently in **debug builds only**. There are no production users. There is no published APK. This gives us freedom to make complete schema changes without migration concerns.
 
 ### Rules

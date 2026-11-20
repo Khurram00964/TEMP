@@ -14,29 +14,41 @@
 --   WATCHING | COMPLETED | PAUSED | DROPPED | PLAN_TO_WATCH | REWATCHING
 --
 -- Score is 0-100 (AniList-native POINT_100 format). The UI displays this as
--- 0-10 stars (each star = 10 points).
+-- 0-10 stars (each star = 10 points). Other trackers convert at their boundary
+-- (Simkl/Trakt 1-10 → x10; the TrackerTypes doctrine).
 --
 -- started_at / completed_at are epoch millis (nullable). AniList uses
 -- FuzzyDateInput { year, month, day } — we convert at the API boundary.
+--
+-- ROUND 163 (STEP-1, schema v6): the CASCADE FK is REMOVED (the 3.sqm/D-862
+-- doctrine now covers the TRACKER data too — removing a content must never
+-- silently erase the tracker link + opt-in flag; 5.sqm rebuilt both tables),
+-- times_watched joined (the movie-rewatch semantics Simkl/Trakt carry; anime
+-- rewatches ride watch_count on watch_progress, movies had nowhere), and the
+-- (tracker_type, tracker_id) index is UNIQUE — one remote entry maps to at
+-- most one content (the old non-unique index + LIMIT 1 silently picked a
+-- winner among duplicates). tracker_type vocabulary: 'anilist' | 'mal' |
+-- 'simkl' | 'trakt' (future).
 
 CREATE TABLE IF NOT EXISTS track_entry (
     main_id TEXT NOT NULL,
-    tracker_type TEXT NOT NULL,           -- 'anilist' | 'mal' | 'shikimori' (future)
-    tracker_id INTEGER NOT NULL,          -- AniList anime ID (the mediaId)
+    tracker_type TEXT NOT NULL,           -- 'anilist' | 'mal' | 'simkl' | 'trakt' (future)
+    tracker_id INTEGER NOT NULL,          -- the tracker's remote id (AniList mediaId, Simkl id, ...)
     status TEXT NOT NULL,                 -- TrackStatus.value
     score INTEGER,                        -- 0-100, nullable
-    progress INTEGER NOT NULL DEFAULT 0,  -- episodes watched
-    total_episodes INTEGER,               -- cached from AniList (may change)
-    list_id INTEGER,                      -- AniList's MediaList.id (for update/delete)
+    progress INTEGER NOT NULL DEFAULT 0,  -- episodes watched (movies: 0/1)
+    total_episodes INTEGER,               -- cached from the tracker (may change; movies: 1)
+    list_id INTEGER,                      -- AniList's MediaList.id (for update/delete; other trackers: null)
     started_at INTEGER,                   -- epoch millis (nullable)
     completed_at INTEGER,                 -- epoch millis (nullable)
     updated_at INTEGER NOT NULL,          -- last sync time
-    PRIMARY KEY (main_id, tracker_type),
-    FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+    times_watched INTEGER NOT NULL DEFAULT 0,  -- ROUND 163 (v6): movie rewatch count (anime rewatches ride watch_progress.watch_count)
+    PRIMARY KEY (main_id, tracker_type)
 );
 
--- Fast lookup by tracker ID (e.g. "does this AniList anime already have a track entry?")
-CREATE INDEX IF NOT EXISTS idx_track_entry_tracker_id
+-- Fast lookup by tracker ID — UNIQUE (ROUND 163, v6): "does this remote entry
+-- already have a track entry?" is now an honest 1:1 question.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_entry_tracker_id
     ON track_entry(tracker_type, tracker_id);
 
 -- ── Queries ────────────────────────────────────────────────────────────────
@@ -44,11 +56,17 @@ CREATE INDEX IF NOT EXISTS idx_track_entry_tracker_id
 upsertTrackEntry:
 INSERT OR REPLACE INTO track_entry(
     main_id, tracker_type, tracker_id, status, score, progress,
-    total_episodes, list_id, started_at, completed_at, updated_at
+    total_episodes, list_id, started_at, completed_at, updated_at, times_watched
 ) VALUES (
     :main_id, :tracker_type, :tracker_id, :status, :score, :progress,
-    :total_episodes, :list_id, :started_at, :completed_at, :updated_at
+    :total_episodes, :list_id, :started_at, :completed_at, :updated_at, :times_watched
 );
+
+-- ROUND 163 (v6): the movie-rewatch increment — DB-side so a read-modify-write
+-- race can never lose a count (the watch_session played_ms precedent).
+incrementTimesWatched:
+UPDATE track_entry SET times_watched = times_watched + 1
+WHERE main_id = :main_id AND tracker_type = :tracker_type;
 
 getTrackEntry:
 SELECT * FROM track_entry
@@ -103,15 +121,16 @@ ORDER BY updated_at DESC;
 -- Rows are keyed (main_id, tracker_type); a row with tracked = 0 is kept
 -- (not deleted) so "not tracking" is remembered even after a delete-from-
 -- AniList cycle — the user's unlink/stop decisions are never forgotten
--- silently.
+-- silently. ROUND 163 (STEP-1, v6): the CASCADE FK is REMOVED (5.sqm rebuild —
+-- the library removal must never silently erase the user's opt-in decisions;
+-- the explicit deleteTrackingState query is the only removal path).
 
 CREATE TABLE IF NOT EXISTS content_tracking_state (
     main_id TEXT NOT NULL,
-    tracker_type TEXT NOT NULL,           -- 'anilist' | 'mal' | 'shikimori' (future)
+    tracker_type TEXT NOT NULL,           -- 'anilist' | 'mal' | 'simkl' | 'trakt' (future)
     tracked INTEGER NOT NULL DEFAULT 0,   -- 0 = not tracked, 1 = tracking now
     updated_at INTEGER NOT NULL,
-    PRIMARY KEY (main_id, tracker_type),
-    FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+    PRIMARY KEY (main_id, tracker_type)
 );
 
 -- Upsert the tracking intent for (main_id, tracker_type).
@@ -137,7 +156,9 @@ getTrackedMainIds:
 SELECT main_id FROM content_tracking_state
 WHERE tracker_type = :tracker_type AND tracked = 1;
 
--- Delete the row entirely (library removal rides the FK cascade anyway).
+-- Delete the row entirely (ROUND 163, v6: the ONLY removal path now — the
+-- FK cascade is gone by design; the library removal keeps the user's opt-in
+-- history, the tracker flows call this deliberately).
 deleteTrackingState:
 DELETE FROM content_tracking_state
 WHERE main_id = :main_id AND tracker_type = :tracker_type;
