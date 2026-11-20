@@ -235,6 +235,7 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
         // The token is in the URL fragment (not query). Parse + pass to AniListTracker.
         handleAniListOAuthRedirect(intent)
         handleTraktOAuthRedirect(intent)
+        handleMalOAuthRedirect(intent)
         // ROUND 102 (WS-D): the unified pending-navigation intake — the COLD
         // half. Every navigation-bearing delivery (the share deep link, the
         // notification extras) funnels through the reactive PendingNavigation
@@ -305,6 +306,7 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
         setIntent(intent)
         handleAniListOAuthRedirect(intent)
         handleTraktOAuthRedirect(intent)
+        handleMalOAuthRedirect(intent)
         PendingNavigation.offerFromIntent(intent)
     }
 
@@ -327,6 +329,23 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
      * This method extracts the token + calls AniListTracker.handleLoginCallback(token)
      * in a background coroutine.
      */
+    /**
+     * ROUND 159 (WS-MAL): the MyAnimeList OAuth redirect
+     * (anikuta://mal-auth?code=...). Dormant until MalAuth.CLIENT_ID lands —
+     * an early redirect resolves to no-op (honest).
+     */
+    private fun handleMalOAuthRedirect(intent: android.content.Intent) {
+        val data = intent.data ?: return
+        if (data.host != com.confused.anikuta.core.trackermal.MalAuth.REDIRECT_HOST) return
+        val code = data.getQueryParameter("code") ?: return
+        kotlinx.coroutines.MainScope().launch {
+            val tracker = org.koin.core.context.GlobalContext.get()
+                .get<com.confused.anikuta.core.trackermal.MalTracker>()
+            val ok = tracker.handleLoginCallback(code)
+            Logger.i("Anikuta:MainActivity") { "MAL OAuth redirect handled: ok=$ok" }
+        }
+    }
+
     /**
      * ROUND 157 (WS-C): the Trakt OAuth redirect (anikuta://trakt-auth?code=...).
      * The tracker is dormant until TraktAuth.CLIENT_ID lands — an early

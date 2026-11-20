@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,6 +35,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,10 +80,35 @@ fun TrackersScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val anilistTracker = koinInject<AniListTracker>()
+    // ROUND 159 (WS-MAL): the MyAnimeList tracker (dormant until the app
+    // registration lands — the card says so honestly).
+    val malTracker = koinInject<com.confused.anikuta.core.trackermal.MalTracker>()
     val contentRepository = koinInject<ContentRepository>()
     val contentResolver = koinInject<ContentResolver>()
 
     val loginState by anilistTracker.observeLoginState().collectAsState(initial = TrackerLoginState.LoggedOut)
+    // ROUND 159 (WS-MAL): the MAL login state (refreshed on entry — the
+    // tracker's isLoggedIn reflects the token + the registration gate).
+    var malConfigured by remember { mutableStateOf(false) }
+    var malLoggedIn by remember { mutableStateOf(false) }
+    var malUsername by remember { mutableStateOf("") }
+    // ROUND 159: the state refreshes on every RESUME — the OAuth redirect
+    // returns through the browser, so a one-shot LaunchedEffect(Unit) would
+    // never see the login land (the composition survives).
+    val malResumeKey = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val malLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(malLifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) malResumeKey.intValue++
+        }
+        malLifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { malLifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+    LaunchedEffect(malResumeKey.intValue) {
+        malConfigured = com.confused.anikuta.core.trackermal.MalAuth.isConfigured
+        malLoggedIn = malTracker.isLoggedIn()
+        malUsername = malTracker.username()
+    }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val collapsed = listState.firstVisibleItemIndex > 0 ||
         listState.firstVisibleItemScrollOffset > 20
@@ -125,6 +152,32 @@ fun TrackersScreen(
                     onUnlink = { showUnlinkConfirm = true },
                     onPopulate = { showPopulateConfirm = true },
                     onDismissResult = { populateState = PopulateState.Idle },
+                )
+            }
+
+            // ── MyAnimeList tracker card (ROUND 159, WS-MAL) ──
+            item {
+                MalCard(
+                    configured = malConfigured,
+                    loggedIn = malLoggedIn,
+                    username = malUsername,
+                    onLink = {
+                        scope.launch {
+                            val url = malTracker.startLogin()
+                            if (url != null) {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            }
+                        }
+                    },
+                    onUnlink = {
+                        scope.launch {
+                            malTracker.logout()
+                            malLoggedIn = false
+                            malUsername = ""
+                        }
+                    },
                 )
             }
         }
@@ -504,3 +557,91 @@ private val AniListStatusMapping = mapOf(
     "DROPPED" to "Dropped",
     "PAUSED" to "Paused",
 )
+
+
+// ════════════════════════════════════════════════════════════════════════════
+//  ROUND 159 (WS-MAL): the MyAnimeList card — the AniList card's compact
+//  sibling. Honest in every state: not-configured (the registration pending),
+//  logged-out (Link), logged-in (the username + Unlink).
+// ════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun MalCard(
+    configured: Boolean,
+    loggedIn: Boolean,
+    username: String,
+    onLink: () -> Unit,
+    onUnlink: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "MyAnimeList",
+                    fontFamily = RobotoFamily,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = when {
+                        !configured -> "Setup pending"
+                        loggedIn -> username.ifBlank { "Connected" }
+                        else -> "Not linked"
+                    },
+                    fontFamily = RobotoFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = when {
+                        loggedIn -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            Text(
+                text = when {
+                    !configured ->
+                        "The app registration is being completed — MAL syncing activates in an upcoming build."
+                    loggedIn ->
+                        "Episode progress and ratings sync to your MAL list automatically for tracked entries."
+                    else -> "Sync your anime progress and ratings to MyAnimeList."
+                },
+                fontFamily = RobotoFamily,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            if (loggedIn) {
+                Button(
+                    onClick = onUnlink,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Unlink MyAnimeList", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                }
+            } else if (configured) {
+                Button(
+                    onClick = onLink,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Link MyAnimeList", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+    }
+}

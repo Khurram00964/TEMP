@@ -12,6 +12,8 @@ dependencies {
     implementation(project(":core:tracker-api"))
     // ROUND 157 (WS-C): the trackers-list registry hosts the Trakt binding.
     implementation(project(":core:tracker-trakt"))
+    // ROUND 159 (WS-MAL): the trackers-list registry hosts the MAL binding.
+    implementation(project(":core:tracker-mal"))
     implementation(project(":core:preferences"))
     implementation(project(":core:anilist"))
     implementation(project(":core:database"))

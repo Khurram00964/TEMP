@@ -25,14 +25,39 @@ val trackerAniListModule = module {
     single<com.confused.anikuta.core.trackertrakt.TraktTracker> {
         com.confused.anikuta.core.trackertrakt.TraktTracker(get())
     }
+    // ROUND 159 (WS-MAL): the MyAnimeList tracker — the SECOND anime service,
+    // fully implemented; dormant until the user's MAL app registration lands
+    // in MalAuth.CLIENT_ID. Its id resolver rides AniList's own idMal field
+    // (ContentDetails.malId) — zero network for AniList-linked entries.
+    single<com.confused.anikuta.core.trackermal.MalTracker> {
+        com.confused.anikuta.core.trackermal.MalTracker(get())
+    }
     single<List<Tracker>>(named("trackers")) {
         listOf(
             get<AniListTracker>(),
             get<com.confused.anikuta.core.trackertrakt.TraktTracker>(),
+            get<com.confused.anikuta.core.trackermal.MalTracker>(),
+        )
+    }
+    // ROUND 159 (WS-C continuation): the id resolvers — MAL's first (the
+    // AniList-carried idMal); Trakt's lands with the TMDB key.
+    single<List<com.confused.anikuta.core.trackerapi.TrackerLinkResolver>>(
+        named("trackerLinkResolvers"),
+    ) {
+        listOf(
+            com.confused.anikuta.core.trackermal.MalLinkResolver(get()),
         )
     }
 
-    single { TrackSyncManager(get(named("trackers")), get(), get(), get()) }
+    single {
+        TrackSyncManager(
+            get(named("trackers")),
+            get(),
+            get(),
+            get(),
+            linkResolvers = get(named("trackerLinkResolvers")),
+        )
+    }
 
     // ROUND 102 (WS-E — the tracking contract): the watch_progress table's
     // reactive reconciler — the player's episode completions (and every other
