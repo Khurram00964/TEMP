@@ -101,6 +101,8 @@ fun SearchTopBar(
     onSortChange: (SearchSort) -> Unit,
     onExtensionSourceClick: () -> Unit = {},
     selectedExtensionSourceName: String? = null,
+    onDataSourceClick: () -> Unit = {},
+    selectedDataSourceName: String? = null,
 ) {
     val titleFontSize by animateFloatAsState(
         targetValue = if (collapsed) 26f else 36f,
@@ -163,6 +165,8 @@ fun SearchTopBar(
                             onSelect = onSourceSelect,
                             onExtensionSourceClick = onExtensionSourceClick,
                             selectedExtensionSourceName = selectedExtensionSourceName,
+                            onDataSourceClick = onDataSourceClick,
+                            selectedDataSourceName = selectedDataSourceName,
                             modifier = Modifier
                                 .width(sourceWidth)
                                 .alpha(sourceAlpha),
@@ -329,6 +333,12 @@ private fun SourceToggle(
     modifier: Modifier = Modifier,
     onExtensionSourceClick: () -> Unit = {},
     selectedExtensionSourceName: String? = null,
+    // ROUND 163 (STEP-3): the DATA-SOURCE side now mirrors the Extension side —
+    // the label shows the chosen data source and an active tap opens the
+    // data-source picker (the old AniList segment hard-coded its own
+    // selection and the tap did nothing — the user's dead-tap report).
+    onDataSourceClick: () -> Unit = {},
+    selectedDataSourceName: String? = null,
 ) {
     Row(
         modifier = modifier
@@ -337,10 +347,16 @@ private fun SourceToggle(
             .padding(3.dp),
     ) {
         SourceToggleSegment(
-            label = "AniList",
+            label = selectedDataSourceName ?: "AniList",
             icon = Icons.Filled.Search,
             active = source == SearchSource.ANILIST,
-            onClick = { onSelect(SearchSource.ANILIST) },
+            onClick = {
+                if (source == SearchSource.ANILIST) {
+                    onDataSourceClick()
+                } else {
+                    onSelect(SearchSource.ANILIST)
+                }
+            },
         )
         SourceToggleSegment(
             label = selectedExtensionSourceName ?: "Extension",

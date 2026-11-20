@@ -58,6 +58,12 @@ class SearchViewModel(
     private val extensionManager: ExtensionManager,
     private val cloudstreamRepository: CloudstreamContentRepository,
     private val activityTracker: com.confused.anikuta.core.activitytracker.ActivityTracker,
+    // ROUND 163 (STEP-3): the movies/series data sources (metadata-only —
+    // results route to the CloudStream playback search per the user's rule).
+    private val tmdbApi: com.confused.anikuta.core.tmdb.TmdbApi,
+    private val tvmazeApi: com.confused.anikuta.core.tvmaze.TvmazeApi,
+    private val tmdbPreferences: com.confused.anikuta.core.tmdb.TmdbPreferences,
+    private val tvmazePreferences: com.confused.anikuta.core.tvmaze.TvmazePreferences,
 ) : ViewModel() {
 
     companion object {
@@ -114,6 +120,9 @@ class SearchViewModel(
         private const val KEY_SEARCH_SOURCE = "search_selected_source"
         private const val SOURCE_ANILIST = "anilist"
         private const val SOURCE_EXTENSION = "extension"
+
+        /** ROUND 163 (STEP-3): the persisted data-source kind (KEY_SEARCH_DATASOURCE). */
+        private const val KEY_SEARCH_DATASOURCE = "search_data_source_kind"
     }
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
@@ -134,6 +143,21 @@ class SearchViewModel(
         },
     )
     val source: StateFlow<SearchSource> = _source.asStateFlow()
+
+    // ── ROUND 163 (STEP-3): the DATA-SOURCE axis (AniList / TMDB / TVmaze) ──
+    // The "Data source" segment's chosen backend — persisted like the tab.
+    // ANILIST = the GraphQL anime source (the original behavior); TMDB =
+    // movies+series; TVmaze = the keyless TV schedule/search complement.
+    private val _dataSource = MutableStateFlow(
+        DataSourceKind.fromId(preferenceStore.getString(KEY_SEARCH_DATASOURCE, DataSourceKind.ANILIST.id)),
+    )
+    val dataSource: StateFlow<DataSourceKind> = _dataSource.asStateFlow()
+
+    /** The data sources' toggle-aware state (the picker grays a disabled one). */
+    val tmdbEnabled: StateFlow<Boolean> = tmdbPreferences.enabledFlow
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), true)
+    val tvmazeEnabled: StateFlow<Boolean> = tvmazePreferences.enabledFlow
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), true)
 
     private val _sort = MutableStateFlow(SearchSort.POPULARITY)
     val sort: StateFlow<SearchSort> = _sort.asStateFlow()
@@ -186,6 +210,7 @@ class SearchViewModel(
         ANIYOMI_POPULAR,
         ANIYOMI_SEARCH,
         CS_SEARCH,
+        NONE, // ROUND 163 (STEP-3): the metadata data sources paginate no further yet
     }
 
     /** D-305: starts a new request — cancels superseded loads, returns its generation. */
@@ -664,6 +689,16 @@ class SearchViewModel(
             return
         }
 
+        // ROUND 163 (STEP-3): the movies/series data sources route here first —
+        // metadata-only results (the playback hand-off lives in the UI).
+        when (_dataSource.value) {
+            DataSourceKind.TMDB, DataSourceKind.TVMAZE -> {
+                searchDataSource(q)
+                return
+            }
+            DataSourceKind.ANILIST -> {} // the original GraphQL path below
+        }
+
         // D-192: track the search event
         activityTracker.track(
             eventType = com.confused.anikuta.core.activitytracker.ActivityEventType.SEARCH,
@@ -722,12 +757,125 @@ class SearchViewModel(
         if (defaultsJob?.isActive == true) return
         if (showingDefaults) return
         defaultsJob = if (_source.value == SearchSource.ANILIST) {
-            loadTrending()
+            when (_dataSource.value) {
+                DataSourceKind.TMDB -> loadTmdbDefaults()
+                DataSourceKind.TVMAZE -> loadTvmazeDefaults()
+                DataSourceKind.ANILIST -> loadTrending()
+            }
         } else if (_selectedKind.value == SelectedSourceKind.CLOUDSTREAM) {
             loadCloudstreamPopular()
         } else {
             loadExtensionPopular()
         }
+    }
+
+    // ── ROUND 163 (STEP-3): the movies/series data-source machinery ──────────
+
+    /**
+     * Switches the DATA-SOURCE axis (AniList / TMDB / TVmaze) — persists the
+     * kind + re-dispatches (the live query re-searches, the blank query
+     * reloads the defaults for the new source).
+     */
+    fun onDataSourceChange(kind: DataSourceKind) {
+        if (_dataSource.value == kind) return
+        _dataSource.value = kind
+        preferenceStore.putString(KEY_SEARCH_DATASOURCE, kind.id)
+        Logger.i(TAG) { "Data source switched to $kind" }
+        if (_query.value.isNotBlank()) {
+            showingDefaults = false
+            search(_query.value)
+        } else {
+            showingDefaults = false
+            loadDefaults()
+        }
+    }
+
+    /** The unified metadata search across TMDB / TVmaze (the enabled-gated pair). */
+    private fun searchDataSource(q: String) {
+        showingDefaults = false
+        val gen = beginRequest()
+        _uiState.value = SearchUiState.Loading
+        searchJob = viewModelScope.launch {
+            try {
+                val results = when (_dataSource.value) {
+                    DataSourceKind.TMDB -> {
+                        if (!tmdbPreferences.enabled) emptyList()
+                        else tmdbApi.search(q).map { it.toDataSourceResult() }
+                    }
+                    DataSourceKind.TVMAZE -> {
+                        if (!tvmazePreferences.enabled) emptyList()
+                        else tvmazeApi.search(q).map { it.toDataSourceResult() }
+                    }
+                    DataSourceKind.ANILIST -> emptyList() // unreachable
+                }
+                if (_query.value.isBlank()) return@launch
+                if (!isCurrent(gen)) return@launch
+                pagingMode = PagingMode.NONE
+                _uiState.value = if (results.isEmpty()) {
+                    SearchUiState.Empty
+                } else {
+                    SearchUiState.DataSourceSuccess(results = results)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Logger.e(TAG, e) { "Data-source search failed for '$q': ${e.message}" }
+                if (_query.value.isBlank()) return@launch
+                if (!isCurrent(gen)) return@launch
+                _uiState.value = SearchUiState.Error
+            }
+        }
+    }
+
+    /** TMDB's blank-query default: the day's trending (movies + TV). */
+    private fun loadTmdbDefaults(): Job = viewModelScope.launch {
+        _uiState.value = SearchUiState.Loading
+        showingDefaults = true
+        val results = if (tmdbPreferences.enabled) {
+            tmdbApi.trending().map { it.toDataSourceResult() }
+        } else {
+            emptyList()
+        }
+        showingDefaults = _query.value.isBlank()
+        _uiState.value = if (_query.value.isNotBlank()) {
+            return@launch
+        } else if (results.isEmpty()) {
+            SearchUiState.Empty
+        } else {
+            SearchUiState.DataSourceSuccess(results = results)
+        }
+    }
+
+    /** TVmaze's blank-query default: today's airing schedule (US grid). */
+    private fun loadTvmazeDefaults(): Job = viewModelScope.launch {
+        _uiState.value = SearchUiState.Loading
+        showingDefaults = true
+        val results = if (tvmazePreferences.enabled) {
+            val today = java.time.LocalDate.now().toString()
+            tvmazeApi.schedule(today).map { it.toDataSourceResult() }
+        } else {
+            emptyList()
+        }
+        showingDefaults = _query.value.isBlank()
+        _uiState.value = if (_query.value.isNotBlank()) {
+            return@launch
+        } else if (results.isEmpty()) {
+            SearchUiState.Empty
+        } else {
+            SearchUiState.DataSourceSuccess(results = results)
+        }
+    }
+
+    /**
+     * THE PLAYBACK HAND-OFF (the user's round-163 priority rule): a data-source
+     * result carries no streams — the user picks a CloudStream provider and
+     * the title becomes that provider's live search. Everything rides the
+     * existing extension machinery (the selection persists; the query runs).
+     */
+    fun findInCloudstream(title: String, providerName: String) {
+        _query.value = title
+        _source.value = SearchSource.EXTENSION
+        preferenceStore.putString(KEY_SEARCH_SOURCE, SOURCE_EXTENSION)
+        onSelectCloudstreamSource(providerName)
     }
 
     /**
@@ -1765,6 +1913,15 @@ sealed interface SearchUiState {
     ) : SearchUiState
 
     /**
+     * ROUND 163 (STEP-3): the movies/series data-source results (TMDB /
+     * TVmaze) — METADATA ONLY: a tap opens the "find where to watch" hand-off
+     * (the CloudStream provider search), it never plays directly.
+     */
+    data class DataSourceSuccess(
+        val results: List<DataSourceResult>,
+    ) : SearchUiState
+
+    /**
      * Task 44: SECTIONED CloudStream browse success — each provider shelf
      * ("Latest Updated", "Most Popular", …) renders as its own titled
      * horizontal row of cards (the device round-3 "sections in row format"
@@ -1839,3 +1996,61 @@ enum class SearchSort(val label: String, val apiValue: String) {
     TRENDING("Trending", "TRENDING_DESC"),
     FAVOURITES("Favourites", "FAVOURITES_DESC"),
 }
+
+
+// ── ROUND 163 (STEP-3): the movies/series DATA-SOURCE machinery ─────────────
+
+/** The "Data source" segment's chosen backend (persisted per install). */
+enum class DataSourceKind(val id: String, val displayName: String) {
+    ANILIST("anilist", "AniList"),
+    TMDB("tmdb", "TMDB"),
+    TVMAZE("tvmaze", "TVMaze");
+
+    companion object {
+        fun fromId(id: String): DataSourceKind =
+            entries.firstOrNull { it.id == id } ?: ANILIST
+    }
+}
+
+/**
+ * The unified metadata result — ONE card shape for every data source (TMDB's
+ * TmdbItem and TVmaze's TvmazeShow map into it). METADATA ONLY: a result
+ * carries no streams — the tap opens the "find where to watch" hand-off (the
+ * CloudStream provider search) per the user's priority rule.
+ */
+data class DataSourceResult(
+    val source: DataSourceKind,
+    /** The source's own id (TMDB id / TVmaze id) — the details-key seed later. */
+    val remoteId: Int,
+    /** "movie" | "tv" (TMDB) | "show" (TVmaze). */
+    val mediaType: String,
+    val title: String,
+    val posterUrl: String?,
+    val year: Int?,
+    val rating: Double?,
+    val overview: String?,
+)
+
+private fun com.confused.anikuta.core.tmdb.TmdbApi.TmdbItem.toDataSourceResult(): DataSourceResult =
+    DataSourceResult(
+        source = DataSourceKind.TMDB,
+        remoteId = id,
+        mediaType = mediaType,
+        title = title,
+        posterUrl = posterUrl,
+        year = year,
+        rating = rating,
+        overview = overview,
+    )
+
+private fun com.confused.anikuta.core.tvmaze.TvmazeApi.TvmazeShow.toDataSourceResult(): DataSourceResult =
+    DataSourceResult(
+        source = DataSourceKind.TVMAZE,
+        remoteId = id,
+        mediaType = "show",
+        title = title,
+        posterUrl = posterUrl,
+        year = year,
+        rating = rating,
+        overview = overview,
+    )

@@ -47,6 +47,9 @@ import androidx.compose.material.icons.filled.SentimentDissatisfied
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -250,6 +253,15 @@ fun SearchScreen(
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSourcePicker by remember { mutableStateOf(false) }
+
+    // ROUND 163 (STEP-3): the DATA-SOURCE picker + the metadata results state.
+    var showDataSourcePicker by remember { mutableStateOf(false) }
+    val dataSourceKind by viewModel.dataSource.collectAsState()
+    val tmdbEnabled by viewModel.tmdbEnabled.collectAsState()
+    val tvmazeEnabled by viewModel.tvmazeEnabled.collectAsState()
+    val selectedDataSourceName = dataSourceKind.displayName
+    var handOffResult by remember { mutableStateOf<DataSourceResult?>(null) }
+    var pendingHandOffTitle by remember { mutableStateOf<String?>(null) }
     val activeFilterCount = pendingFilters.activeCount
 
     // D-248: trending now auto-loads on first entry (SearchViewModel.init) — recents
@@ -293,6 +305,8 @@ fun SearchScreen(
             // (even if already selected, per user spec).
             onExtensionSourceClick = { showSourcePicker = true },
             selectedExtensionSourceName = selectedExtensionSourceName,
+            onDataSourceClick = { showDataSourcePicker = true },
+            selectedDataSourceName = selectedDataSourceName,
         )
 
         // Scrollable content
@@ -481,6 +495,12 @@ fun SearchScreen(
                     )
                 }
 
+                is SearchUiState.DataSourceSuccess -> {
+                    DataSourceResultsGrid(
+                        results = state.results,
+                        onResultTap = { result -> handOffResult = result },
+                    )
+                }
                 is SearchUiState.ExtensionSuccess -> {
                     val state = effectiveState as SearchUiState.ExtensionSuccess
                     ExtensionResultsGrid(
@@ -606,6 +626,59 @@ fun SearchScreen(
         onDismiss = { showFilterSheet = false },
     )
 
+    // ── ROUND 163 (STEP-3): the DATA-SOURCE picker (AniList / TMDB / TVmaze) ──
+    if (showDataSourcePicker) {
+        DataSourcePickerSheet(
+            current = dataSourceKind,
+            tmdbEnabled = tmdbEnabled,
+            tvmazeEnabled = tvmazeEnabled,
+            onSelect = { kind ->
+                showDataSourcePicker = false
+                viewModel.onDataSourceChange(kind)
+            },
+            onDismiss = { showDataSourcePicker = false },
+        )
+    }
+
+    // The metadata result's PLAYBACK HAND-OFF (the user's priority rule):
+    // a data-source result carries no streams — the user picks a CloudStream
+    // provider from the EXISTING extension sheet and the title becomes that
+    // provider's live search (findInCloudstream on the onSelectCs intercept).
+    handOffResult?.let { result ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { handOffResult = null },
+            title = {
+                Text(
+                    "Find \"${result.title}\" where?",
+                    fontFamily = RobotoFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            text = {
+                Text(
+                    "Data sources carry no streams. Pick a CloudStream provider — " +
+                        "the title becomes that provider's search.",
+                    fontFamily = RobotoFamily,
+                    fontSize = 14.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    handOffResult = null
+                    pendingHandOffTitle = result.title
+                    showSourcePicker = true
+                }) {
+                    Text("Pick a provider", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { handOffResult = null }) {
+                    Text("Cancel", fontFamily = RobotoFamily)
+                }
+            },
+        )
+    }
+
     // ── Extension source picker sheet ──
     if (showSourcePicker) {
         ExtensionSourcePickerSheet(
@@ -629,8 +702,18 @@ fun SearchScreen(
             csSources = csSources,
             selectedCsProvider = if (selectedKind == SelectedSourceKind.CLOUDSTREAM) selectedCsProvider else null,
             onSelectCs = { name ->
-                viewModel.onSelectCloudstreamSource(name)
-                showSourcePicker = false
+                // ROUND 163 (STEP-3): a pending metadata hand-off routes the
+                // provider pick into the playback search instead of a plain
+                // mode switch.
+                val pending = pendingHandOffTitle
+                if (pending != null) {
+                    pendingHandOffTitle = null
+                    showSourcePicker = false
+                    viewModel.findInCloudstream(pending, name)
+                } else {
+                    viewModel.onSelectCloudstreamSource(name)
+                    showSourcePicker = false
+                }
             },
         )
     }
@@ -1398,6 +1481,77 @@ private fun ExtensionResultCard(anime: ExtensionAnime, onClick: (ExtensionAnime)
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
             )
+        }
+    }
+}
+
+
+// ── ROUND 163 (STEP-3): the metadata results grid (TMDB / TVmaze) ───────────
+
+@Composable
+private fun DataSourceResultsGrid(
+    results: List<DataSourceResult>,
+    onResultTap: (DataSourceResult) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items(results, key = { "${it.source.id}-${it.remoteId}" }) { result ->
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onResultTap(result) },
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    if (result.posterUrl != null) {
+                        coil3.compose.AsyncImage(
+                            model = result.posterUrl,
+                            contentDescription = result.title,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.Theaters,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(36.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    text = result.title,
+                    fontFamily = RobotoFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = buildString {
+                        append(result.source.displayName)
+                        result.year?.let { append(" · ").append(it) }
+                        result.rating?.let { append(" · ").append("%.1f".format(it)) }
+                    },
+                    fontFamily = RobotoFamily,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
