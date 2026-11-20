@@ -206,12 +206,13 @@ repo-root/
 
 ## 11. Task Notification
 
-- **After completing every task**, send a notification via `ntfy.sh`:
+- **After completing EVERY task — this is a standing user order (reaffirmed round 162, "always notify me using ntfy.sh after completing the tasks")** — send a notification via `ntfy.sh`:
   ```bash
   curl -fsSL -H "Title: ANI-KUTA Agent" -d "<short result, one line>" https://ntfy.sh/THE-TASK-IS-DONE
+  curl -fsSL -H "Title: ANI-KUTA <round/topic>" -d "<short progress result>" https://ntfy.sh/ANIKUTAPROGRESS
   ```
-- Topic: `THE-TASK-IS-DONE` (user-specified; the older `TASKISDONE` topic predates it — every round since ~round 70 has used `THE-TASK-IS-DONE`).
-- ⚠️ **Note**: ntfy.sh topics are public. Anyone who guesses `THE-TASK-IS-DONE` can read/spoof messages. Don't put secrets in the message body. If this becomes a problem, switch to a long random topic stored in a GitHub secret.
+- Topics: **`THE-TASK-IS-DONE`** (the §11 default; the older `TASKISDONE` topic predates it) + **`ANIKUTAPROGRESS`** (the user's progress-update channel, round 162+). Send BOTH at task completion; `ANIKUTAPROGRESS` additionally carries milestone updates during long tasks.
+- ⚠️ **Note**: ntfy.sh topics are public. Anyone who guesses the topic can read/spoof messages. Don't put secrets in the message body. If this becomes a problem, switch to a long random topic stored in a GitHub secret.
 
 ---
 
