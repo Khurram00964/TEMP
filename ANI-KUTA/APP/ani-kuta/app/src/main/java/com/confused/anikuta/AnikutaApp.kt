@@ -242,9 +242,13 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             appScope.launch {
                 val now = System.currentTimeMillis()
                 if (now - appPreferences.lastDatabaseMaintenanceAt >= 24L * 60L * 60L * 1000L) {
-                    com.confused.anikuta.core.database.DatabaseMaintenance.run(database, now)
+                    val result = com.confused.anikuta.core.database.DatabaseMaintenance.run(database, now)
                     appPreferences.lastDatabaseMaintenanceAt = now
-                    Logger.i("AnikutaApp") { "Database maintenance pass complete" }
+                    Logger.i("AnikutaApp") {
+                        "Database maintenance pass complete " +
+                            "(sessions=${result.watchSessionsSwept}, metadata=${result.episodeMetadataSwept}, " +
+                            "browse=${result.browseCacheSwept})"
+                    }
                 }
             }
         } catch (e: Exception) {

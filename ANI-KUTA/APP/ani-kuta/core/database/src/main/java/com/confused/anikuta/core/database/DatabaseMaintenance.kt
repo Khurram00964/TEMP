@@ -1,7 +1,5 @@
 package com.confused.anikuta.core.database
 
-import com.confused.anikuta.core.common.Logger
-
 /**
  * ROUND 163 (STEP-1): the growth-bound maintenance pass — the reverted
  * round-157 WS-A bounds, re-landed lean.
@@ -22,8 +20,8 @@ import com.confused.anikuta.core.common.Logger
  * `episode_update`/`notification_sent` (their own prunes exist).
  *
  * Run ONCE per day (the caller throttles with a preference stamp — the
- * app-open path), off the main thread. Every prune is independent +
- * failure-isolated: a failing sweep logs and lets the rest run.
+ * app-open path), off the main thread, with `nowMs` passed IN (this module
+ * stays dependency-free: no Logger, no clock — the caller owns both).
  */
 object DatabaseMaintenance {
 
@@ -31,29 +29,37 @@ object DatabaseMaintenance {
     const val WATCH_SESSION_RETENTION_DAYS = 400L
     const val EPISODE_METADATA_RETENTION_DAYS = 180L
 
-    private const val TAG = "Anikuta:Core:Database"
-
     /**
      * Runs all three sweeps. Never throws — every sweep is runCatching-wrapped
      * so one failing sweep can't block the others (and the app-open caller
-     * can't be taken down by a prune).
+     * can't be taken down by a prune). The caller logs via the central Logger.
      */
-    fun run(database: AnikutaDatabase, nowMs: Long = System.currentTimeMillis()) {
+    fun run(database: AnikutaDatabase, nowMs: Long): MaintenanceResult {
         val sessionCutoff = nowMs - WATCH_SESSION_RETENTION_DAYS * 24L * 60L * 60L * 1000L
         val metadataCutoff = nowMs - EPISODE_METADATA_RETENTION_DAYS * 24L * 60L * 60L * 1000L
 
-        runCatching {
+        val sessions = runCatching {
             database.watchQueries.deleteWatchSessionsOlderThan(sessionCutoff)
-        }.onFailure { e -> Logger.w(TAG) { "watch_session prune failed: ${e.message}" } }
+            true
+        }.getOrDefault(false)
 
-        runCatching {
+        val metadata = runCatching {
             database.dataCacheQueries.deleteEpisodeMetadataOlderThan(metadataCutoff)
-        }.onFailure { e -> Logger.w(TAG) { "data_cache_episode prune failed: ${e.message}" } }
+            true
+        }.getOrDefault(false)
 
-        runCatching {
+        val browse = runCatching {
             database.dataCacheQueries.deleteExpiredBrowseCache(nowMs)
-        }.onFailure { e -> Logger.w(TAG) { "browse_cache sweep failed: ${e.message}" } }
+            true
+        }.getOrDefault(false)
 
-        Logger.d(TAG) { "maintenance — sweeps done (session cutoff $sessionCutoff, metadata cutoff $metadataCutoff)" }
+        return MaintenanceResult(sessions, metadata, browse)
     }
+
+    /** Which sweeps completed (the caller logs; failure-isolation per sweep). */
+    data class MaintenanceResult(
+        val watchSessionsSwept: Boolean,
+        val episodeMetadataSwept: Boolean,
+        val browseCacheSwept: Boolean,
+    )
 }
