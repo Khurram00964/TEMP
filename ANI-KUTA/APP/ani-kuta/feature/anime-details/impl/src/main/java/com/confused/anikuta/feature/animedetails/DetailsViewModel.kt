@@ -80,7 +80,10 @@ class DetailsViewModel(
     private val contentRepository: com.confused.anikuta.core.content.ContentRepository,
     private val dataCacheRepository: com.confused.anikuta.core.datacache.DataCacheRepository,
     private val downloadManager: com.confused.anikuta.core.download.DownloadManager,
-    private val watchProgressStore: com.confused.anikuta.core.watchprogress.WatchProgressStore,
+    // (internal — the tracking method cluster lives in DetailsViewModelTracking.kt
+    // as extension functions since the 2026-11-21 normalization; they read this
+    // store for the local progress follow.)
+    internal val watchProgressStore: com.confused.anikuta.core.watchprogress.WatchProgressStore,
     private val ratingStore: com.confused.anikuta.core.ratings.RatingStore,
     private val playerPreferences: com.confused.anikuta.core.preferences.PlayerPreferences,
     private val genreRepository: com.confused.anikuta.core.content.genre.GenreRepository,
@@ -95,16 +98,20 @@ class DetailsViewModel(
     // D-225: Reverse auto-link service (AniList → extensions).
     private val reverseAutoLinkService: com.confused.anikuta.core.smartmatcher.ReverseAutoLinkService? = null,
     // D-242: AniList tracking — the tracker, local cache repo, + sync manager.
-    private val aniListTracker: com.confused.anikuta.core.trackeranilist.AniListTracker? = null,
-    private val trackEntryRepository: com.confused.anikuta.core.trackeranilist.TrackEntryRepository? = null,
-    private val trackSyncManager: com.confused.anikuta.core.trackeranilist.TrackSyncManager? = null,
+    // (internal — the tracking method cluster lives in DetailsViewModelTracking.kt
+    // as extension functions since the 2026-11-21 normalization.)
+    internal val aniListTracker: com.confused.anikuta.core.trackeranilist.AniListTracker? = null,
+    internal val trackEntryRepository: com.confused.anikuta.core.trackeranilist.TrackEntryRepository? = null,
+    internal val trackSyncManager: com.confused.anikuta.core.trackeranilist.TrackSyncManager? = null,
     // ROUND 102 (WS-E — the tracking contract): the user's per-content
     // tracking INTENT (the opt-in flag gating every relay + the menu label).
-    private val trackingStateRepository: com.confused.anikuta.core.trackeranilist.TrackingStateRepository? = null,
+    internal val trackingStateRepository: com.confused.anikuta.core.trackeranilist.TrackingStateRepository? = null,
 ) : ViewModel() {
 
     companion object {
-        private const val TAG = "Anikuta:Feature:Details"
+        // internal — the split method clusters (DetailsViewModelTracking.kt etc.)
+        // log through the same tag.
+        internal const val TAG = "Anikuta:Feature:Details"
         private const val KEY_SOURCE_LINK_PREFIX = "details_source_link:"
     }
 
@@ -339,7 +346,9 @@ class DetailsViewModel(
      * ROUND 121 (D3): the key itself is EpisodeKeys.build — the app-wide
      * builder ("$mid|%05d", byte-identical to every other builder).
      */
-    private fun csEpisodeIdentities(mid: String, episodes: List<SEpisode>): List<Pair<Int, String>> {
+    // internal — the split tracking cluster (DetailsViewModelTracking.kt) builds
+    // the CS sub/dub identity keys too (the progress-follow + mark machinery).
+    internal fun csEpisodeIdentities(mid: String, episodes: List<SEpisode>): List<Pair<Int, String>> {
         val ordinals = if (isLinkedSourceCloudStream() && episodes.any { csSubDubEpisodeTag(it) != null }) {
             csSubDubFlavorOrdinals(episodes)
         } else emptyMap()
@@ -353,7 +362,7 @@ class DetailsViewModel(
      * The DISTINCT progress keys of [csEpisodeIdentities] — a sub+dub pair
      * collapses to ONE key; untagged rows keep their raw-number keys.
      */
-    private fun csProgressKeys(mid: String, episodes: List<SEpisode>): List<String> =
+    internal fun csProgressKeys(mid: String, episodes: List<SEpisode>): List<String> =
         csEpisodeIdentities(mid, episodes).map { it.second }.distinct()
 
     /**
@@ -535,8 +544,8 @@ class DetailsViewModel(
 
     // ── D-242: AniList Tracking ──────────────────────────────────────────────
 
-    /** Whether the TrackSheet should be shown. */
-    private val _showTrackSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** Whether the TrackSheet should be shown. (internal — the tracking methods moved to DetailsViewModelTracking.kt, 2026-11-21) */
+    internal val _showTrackSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
     val showTrackSheet: kotlinx.coroutines.flow.StateFlow<Boolean> = _showTrackSheet.asStateFlow()
 
     // ── ROUND 104 (WS-B): the one-shot tracking NOTICE — the beautiful
@@ -545,7 +554,7 @@ class DetailsViewModel(
     // tracking"). Emitted ONLY on confirmed completions: startTracking's
     // successful sync (STARTED) and removeTracking's success (STOPPED). The
     // screen's TrackingToastHost renders + consumes it. ──
-    private val _trackingNotice = kotlinx.coroutines.flow.MutableStateFlow<TrackingNotice?>(null)
+    internal val _trackingNotice = kotlinx.coroutines.flow.MutableStateFlow<TrackingNotice?>(null)
     val trackingNotice: kotlinx.coroutines.flow.StateFlow<TrackingNotice?> = _trackingNotice.asStateFlow()
 
     /** Clears the rendered toast (the host calls this after its exit animation). */
@@ -553,12 +562,12 @@ class DetailsViewModel(
         _trackingNotice.value = null
     }
 
-    /** The current track entry (cached locally + synced from AniList). */
-    private val _trackEntry = kotlinx.coroutines.flow.MutableStateFlow<com.confused.anikuta.core.trackerapi.TrackEntry?>(null)
+    /** The current track entry (cached locally + synced from AniList). (internal — tracking methods moved, 2026-11-21) */
+    internal val _trackEntry = kotlinx.coroutines.flow.MutableStateFlow<com.confused.anikuta.core.trackerapi.TrackEntry?>(null)
     val trackEntry: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.trackerapi.TrackEntry?> = _trackEntry.asStateFlow()
 
-    /** D-242: Whether the user is logged in to AniList (for the TrackSheet). */
-    private val _isTrackerLoggedIn = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** D-242: Whether the user is logged in to AniList (for the TrackSheet). (internal — tracking methods moved, 2026-11-21) */
+    internal val _isTrackerLoggedIn = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isTrackerLoggedIn: kotlinx.coroutines.flow.StateFlow<Boolean> = _isTrackerLoggedIn.asStateFlow()
 
     /**
@@ -587,7 +596,7 @@ class DetailsViewModel(
      * refreshTracking ran). An observer combines this with episodeState and
      * applies the sync once both are ready.
      */
-    private val _pendingRemoteTrackEntry = kotlinx.coroutines.flow.MutableStateFlow<com.confused.anikuta.core.trackerapi.TrackEntry?>(null)
+    internal val _pendingRemoteTrackEntry = kotlinx.coroutines.flow.MutableStateFlow<com.confused.anikuta.core.trackerapi.TrackEntry?>(null)
 
     init {
         // D-242-fix: Observe both episodeState + pendingRemoteTrackEntry.
@@ -616,464 +625,20 @@ class DetailsViewModel(
         }
     }
 
-    /** Whether the "mark all previous episodes" prompt should be shown (with the episode number). */
-    private val _showMarkPreviousPrompt = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
+    /** Whether the "mark all previous episodes" prompt should be shown (with the episode number). (internal — tracking methods moved, 2026-11-21) */
+    internal val _showMarkPreviousPrompt = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
     val showMarkPreviousPrompt: kotlinx.coroutines.flow.StateFlow<Int?> = _showMarkPreviousPrompt.asStateFlow()
 
-    /** Whether the "mark series as watched" prompt should be shown. */
-    private val _showMarkSeriesPrompt = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** Whether the "mark series as watched" prompt should be shown. (internal — tracking methods moved, 2026-11-21) */
+    internal val _showMarkSeriesPrompt = kotlinx.coroutines.flow.MutableStateFlow(false)
     val showMarkSeriesPrompt: kotlinx.coroutines.flow.StateFlow<Boolean> = _showMarkSeriesPrompt.asStateFlow()
 
-    /**
-     * D-242: Opens the TrackSheet. Pre-loads the cached track entry + fetches
-     * the latest from AniList in the background (so the sheet opens instantly
-     * with cached data + updates when the network fetch completes).
-     *
-     * If the anime has no AniList link, opens the ManualLinkSheet instead
-     * (the user must link the anime to AniList before tracking).
-     */
-    fun openTrackSheet() {
-        val mid = currentMainId ?: return
-        val tracker = aniListTracker ?: return
-        val repo = trackEntryRepository ?: return
+    // ── D-242: AniList Tracking — the method cluster (openTrackSheet, saveTrackEntry,
+    // startTracking, pushTrackEntry, applyTrackProgressToLocal, earliestFirstWatchedAt,
+    // removeTracking, deleteFromAniList, the mark-previous/series prompt machinery)
+    // moved VERBATIM to DetailsViewModelTracking.kt (2026-11-21, the god-file
+    // normalization). The state fields above stay here (real fields, initialized once).
 
-        val anime = (state.value as? DetailsState.Success)?.anime
-        val anilistId = anime?.anilistId
-        if (anilistId == null) {
-            // No AniList link — open the manual link sheet instead.
-            Logger.i(TAG) { "openTrackSheet — no AniList link; opening ManualLinkSheet" }
-            openManualLinkSheet()
-            return
-        }
-
-        _showTrackSheet.value = true
-        // ROUND 102 (WS-E): every open starts with a clean error surface
-        // (the previous session's outcome message doesn't linger).
-        _trackSheetError.value = null
-
-        viewModelScope.launch {
-            // 1. Load the cached entry (instant).
-            val cached = repo.get(mid)
-            _trackEntry.value = cached
-
-            // 2. Check login state.
-            _isTrackerLoggedIn.value = tracker.isLoggedIn()
-
-            // 3. Fetch the latest from AniList (background).
-            if (tracker.isLoggedIn()) {
-                runCatching {
-                    val remote = tracker.fetchEntry(anilistId)
-                    if (remote != null) {
-                        val entry = remote.copy(contentKey = mid)
-                        repo.upsert(entry)
-                        _trackEntry.value = entry
-                        Logger.i(TAG) { "openTrackSheet — fetched from AniList: $entry" }
-                    }
-                }.onFailure { e ->
-                    Logger.w(TAG) { "openTrackSheet — fetchEntry failed (using cached): ${e.message}" }
-                }
-            }
-        }
-    }
-
-    /** Dismisses the TrackSheet. */
-    fun dismissTrackSheet() {
-        _showTrackSheet.value = false
-    }
-
-    /**
-     * ROUND 102 (WS-E): the TrackSheet's one-shot
-     * error surface. Every failure path (Save's remote sync, the trash-can's
-     * remote delete, a failed stop) lands here — the user's round-102 order:
-     * "It should properly give the user the error message." The sheet renders
-     * it inline; opening the sheet again clears it.
-     */
-    private val _trackSheetError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
-    val trackSheetError: kotlinx.coroutines.flow.StateFlow<String?> = _trackSheetError.asStateFlow()
-
-    /**
-     * ROUND 102 (SA2-F2 fix): the Save button's in-flight state — the sheet
-     * STAYS OPEN (buttons disabled, "Saving…") until the remote sync
-     * resolves: success closes it, failure shows the inline error. (The
-     * first draft closed the sheet immediately — a failed sync's error had
-     * no surface left to render on, breaking the round's "properly give the
-     * user the error message" order on exactly the Save path.)
-     */
-    private val _trackSheetSaving = kotlinx.coroutines.flow.MutableStateFlow(false)
-    val trackSheetSaving: kotlinx.coroutines.flow.StateFlow<Boolean> = _trackSheetSaving.asStateFlow()
-
-    /** Clears the TrackSheet's error surface (sheet re-open / retry). */
-    fun clearTrackSheetError() {
-        _trackSheetError.value = null
-    }
-
-    /**
-     * ROUND 102 (WS-E) → ROUND 103 (WS-2) AMENDED: THE SAVE BUTTON — sync
-     * ONLY.
-     *
-     * The v1.1.59 device round's explicit order: "the save button should
-     * actually not start the tracking system, but it should only be for
-     * saving… it should only update it in any list. It should not link both
-     * of them together." Saving now means:
-     *  1. The draft's PROGRESS drives the local watch_progress follow (the
-     *     D-242-fix5 semantics: decreasing unmarks the trailing episodes,
-     *     increasing marks the new ones).
-     *  2. The remote sync — on success the cache (the confirmed truth) is
-     *     updated; on failure the ERROR surfaces and the cache keeps the
-     *     last confirmed state (no false "AniList has it" positives).
-     * The OPT-IN FLIP that used to live here (the round-102 D-694 "Save =
-     * the opt-in" step) MOVED to [startTracking] — this round's order.
-     */
-    fun saveTrackEntry(entry: com.confused.anikuta.core.trackerapi.TrackEntry) {
-        pushTrackEntry(entry, flipOptIn = false)
-    }
-
-    /**
-     * ROUND 103 (WS-2): START TRACKING — the opt-in path.
-     *
-     * The untracked sheet's primary button ("it should give me the option to
-     * start tracking"): the full round-102 Save contract — the OPT-IN flip
-     * (linking the app's tracking to the AniList entry: from this moment the
-     * bridge relays progress both ways) + the local progress follow + the
-     * remote sync. Shares [pushTrackEntry]'s body with Save; only the flip
-     * differs.
-     */
-    fun startTracking(entry: com.confused.anikuta.core.trackerapi.TrackEntry) {
-        pushTrackEntry(entry, flipOptIn = true)
-    }
-
-    /**
-     * The shared Save/Start body (ROUND 103): the local progress follow +
-     * the remote sync + the stay-open error surface (the SA2-F2 shape),
-     * with [flipOptIn] controlling ONLY the tracking opt-in write.
-     */
-    private fun pushTrackEntry(
-        entry: com.confused.anikuta.core.trackerapi.TrackEntry,
-        flipOptIn: Boolean,
-    ) {
-        val mid = currentMainId ?: return
-        val tracker = aniListTracker ?: return
-        val repo = trackEntryRepository ?: return
-        val anime = (state.value as? DetailsState.Success)?.anime ?: return
-        val anilistId = anime.anilistId ?: return
-
-        val updated = entry.copy(
-            contentKey = mid,
-            trackerId = anilistId,
-            updatedAt = System.currentTimeMillis(),
-        )
-        // Capture the OLD progress BEFORE the optimistic write below — the
-        // local watch-progress follow ranges from it (the D-242-fix5 math).
-        val oldProgress = _trackEntry.value?.progress ?: 0
-        // SA2-F2: the sheet STAYS OPEN (Saving…) until the sync resolves —
-        // success closes it, failure renders the error inline. A double-tap
-        // is blocked by the saving flag (the buttons disable).
-        _trackSheetSaving.value = true
-        _trackEntry.value = updated
-
-        viewModelScope.launch {
-            try {
-                // ROUND 121 (D2-b): on the FIRST TRACK the started date is
-                // seeded from the LOCAL watch history — the earliest
-                // watch_progress.first_watched_at of this content. The sheet's
-                // fresh draft carries startedAt = null, so without this the
-                // first sync wrote NO start date to AniList (and the relay
-                // paths' "now" fallback stamped the SYNC time, not the time
-                // the user actually started watching). The seeded value rides
-                // the sync + the confirmed cache, so the sheet's Started row
-                // reads it back on the next open.
-                var entryToSync = updated
-                if (flipOptIn) {
-                    // D-242-fix discipline: capture into a local for the smart
-                    // cast (public API properties don't smart-cast cross-module).
-                    val draftStartedAt = updated.startedAt
-                    if (draftStartedAt == null || draftStartedAt <= 0L) {
-                        val firstWatch = runCatching { earliestFirstWatchedAt(mid) }.getOrNull()
-                        if (firstWatch != null) {
-                            entryToSync = updated.copy(startedAt = firstWatch)
-                            Logger.i(TAG) { "pushTrackEntry — seeded startedAt from first watch: $firstWatch" }
-                        }
-                    }
-                }
-
-                // 1. THE OPT-IN — ONLY on the Start Tracking path (ROUND 103:
-                //    Save must NOT link the app and AniList together).
-                //    SA1-F2 fix (lead-verified): a FAILED opt-in write ABORTS
-                //    with the error surface — the sheet stays open, nothing
-                //    syncs, no false "tracking started" positive (a silent
-                //    swallow would leave a synced remote entry the app never
-                //    relays progress for).
-                if (flipOptIn) {
-                    val optInOk = runCatching { trackingStateRepository?.setTracked(mid, true) }.isSuccess
-                    if (!optInOk) {
-                        _trackSheetError.value =
-                            "Couldn't turn on tracking — nothing was synced. Try again."
-                        Logger.e(TAG) { "startTracking — tracking opt-in failed; aborting before the sync" }
-                        return@launch
-                    }
-                }
-
-                // 2. The local watch-progress follow (the D-242-fix5 ranges, on
-                //    the identity numbers — CS sub/dub pairs collapse to one).
-                runCatching { applyTrackProgressToLocal(mid, oldProgress, updated.progress) }
-                    .onFailure { e ->
-                        Logger.w(TAG) { "pushTrackEntry — local progress follow failed (non-fatal): ${e.message}" }
-                    }
-
-                // 3. The remote sync (+ the confirmed cache on success).
-                // ROUND 121 (D2-b): entryToSync (the seeded-startedAt copy)
-                // rides the sync AND the cache — the Started row reads back.
-                if (tracker.isLoggedIn()) {
-                    val success = runCatching { tracker.syncEntry(entryToSync) }
-                        .onFailure { e ->
-                            Logger.w(TAG) { "pushTrackEntry — sync failed: ${e.message}" }
-                        }
-                        .getOrDefault(false)
-                    if (success) {
-                        repo.upsert(entryToSync)
-                        _trackEntry.value = entryToSync
-                        _trackSheetError.value = null
-                        _showTrackSheet.value = false
-                        // ROUND 104 (WS-B): the beautiful toast — "after doing
-                        // that it should show me a toast notification… saying
-                        // that tracking started". Fires ONLY on the Start
-                        // Tracking path (Save stays silent — it links nothing).
-                        if (flipOptIn) {
-                            _trackingNotice.value = TrackingNotice(
-                                kind = TrackingNoticeKind.STARTED,
-                                id = System.nanoTime(),
-                            )
-                        }
-                        Logger.i(TAG) { "pushTrackEntry(flipOptIn=$flipOptIn) — synced + cached: $entryToSync" }
-                    } else {
-                        _trackSheetError.value =
-                            "Couldn't reach AniList — " +
-                                (if (flipOptIn) "tracking is on, but this change didn't sync. Try again."
-                                 else "this change didn't sync. Try saving again.")
-                    }
-                } else {
-                    _trackSheetError.value =
-                        "Not connected to AniList — connect in Settings → Trackers to sync."
-                }
-            } finally {
-                _trackSheetSaving.value = false
-            }
-        }
-    }
-
-    /**
-     * The D-242-fix5 local follow (moved from the old updateTrackProgress's
-     * immediate-save body): a progress decrease unmarks the trailing
-     * episodes' watch progress; an increase marks the new range.
-     */
-    private suspend fun applyTrackProgressToLocal(mid: String, oldProgress: Int, newProgress: Int) {
-        if (oldProgress == newProgress) return
-        val episodes = (episodeState.value as? EpisodeState.Loaded)?.episodes ?: return
-        if (episodes.isEmpty()) return
-        val identities = csEpisodeIdentities(mid, episodes)
-        if (newProgress < oldProgress) {
-            identities
-                .filter { it.first in (newProgress + 1)..oldProgress }
-                .map { it.second }
-                .distinct()
-                .forEach { key -> watchProgressStore.delete(key) }
-            Logger.i(TAG) { "applyTrackProgressToLocal — unmarked episodes ${newProgress + 1}..$oldProgress" }
-        } else {
-            val keysToMark = identities
-                .filter { it.first in (oldProgress + 1)..newProgress }
-                .map { it.second }
-                .distinct()
-            if (keysToMark.isNotEmpty()) {
-                watchProgressStore.markAllWatched(mid, keysToMark)
-                Logger.i(TAG) { "applyTrackProgressToLocal — marked episodes ${oldProgress + 1}..$newProgress" }
-            }
-        }
-    }
-
-    /**
-     * ROUND 121 (D2-b): the earliest first_watched_at in the content's LOCAL
-     * watch history — the honest "started watching" date for the first-track
-     * startedAt seed (pushTrackEntry). Null when the user has no completed
-     * local watch rows (a fresh track with no history keeps startedAt null —
-     * the relay paths' "now" stamp covers it from there).
-     */
-    private suspend fun earliestFirstWatchedAt(mainId: String): Long? =
-        watchProgressStore.observeByMainId(mainId)
-            .first()
-            .asSequence()
-            .mapNotNull { it.firstWatchedAt }
-            .filter { it > 0 }
-            .minOrNull()
-
-    /**
-     * ROUND 102 (WS-E): REMOVE FROM TRACKING — the LEFT button.
-     *
-     * The user's semantics: "it should unlink the tracking between the
-     * AniList and the app itself… it should not remove the tracking
-     * completely from AniList itself." So this ONLY flips the opt-in OFF —
-     * the app stops syncing this content. KEPT: the AniList LINK (that is a
-     * data-source decision), the remote AniList entry (untouched), the local
-     * watch progress, the rating, and the cached entry.
-     *
-     * (The old removeTrackEntry — remote delete + local watch-progress and
-     * rating clearing — is REPLACED by this + [deleteFromAniList]; the
-     * destructive remote delete moved to the trash can, and the local-data
-     * clearing was simply wrong under the new contract.)
-     */
-    fun removeTracking() {
-        val mid = currentMainId ?: return
-
-        viewModelScope.launch {
-            runCatching {
-                trackingStateRepository?.setTracked(mid, false)
-                Logger.i(TAG) { "removeTracking — tracking unlinked for mainId=$mid (AniList entry + local data kept)" }
-                _showTrackSheet.value = false
-                // ROUND 104 (WS-B): the completion toast — "it should properly
-                // give me the details, like no longer tracking".
-                _trackingNotice.value = TrackingNotice(
-                    kind = TrackingNoticeKind.STOPPED,
-                    id = System.nanoTime(),
-                )
-            }.onFailure { e ->
-                Logger.e(TAG, e) { "removeTracking failed: ${e.message}" }
-                _trackSheetError.value = "Couldn't stop the tracking: ${e.message}"
-            }
-        }
-    }
-
-    /**
-     * ROUND 102 (WS-E): DELETE FROM ANILIST — the TRASH CAN (the sheet's
-     * top-right icon, behind a "Delete from AniList?"
-     * confirmation). This is the REAL remote deletion: AniList's
-     * DeleteMediaListEntry + the local cache row + the opt-in OFF. Local
-     * watch progress and the rating are KEPT (they are the app's own data —
-     * the deletion is the tracker's business, not the library's).
-     */
-    fun deleteFromAniList() {
-        val mid = currentMainId ?: return
-        val tracker = aniListTracker ?: return
-        val repo = trackEntryRepository ?: return
-        val anime = (state.value as? DetailsState.Success)?.anime ?: return
-        val anilistId = anime.anilistId ?: return
-
-        viewModelScope.launch {
-            // The opt-in goes first: a deleted entry must never re-sync.
-            runCatching { trackingStateRepository?.setTracked(mid, false) }
-
-            if (!tracker.isLoggedIn()) {
-                _trackSheetError.value = "Not connected to AniList — connect in Settings → Trackers first."
-                return@launch
-            }
-            val deleted = runCatching { tracker.deleteEntry(anilistId) }
-                .onFailure { e ->
-                    Logger.w(TAG) { "deleteFromAniList — remote delete failed: ${e.message}" }
-                }
-                .getOrDefault(false)
-            if (deleted) {
-                runCatching { repo.delete(mid) }
-                _trackEntry.value = null
-                _pendingRemoteTrackEntry.value = null
-                _showTrackSheet.value = false
-                Logger.i(TAG) { "deleteFromAniList — deleted from AniList + cache cleared for mainId=$mid" }
-            } else {
-                // An honest failure keeps EVERYTHING — the entry stays on
-                // AniList, the sheet stays open with the error visible.
-                _trackSheetError.value = "Couldn't delete it from AniList — check your connection and try again."
-            }
-        }
-    }
-
-    /**
-     * D-242: Shows the "mark all previous episodes as watched" prompt.
-     * Called when the user marks episode N as watched but 1..N-1 aren't.
-     *
-     * The prompt has a 5-second timeout. If the user doesn't respond in 5s,
-     * it auto-confirms (per the user's spec: "still it will mark the previous
-     * episodes up until episode 5 as watched in any list").
-     */
-    fun showMarkPreviousPrompt(episodeNumber: Int) {
-        _showMarkPreviousPrompt.value = episodeNumber
-    }
-
-    /** Dismisses the "mark all previous" prompt (user declined). */
-    fun dismissMarkPreviousPrompt() {
-        _showMarkPreviousPrompt.value = null
-    }
-
-    /**
-     * D-242: Marks all episodes from 1 to [upToEpisode] (inclusive) as watched.
-     * Called when the user confirms the "mark all previous" prompt (or when the
-     * 5-second timeout auto-confirms).
-     *
-     * Also relays the updated progress to AniList.
-     */
-    fun markAllPreviousWatched(upToEpisode: Int) {
-        val mid = currentMainId ?: return
-        _showMarkPreviousPrompt.value = null // dismiss the prompt
-
-        viewModelScope.launch {
-            runCatching {
-                val episodes = (episodeState.value as? EpisodeState.Loaded)?.episodes ?: return@runCatching
-                // Task 57 (P1): the filter runs on the IDENTITY number — the
-                // CS sub/dub ordinal (sub-5/dub-5 count ONCE).
-                val keysToMark = csEpisodeIdentities(mid, episodes)
-                    .filter { it.first <= upToEpisode }
-                    .map { it.second }
-                    .distinct()
-                watchProgressStore.markAllWatched(mid, keysToMark)
-                Logger.i(TAG) { "markAllPreviousWatched — marked ${keysToMark.size} episodes (1..$upToEpisode)" }
-
-                // ROUND 102 (WS-E): the relay is the TrackingWatchSyncBridge's
-                // job now — this write re-emits its watch_progress signal, and
-                // the bridge reconciles TRACKED contents with the same math.
-            }.onFailure { e ->
-                Logger.e(TAG, e) { "markAllPreviousWatched failed: ${e.message}" }
-            }
-        }
-    }
-
-    /**
-     * D-242: Shows the "mark series as watched" prompt. Only called when the
-     * series is FINISHED + all episodes have been watched.
-     */
-    fun showMarkSeriesPrompt() {
-        _showMarkSeriesPrompt.value = true
-    }
-
-    /** Dismisses the "mark series as watched" prompt. */
-    fun dismissMarkSeriesPrompt() {
-        _showMarkSeriesPrompt.value = false
-    }
-
-    /**
-     * D-242: Marks the entire series as watched (sets status = COMPLETED on AniList).
-     * Called when the user confirms the "mark series as watched" prompt.
-     */
-    fun markSeriesAsWatched() {
-        val mid = currentMainId ?: return
-        _showMarkSeriesPrompt.value = false
-
-        viewModelScope.launch {
-            runCatching {
-                val episodes = (episodeState.value as? EpisodeState.Loaded)?.episodes ?: return@runCatching
-                // Task 57 (P1): ALL identity keys — sub+dub pairs collapse to one.
-                val keysToMark = csProgressKeys(mid, episodes)
-                watchProgressStore.markAllWatched(mid, keysToMark)
-                Logger.i(TAG) { "markSeriesAsWatched — marked all ${keysToMark.size} episodes" }
-
-                // Set status = COMPLETED on AniList.
-                // ROUND 121 (D2-a): relayWatchEvent takes an Int now — the
-                // episode count rides directly (no Double round-trip).
-                trackSyncManager?.relayWatchEvent(
-                    contentKey = mid,
-                    episodeNumber = episodes.size,
-                    status = com.confused.anikuta.core.trackerapi.TrackStatus.COMPLETED,
-                )
-            }.onFailure { e ->
-                Logger.e(TAG, e) { "markSeriesAsWatched failed: ${e.message}" }
-            }
-        }
-    }
 
     // ── Phase 2: Auto-select video for playback ──
     // When autoSelectVideo is ON, tries to auto-pick the best video using the
@@ -4823,143 +4388,3 @@ class DetailsViewModel(
         return task?.id
     }
 }
-
-// ── State types ──
-
-sealed interface DetailsState {
-    data object Loading : DetailsState
-    data class Success(val anime: UnifiedAnime) : DetailsState
-    data class Error(val message: String) : DetailsState
-}
-
-/** A linked source — the source ID + name + the SAnime's URL on that source. */
-data class LinkedSource(
-    val sourceId: Long,
-    val sourceName: String,
-    val animeUrl: String,
-)
-
-/**
- * D-234: Next-episode release info — shows the upcoming episode with a countdown.
- *
- * @param episodeNumber The episode number that will air next.
- * @param airingAtMillis The Unix timestamp (millis) when the episode airs.
- * @param isComingSoon D-237: true when the air time has passed but the episode
- *   isn't available on the source yet. Shows "Coming soon" instead of a countdown.
- */
-data class NextEpisodeInfo(
-    val episodeNumber: Int,
-    val airingAtMillis: Long,
-    val isComingSoon: Boolean = false,
-)
-
-/** Manual search state (source linking — AniList entries). */
-sealed interface ManualSearchState {
-    data object Idle : ManualSearchState
-    data object Searching : ManualSearchState
-    data class Results(val source: AnimeCatalogueSource, val sAnimes: List<SAnime>) : ManualSearchState
-    data class Error(val sourceName: String, val message: String) : ManualSearchState
-}
-
-// ── Phase B: Auto-link + AniList search states ──
-
-/**
- * Auto-link lifecycle for extension entries.
- *
- * - [Idle]: Not an extension entry, or not yet started.
- * - [Searching]: AutoLinkService is running (cache check + AniList search + SmartMatcher).
- * - [Matched]: A confident match was found (and merged into UnifiedAnime).
- * - [NoMatch]: No confident match — manual link sheet should be shown.
- * - [Skipped]: Auto-link disabled for this source, or strategy = MANUAL, or user skipped.
- * - [Error]: AniList search or matching failed.
- */
-sealed interface AutoLinkState {
-    data object Idle : AutoLinkState
-    data object Searching : AutoLinkState
-    data class Matched(val anilistId: Int, val score: Float, val cached: Boolean) : AutoLinkState
-    data class NoMatch(val bestScore: Float, val searchedTitle: String) : AutoLinkState
-    data class Skipped(val reason: String) : AutoLinkState
-    data class Error(val message: String) : AutoLinkState
-}
-
-/**
- * D-225c: Reverse auto-link state — the AniList → extensions search
- * direction, rendered INLINE by the details screen (ROUND 121 D6-a: the
- * old [AutoLinkPopup] composable is deleted; the screen consumes this
- * state directly).
- *
- * - [Idle]: nothing happening (initial / dismissed / skipped).
- * - [Searching]: extensions are being queried (inline card shows spinner + "Searching…").
- * - [Matched]: a source was linked (inline card confirms).
- * - [NoMatch]: no confident match (inline card offers a "Link manually" action).
- * - [Error]: search failed (inline card shows the error).
- */
-sealed interface ReverseAutoLinkState {
-    data object Idle : ReverseAutoLinkState
-    data object Searching : ReverseAutoLinkState
-    data class Matched(
-        val sourceName: String,
-        val animeTitle: String,
-        val thumbnailUrl: String?,
-        val score: Float,
-    ) : ReverseAutoLinkState
-    data class NoMatch(
-        val bestScore: Float,
-        val searchedTitle: String,
-    ) : ReverseAutoLinkState
-    data class Error(val message: String) : ReverseAutoLinkState
-}
-
-/** AniList search state for the manual link sheet. */
-sealed interface AniListSearchState {
-    data object Idle : AniListSearchState
-    data object Searching : AniListSearchState
-    data object Empty : AniListSearchState
-    data class Results(val anime: List<AniListAnime>) : AniListSearchState
-    data class Error(val message: String) : AniListSearchState
-}
-
-/** Episode list state. */
-sealed interface EpisodeState {
-    data object Idle : EpisodeState
-    data object Loading : EpisodeState
-    data object Empty : EpisodeState
-    data class Loaded(val episodes: List<SEpisode>) : EpisodeState
-    data class Error(val message: String) : EpisodeState
-    /**
-     * D-209: Cloudflare blocked the episode fetch + the headless solver failed.
-     * The UI shows an "Open in WebView" button + a "Refresh" button.
-     */
-    data class CloudflareBlocked(val url: String, val sourceName: String) : EpisodeState
-}
-
-// ── D.3 refresh types ──
-// D-314: RefreshStage + RefreshState (the multi-stage pull-to-refresh types)
-// are DELETED — pull-to-refresh is now a simple full refresh. See the D-314
-// note at the old refresh-state declaration.
-
-/** Video resolution state (for the resolver sheet). */
-sealed interface ResolverState {
-    data object Idle : ResolverState
-    data object Loading : ResolverState
-    data class Success(
-        val videos: List<ResolvedVideo>,
-        val servers: List<ResolverServer> = emptyList(),
-    ) : ResolverState
-    data class Error(val message: String) : ResolverState
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-//  ROUND 104 (WS-B): the tracking toast's payload — the one-shot notice the
-//  TrackingToastHost renders (STARTED on startTracking's confirmed sync;
-//  STOPPED on removeTracking's success). The `id` (System.nanoTime) forces a
-//  DISTINCT emission even when the same kind fires twice in a row — the
-//  host's LaunchedEffect keys on it.
-// ════════════════════════════════════════════════════════════════════════════
-
-enum class TrackingNoticeKind { STARTED, STOPPED }
-
-data class TrackingNotice(
-    val kind: TrackingNoticeKind,
-    val id: Long,
-)
