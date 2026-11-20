@@ -89,7 +89,21 @@ class PlaybackService : Service() {
             }
         }
         scope.launch {
-            PlaybackCommandBus.version.collect { postNotification() }
+            PlaybackCommandBus.version.collect {
+                // ROUND 159 (the round-3 critic's P1): the playback ENDED in
+                // the background (paused/EOF with the app away) — the FGS +
+                // the notification would linger forever (and the notification
+                // has no close action). Stop the service; the app's return
+                // restarts it on the next leave if still playing.
+                val controls = PlaybackCommandBus.controls.value
+                if (controls != null && !controls.isPlaying) {
+                    Logger.i(TAG) { "playback stopped in background — stopping the service" }
+                    stopForegroundCompat()
+                    stopSelf()
+                    return@collect
+                }
+                postNotification()
+            }
         }
     }
 
@@ -173,7 +187,9 @@ class PlaybackService : Service() {
             .setContentTitle(controls?.title ?: "ANI-KUTA")
             .setContentText(controls?.subtitle ?: "")
             .setContentIntent(contentIntent)
-            .setOngoing(playing)
+            // ROUND 159 (the critic's P2): ALWAYS ongoing — a swipe-dismissed
+            // notification left a running FGS with no way to end it.
+            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

@@ -22,13 +22,18 @@ const val PLUGIN_TAG = "PluginInstance"
 
 abstract class BasePlugin {
 
-    /**
-     * ROUND 159: the compose-compiler stability stamp — the same binary-compat
-     * field [Plugin] carries (the plugins' generated code may read the
-     * superclass chain's $stable). 0 = the stable mark.
-     */
-    @JvmField
-    public var `$stable`: Int = 0
+    companion object {
+        /**
+         * ROUND 159 / ROUND 158-V2: the compose-compiler stability stamp — the
+         * binary shape the plugins' generated code reads is **STATIC FINAL**
+         * (getstatic Plugin.$stable — proven from this repo's own compose-
+         * compiled classes; an instance field throws
+         * IncompatibleClassChangeError instead of NoSuchFieldError). The
+         * companion const emits exactly `public static final int $stable`.
+         * 0 = the all-stable mark (the safe default).
+         */
+        const val `$stable`: Int = 0
+    }
 
 
     /**

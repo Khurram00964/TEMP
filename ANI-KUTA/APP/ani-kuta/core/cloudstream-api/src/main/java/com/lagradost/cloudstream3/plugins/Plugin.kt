@@ -14,9 +14,9 @@ import com.lagradost.cloudstream3.utils.atomicListOf
  * resources + a settings hook. Referenced by our loader when dispatching lifecycle.
  */
 // ROUND 159 (the device report — "NoSuchFieldError: No field $stable"): the
-// compose-compiler stability stamp now lives on [BasePlugin] (this class's
-// superclass) — every plugin instance inherits the exact public int `$stable`
-// field the plugins' Compose-generated code reads. See BasePlugin's KDoc.
+// compose-compiler stability stamp lives on [BasePlugin]'s companion as a
+// STATIC FINAL int — the exact shape the plugins' generated code reads via
+// getstatic. See BasePlugin's KDoc.
 abstract class Plugin : BasePlugin() {
 
     /**

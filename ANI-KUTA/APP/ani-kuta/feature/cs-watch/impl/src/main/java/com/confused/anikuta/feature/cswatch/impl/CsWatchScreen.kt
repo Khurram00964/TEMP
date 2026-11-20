@@ -267,13 +267,16 @@ fun CsWatchScreen(
                 override val isPlaying: Boolean
                     get() = engineState.isPlaying
 
+                // ROUND 159 (the round-3 critic's P2): play/pause are the
+                // SAME toggle on the CS engine — a stale notification resumed
+                // instead of pausing. Branch on the real state.
                 override fun play() {
-                    engine.playPause()
+                    if (!engineState.isPlaying) engine.playPause()
                     com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
                 }
 
                 override fun pause() {
-                    engine.playPause()
+                    if (engineState.isPlaying) engine.playPause()
                     com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
                 }
 

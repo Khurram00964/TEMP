@@ -269,6 +269,11 @@ object APIHolder {
  */
 abstract class MainAPI {
     companion object {
+        /** ROUND 159: the compose stability stamp — the static-final int the
+         * plugins' generated code reads via getstatic (the binary-compat
+         * shape BasePlugin carries too). */
+        const val `$stable`: Int = 0
+
         var overrideData: HashMap<String, ProvidersInfoJson>? = null
         var settingsForProvider: SettingsJson = SettingsJson()
     }

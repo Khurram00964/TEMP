@@ -666,8 +666,10 @@ fun WatchScreen(
         com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value =
             object : com.confused.anikuta.core.common.playback.PlaybackControls {
                 override val title: String = watchKey.animeTitle
-                override val subtitle: String =
-                    "Episode " + formatEpisodeNumber(currentEpisodeNumber) +
+                // ROUND 159 (the round-3 critic's P2): the LIVE episode title
+                // (a late-loading title must reach the notification).
+                override val subtitle: String
+                    get() = "Episode " + formatEpisodeNumber(currentEpisodeNumber) +
                         (currentEpisodeTitle.takeIf { it.isNotBlank() }?.let { " — $it" } ?: "")
                 override val posterUrl: String? = watchKey.coverUrl
                 override val isPlaying: Boolean
@@ -686,12 +688,17 @@ fun WatchScreen(
                 }
 
                 override fun seekRelative(deltaSeconds: Int) {
-                    runCatching {
-                        MPVLib.command(
-                            arrayOf("seek", deltaSeconds.toString(), "relative"),
-                        )
+                    // ROUND 159 (the critic's P2): the seek rides IO — a
+                    // network-stream seek blocks (the round-152 ANR pattern,
+                    // smaller scale), and the notification's caller is main.
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        runCatching {
+                            MPVLib.command(
+                                arrayOf("seek", deltaSeconds.toString(), "relative"),
+                            )
+                        }
+                        com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
                     }
-                    com.confused.anikuta.core.common.playback.PlaybackCommandBus.notifyChanged()
                 }
 
                 override fun playNext(): Boolean {

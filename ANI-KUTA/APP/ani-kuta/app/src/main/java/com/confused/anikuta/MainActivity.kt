@@ -305,7 +305,12 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
             val prefs = org.koin.core.context.GlobalContext.get()
                 .get<com.confused.anikuta.core.preferences.PlayerPreferences>()
             val controls = com.confused.anikuta.core.common.playback.PlaybackCommandBus.controls.value
-            if (prefs.backgroundPlayback && controls?.isPlaying == true) {
+            // ROUND 159 (the round-3 critic's P1): gate on the CONTROLS
+            // existing, not isPlaying — the flow updates async, and a
+            // play-tap → home race read stale false, leaving playback running
+            // with NO foreground service (the Android 12+ freeze killed the
+            // audio silently). The notification adapts to the real state.
+            if (prefs.backgroundPlayback && controls != null) {
                 com.confused.anikuta.core.player.playback.PlaybackService.start(this)
             }
         } catch (t: Throwable) {
@@ -366,10 +371,14 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
         if (data.host != com.confused.anikuta.core.trackermal.MalAuth.REDIRECT_HOST) return
         val code = data.getQueryParameter("code") ?: return
         kotlinx.coroutines.MainScope().launch {
-            val tracker = org.koin.core.context.GlobalContext.get()
-                .get<com.confused.anikuta.core.trackermal.MalTracker>()
-            val ok = tracker.handleLoginCallback(code)
-            Logger.i("Anikuta:MainActivity") { "MAL OAuth redirect handled: ok=$ok" }
+            try {
+                val tracker = org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.trackermal.MalTracker>()
+                val ok = tracker.handleLoginCallback(code)
+                Logger.i("Anikuta:MainActivity") { "MAL OAuth redirect handled: ok=$ok" }
+            } catch (t: Throwable) {
+                Logger.w("Anikuta:MainActivity") { "MAL OAuth redirect failed: ${t.message}" }
+            }
         }
     }
 
