@@ -633,6 +633,29 @@ class DetailsViewModel(
     internal val _showMarkSeriesPrompt = kotlinx.coroutines.flow.MutableStateFlow(false)
     val showMarkSeriesPrompt: kotlinx.coroutines.flow.StateFlow<Boolean> = _showMarkSeriesPrompt.asStateFlow()
 
+    /**
+     * ROUND 102 (WS-E): the TrackSheet's one-shot
+     * error surface. Every failure path (Save's remote sync, the trash-can's
+     * remote delete, a failed stop) lands here — the user's round-102 order:
+     * "It should properly give the user the error message." The sheet renders
+     * it inline; opening the sheet again clears it.
+     * (internal — the tracking methods moved to DetailsViewModelTracking.kt, 2026-11-21;
+     * the declaration stayed in-class with them: real fields, initialized once.)
+     */
+    internal val _trackSheetError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val trackSheetError: kotlinx.coroutines.flow.StateFlow<String?> = _trackSheetError.asStateFlow()
+
+    /**
+     * ROUND 102 (SA2-F2 fix): the Save button's in-flight state — the sheet
+     * STAYS OPEN (buttons disabled, "Saving…") until the remote sync
+     * resolves: success closes it, failure shows the inline error. (The
+     * first draft closed the sheet immediately — a failed sync's error had
+     * no surface left to render on, breaking the round's "properly give the
+     * user the error message" order on exactly the Save path.)
+     */
+    internal val _trackSheetSaving = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val trackSheetSaving: kotlinx.coroutines.flow.StateFlow<Boolean> = _trackSheetSaving.asStateFlow()
+
     // ── D-242: AniList Tracking — the method cluster (openTrackSheet, saveTrackEntry,
     // startTracking, pushTrackEntry, applyTrackProgressToLocal, earliestFirstWatchedAt,
     // removeTracking, deleteFromAniList, the mark-previous/series prompt machinery)
