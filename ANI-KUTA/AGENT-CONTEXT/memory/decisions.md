@@ -48,6 +48,21 @@ The audit: home_trending was already 6h cache-first; the VIOLATIONS were the GLO
 ## D-903 (round 156): THE PROFESSIONAL v1.1.8 RELEASE — Routines B/C/D
 The user's explicit order (v1.1.7 -> v1.1.8 on the OFFICIAL repository). Routine B: release/1.1.8 + ONE bump 6fdf7a96 (10120 -> 10108/1.1.8) -> release-build-once on TEMP. THE INCIDENT: the signing secrets were missing on TEMP (write-only on the flagged testplay-byte) — the delivery keystore was FOUND in the workspace (SECURITY/ANI-KUTA-v1.1.1-DELIVERY/) and VERIFIED the professional key (its cert fingerprint byte-matches the v1.1.7 APK's signer) -> the 4 secrets set via the sealed-box API -> run 44355252757 GREEN; the artifact downloaded + verified (the CI sums, the ABI audit: 4 singles exact + universal all-four). Routine C: the 11 assets staged (the ZIPs level 9, the inner shas verified, the sums LF) + the release created STABLE + make_latest on Confused-Creature-180/ANI-KUTA with the short what's-new body. Routine D: the gh-pages chip + the README download links re-pointed to v1.1.8; the Pages build + the live fetches verified. The updater simulation: v1.1.7 -> v1.1.8 OFFERED, v1.1.8 -> no update.
 
+## D-915 (round 160): THE KEYS LANDED — THE TRACKERS LIVE
+The user provided the three registrations (the MAL client id, the Trakt client id — the Development tier, the TMDB v3 key + the v4 read token). TrackerKeys carries them; MalAuth/TraktAuth read it; the cards are linkable. The tier notes: the Trakt Development 16-user cap lifts with the same-page Production switch (the same id); the TMDB Personal tier covers this scope.
+
+## D-916 (round 160): THE SAME-LAYOUT HOME
+The device report: the Series & movies home must look EXACTLY like the anime home. THE REWORK: the generic HeroSlide hero (HomeHero/HeroCard/the wash consume HeroSlide — both modes pre-bind their own navigation; the carousel is data-source blind), and the SAME slots rendered with the CS data (CsShelfRail for the rail + the suggested, CsGenreChips for the genres — the shelf titles → the category pages). The old cs_home block retired; moodsIndex mode-blind (5 + the airs rows).
+
+## D-917 (round 160): THE SEARCH SOURCES
+SearchSource + TMDB/JIKAN; the top bar's source option opens the pick-a-source dropdown; the VM dispatch (the TMDB multi search, the Jikan search, the blank-query defaults); SearchUiState.ExternalSuccess + the generic poster grid (the tap = the source's web page). core/tmdb (TmdbApi + JikanApi + the DI). Bangumi (the donghua) documented as the next addition.
+
+## D-918 (round 160): THE AUDIO INTEGRITY SYSTEM
+The device report: both downloaded audio versions were corrupt (sub-MB). The system: FFprobeKit probes every landed variant (the parse + the 60s duration floor) and the download retries up to 3 attempts before the variant skips honestly; both paths (the flat GET — extracted to downloadFlatAudioVariantToCache — and the HLS remux) route through the loop.
+
+## D-919 (round 160): THE HONEST ANSWERS + THE RELEASE
+IMDb tracking NOT VIABLE (no public API; the scraping violates the terms — the user's stop rule applied). Simkl (the one-account anime+TV+movies tracker) and Bangumi (the donghua) documented as the next additions. THE RELEASE: **v1.1.99/10199 LIVE on TEMP** (44787340701 GREEN + 44788991955 GREEN; the SHA 6a05c344... MATCHED). NEXT: the device round on v1.1.99; Simkl/Bangumi; the manga groundwork. Next decision: D-920; next record: 140.
+
 ## D-913 (round 159): THE DEVICE-REPORT P0s
 (1) THE BLACK SCREEN: the home mode observer's collect fired synchronously inside the constructor (Dispatchers.Main.immediate) and touched the CS state flows declared AFTER init — a null StateFlow NPE → the home never composed. The declarations moved before init (the critic verified every construction-touch pre-declared). (2) THE PLUGIN $stable: the plugins' compose-generated code does GETSTATIC Plugin.$stable — the stamp must be STATIC FINAL (an instance field threw IncompatibleClassChangeError — the round-3 critic proved the shape from this repo's own bytecode). companion const val $stable = 0 on BasePlugin + MainAPI; javap-verified `public static final int $stable`.
 

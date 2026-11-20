@@ -12,6 +12,14 @@
 - RELEASED on **Khurram00964/TEMP** (the flagged-account fallback; the debug updater still points at testplay-byte — sideload this build): stable + latest, ani-kuta-v1.1.90-debug-arm64-v8a.apk (76,203,792 bytes, checksum 67f627f5... verified). Routine A adapted: release/1.1.90 + the bump 7f381ad6 (10190/1.1.90) + the tag v1.1.90 on the bump; the Release APK run 43931582924 GREEN via workflow_dispatch (the flag-blocked account; the fresh-account push triggers do not fire). Carries rounds 126-149.
 ## 1.1.93 / 10193 — RELEASE (round 153 — ON THE TEMP MIRROR; testplay-byte is flagged)
 - RELEASED on **Khurram00964/TEMP**: stable + latest, ani-kuta-v1.1.93-debug-arm64-v8a.apk (76,620,144 bytes, checksum 6df50dc2... verified). release/1.1.93 + the bump 3bb68f0c + the tag v1.1.93 on the bump; the Release APK run 44153597596 GREEN (dispatched). Carries rounds 126-153: the variant truth, the one-shot autoplay, ADD AUDIO FILE, the offline audio names, the home feel, plus everything from v1.1.92 and before.
+## 1.1.99 / 10199 — RELEASE (round 160 — ON THE TEMP MIRROR; the keys land)
+- RELEASED on **Khurram00964/TEMP**: stable, ani-kuta-v1.1.99-debug-arm64-v8a.apk (checksum 6a05c344... verified). The Release run 44788991955 GREEN. Carries: the KEYS LANDED (the MAL/Trakt/TMDB registrations — the trackers live), the SAME-LAYOUT home (the Series & movies mode renders the identical sections fed by the CS shelves), the SEARCH-WITH source menu (AniList/TMDB/Jikan/Extensions), the AUDIO INTEGRITY system (the FFprobeKit probe + the 3-attempt retry), and the movie-mode download button.
+## Round 160 (released — carried by v1.1.99)
+- The trackers are live: MAL and Trakt link at Settings > Trackers.
+- The home looks the same in every mode; the Series & movies data fills the identical sections.
+- The search page picks a source (AniList/TMDB/Jikan/Extensions).
+- The audio downloads validate and retry — no more corrupt silent audio.
+- The movies download.
 ## 1.1.98 / 10198 — RELEASE (round 159 — ON THE TEMP MIRROR; the device-report round)
 - RELEASED on **Khurram00964/TEMP**: stable, ani-kuta-v1.1.98-debug-arm64-v8a.apk (checksum b4f1b907... verified). The Release run 44767410995 GREEN. Carries: the TWO device-report P0 fixes (the black-screen startup crash — the init-order; the CloudStream plugin load failure — the $stable static stamp), MYANIMELIST (the full tracker, dormant until the app registration), BACKGROUND PLAYBACK (the foreground service + the notification controls + the Player-settings option), and the Trakt/TMDB groundwork completed to keys-only (TrackerKeys.kt).
 ## Round 159 (released — carried by v1.1.98)
