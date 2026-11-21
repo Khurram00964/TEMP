@@ -104,7 +104,7 @@ class AniListApi(
     ): List<AniListAnime> = withContext(dispatchers.io) {
         // ROUND 165: the optional genre filter (the mood chips' by-genre
         // donghua pool). GraphQL strings ride as variables (escaped).
-        val genreClause = if (genre != null) ', genre: $genre' else ''
+        val genreClause = if (genre != null) ", genre: $genre" else ""
         val query = """
             {
                 Page(page: $page, perPage: $perPage) {
