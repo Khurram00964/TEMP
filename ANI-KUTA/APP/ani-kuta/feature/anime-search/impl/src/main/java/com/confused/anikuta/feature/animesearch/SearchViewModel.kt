@@ -865,7 +865,7 @@ class SearchViewModel(
                     DataSourceKind.MAL ->
                         malTracker.searchWithMeta(q).map { it.toDataSourceResult() }
                     DataSourceKind.SIMKL ->
-                        simklTracker.searchItems(q).map { it.toDataSourceResult() }
+                        simklTracker.searchItems(q).mapNotNull { it.toDataSourceResult() }
                     DataSourceKind.ANILIST -> emptyList() // unreachable
                 }
                 if (_query.value.isBlank()) return@launch
@@ -967,7 +967,7 @@ class SearchViewModel(
         val results = runCatching { simklTracker.trendingItems("tv") }
             .onFailure { Logger.w(TAG) { "Simkl defaults failed: ${it.message}" } }
             .getOrDefault(emptyList())
-            .map { it.toDataSourceResult() }
+            .mapNotNull { it.toDataSourceResult() }
         showingDefaults = _query.value.isBlank()
         _uiState.value = if (_query.value.isNotBlank()) {
             return@launch
@@ -2262,14 +2262,19 @@ private fun com.confused.anikuta.core.trackermal.MalAnime.toDataSourceResult(): 
         overview = null,
     )
 
-private fun com.confused.anikuta.core.trackersimkl.SimklSearchItem.toDataSourceResult(): DataSourceResult =
-    DataSourceResult(
+// ROUND 169: the LIVE-VERIFIED mapping (ids.simkl_id, the simkl.in poster
+// path, the MM/DD/YYYY date, the simkl rating) — an id-less row is SKIPPED
+// (the grid key = source-remoteId; a -1 collision = the v1.1.104 crash).
+private fun com.confused.anikuta.core.trackersimkl.SimklMediaItem.toDataSourceResult(): DataSourceResult? {
+    val id = ids?.simkl_id?.toInt() ?: return null
+    return DataSourceResult(
         source = DataSourceKind.SIMKL,
-        remoteId = simkl_id?.toInt() ?: ids?.simkl?.toInt() ?: -1,
+        remoteId = id,
         mediaType = "simkl",
         title = title.orEmpty(),
-        posterUrl = poster_url,
-        year = year,
-        rating = null,
-        overview = null,
+        posterUrl = poster?.let { "https://simkl.in/posters/${it}_m.jpg" },
+        year = release_date?.takeLast(4)?.toIntOrNull(),
+        rating = ratings?.simkl?.rating,
+        overview = overview,
     )
+}

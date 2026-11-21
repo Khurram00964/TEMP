@@ -105,12 +105,26 @@ class SimklApi(
 
     /**
      * GET /{movie|tv|anime}/trending — the blank-query default (the search
-     * source's grid fill; Phase E). The same item shape as the search.
+     * source's grid fill; Phase E). ROUND 169: the LIVE-VERIFIED shape —
+     * the ids at ids.simkl_id, the poster as a simkl.in path.
      */
-    fun trending(kind: String): List<SimklSearchItem> =
+    fun trending(kind: String): List<SimklMediaItem> =
         get(url("/$kind/trending"), null)?.let { raw ->
             runCatching {
-                json.decodeFromString(kotlinx.serialization.serializer<List<SimklSearchItem>>(), raw)
+                json.decodeFromString(kotlinx.serialization.serializer<List<SimklMediaItem>>(), raw)
+            }.getOrNull()
+        } ?: emptyList()
+
+    /**
+     * ROUND 169: the USER-TOKEN search — the /search/* endpoints REQUIRE a
+     * user access token (the live 401: "user_token_required"); the client id
+     * alone never worked. Null token → the honest empty (the UI shows the
+     * not-linked state).
+     */
+    fun searchAuthed(kind: String, query: String, accessToken: String): List<SimklMediaItem> =
+        get(url("/search/$kind", mapOf("q" to query)), accessToken)?.let { raw ->
+            runCatching {
+                json.decodeFromString(kotlinx.serialization.serializer<List<SimklMediaItem>>(), raw)
             }.getOrNull()
         } ?: emptyList()
 

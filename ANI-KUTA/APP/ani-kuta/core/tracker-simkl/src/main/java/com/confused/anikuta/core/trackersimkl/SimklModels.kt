@@ -98,6 +98,40 @@ data class SimklSearchItem(
     val ids: SimklIdBundle? = null,
 )
 
+// ── ROUND 169: the LIVE-VERIFIED media-item shape (the /trending responses;
+//    the /search responses with the user token carry the same fields) —
+//    the ids live at ids.simkl_id, the poster is a simkl.in PATH (built at
+//    the mapper: https://simkl.in/posters/{path}_m.jpg), the date is
+//    MM/DD/YYYY. The old SimklSearchItem shape never parsed these → every
+//    row mapped remoteId = -1 → the duplicate-key crash (the v1.1.104
+//    device report).
+@Serializable
+data class SimklMediaItem(
+    val title: String? = null,
+    val poster: String? = null,
+    val ids: SimklMediaIds? = null,
+    val release_date: String? = null,
+    val overview: String? = null,
+    val total_episodes: Int? = null,
+    val ratings: SimklRatings? = null,
+)
+
+@Serializable
+data class SimklMediaIds(
+    val simkl_id: Long? = null,
+    val slug: String? = null,
+)
+
+@Serializable
+data class SimklRatings(
+    val simkl: SimklRating? = null,
+)
+
+@Serializable
+data class SimklRating(
+    val rating: Double? = null,
+)
+
 @Serializable
 data class SimklIdBundle(
     val simkl: Long? = null,

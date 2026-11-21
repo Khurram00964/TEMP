@@ -574,6 +574,11 @@ class DetailsViewModel(
     val malLinkResults: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.core.trackermal.MalAnime>> =
         _malLinkResults.asStateFlow()
 
+    // The linked usernames (the picker rows' subtitle).
+    internal val _anilistLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
+    val anilistLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _anilistLinkedUsername.asStateFlow()
+    internal val _malLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
+    val malLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _malLinkedUsername.asStateFlow()
     init {
         // ROUND 168: the linked usernames mirror the trackers' login states
         // (the picker rows' subtitle; the trackers restore at construction,
@@ -596,11 +601,6 @@ class DetailsViewModel(
         }
     }
 
-    // The linked usernames (the picker rows' subtitle).
-    internal val _anilistLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
-    val anilistLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _anilistLinkedUsername.asStateFlow()
-    internal val _malLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
-    val malLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _malLinkedUsername.asStateFlow()
 
     // ── ROUND 104 (WS-B): the one-shot tracking NOTICE — the beautiful
     // toast's data ("it should show me a toast notification, a beautiful

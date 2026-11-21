@@ -243,13 +243,15 @@ class SimklTracker(
      * source's result rows (the title + the poster + the year). The 'all'
      * kind returns every Simkl category.
      */
-    suspend fun searchItems(query: String): List<SimklSearchItem> = withContext(Dispatchers.IO) {
-        val response = api.search("all", query) ?: return@withContext emptyList()
-        response.movie + response.tv + response.anime
+    suspend fun searchItems(query: String): List<SimklMediaItem> = withContext(Dispatchers.IO) {
+        // ROUND 169: the search REQUIRES the user token (the live 401) — an
+        // unlinked account returns the honest empty.
+        val token = preferences.accessToken.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
+        api.searchAuthed("all", query, token)
     }
 
     /** ROUND 168 (Phase E): the trending default (the blank-query grid fill). */
-    suspend fun trendingItems(kind: String): List<SimklSearchItem> = withContext(Dispatchers.IO) {
+    suspend fun trendingItems(kind: String): List<SimklMediaItem> = withContext(Dispatchers.IO) {
         api.trending(kind)
     }
 
