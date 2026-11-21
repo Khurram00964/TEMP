@@ -93,8 +93,8 @@ fun DataSourcePickerSheet(
                         // ROUND 165 (the device order): the simplest subtitles
                         // (no GraphQL/keyless tech-speak) + the branded marks.
                         DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_anilist),
-                        DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled),
-                        DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled),
+                        DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tmdb),
+                        DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tvmaze),
                         // ROUND 168 (Phase E): the tracker-backed sources —
                         // their searches are app/client-id auth (they work
                         // whether or not the user LINKED the tracker).

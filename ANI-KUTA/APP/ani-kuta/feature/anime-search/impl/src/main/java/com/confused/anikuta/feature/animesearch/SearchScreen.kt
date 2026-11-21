@@ -549,6 +549,9 @@ fun SearchScreen(
                             // for every source (the device order). The VM
                             // decodes the negative id and renders the DB's
                             // metadata axis.
+                            // ROUND 171: the FULL result persists first (the
+                            // details route reads the DB's data axis).
+                            viewModel.persistMetadataContent(result)
                             val synthetic = com.confused.anikuta.core.anilist.model.AniListAnime(
                                 id = result.syntheticAniListId(),
                                 title = com.confused.anikuta.core.anilist.model.AnimeTitle(
@@ -1056,6 +1059,59 @@ private fun UnifiedResultCard(
                         .coverSharedElement(model.coverSharedElementKey),
                 )
             }
+            // THE OVERLAY style: the gradient + the year + the title INSIDE the
+            // cover Box — overlapping the poster (the v1.1.106 regression: the
+            // overlay was a SECOND stacked box below the cover, rendering the
+            // "transparent cover" artifact the device report rejected).
+            if (!below) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomStart)
+                        .height(52.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.surface,
+                                ),
+                            ),
+                        ),
+                )
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    if (showDetails && model.year != null) {
+                        Text(
+                            text = model.year.toString(),
+                            fontFamily = RobotoFamily,
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.size(1.dp))
+                    Text(
+                        text = model.title,
+                        fontFamily = RobotoFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (model.useHeadingColor) {
+                            LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
+                                ?: MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             // THE RATING PILL — the cover's top-right (every style, every source).
             if (showRating && model.rating != null) {
                 Surface(
@@ -1095,61 +1151,7 @@ private fun UnifiedResultCard(
             }
         }
 
-        if (!below) {
-            // ── THE OVERLAY: the gradient + the year (the title's top-left) +
-            //    the title moved DOWN a bit (the user's order). ──
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f),
-                contentAlignment = Alignment.BottomStart,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.surface,
-                                ),
-                            ),
-                        ),
-                )
-                Column(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                ) {
-                    if (showDetails && model.year != null) {
-                        Text(
-                            text = model.year.toString(),
-                            fontFamily = RobotoFamily,
-                            fontSize = 9.sp,
-                            lineHeight = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                    Spacer(Modifier.size(1.dp))
-                    Text(
-                        text = model.title,
-                        fontFamily = RobotoFamily,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (model.useHeadingColor) {
-                            LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
-                                ?: MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        } else {
+        if (below) {
             // ── THE BELOW: the title under the poster (the year rides the
             //    cover's bottom-left chip above). ──
             Spacer(Modifier.size(6.dp))

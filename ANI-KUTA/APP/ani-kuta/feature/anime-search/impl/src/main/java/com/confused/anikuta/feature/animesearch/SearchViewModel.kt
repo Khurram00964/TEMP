@@ -71,6 +71,11 @@ class SearchViewModel(
     // modules are registered singles).
     private val malTracker: com.confused.anikuta.core.trackermal.MalTracker,
     private val simklTracker: com.confused.anikuta.core.trackersimkl.SimklTracker,
+    // ROUND 171: the metadata persistence — the tap saves the FULL result
+    // (the overview/year/rating/cover) into content_details' data axis
+    // BEFORE the details route reads it (the v1.1.106 device bug: the
+    // sparse rows never enriched, the descriptions blank).
+    private val metadataContentRepository: com.confused.anikuta.core.content.ContentRepository,
 ) : ViewModel() {
 
     companion object {
@@ -2265,7 +2270,56 @@ private fun com.confused.anikuta.core.trackermal.MalAnime.toDataSourceResult(): 
 // ROUND 169: the LIVE-VERIFIED mapping (ids.simkl_id, the simkl.in poster
 // path, the MM/DD/YYYY date, the simkl rating) — an id-less row is SKIPPED
 // (the grid key = source-remoteId; a -1 collision = the v1.1.104 crash).
-private fun com.confused.anikuta.core.trackersimkl.SimklMediaItem.toDataSourceResult(): DataSourceResult? {
+    /**
+     * ROUND 171: the metadata persistence — the tap's FULL result lands in
+     * content_details' data axis (idempotent upsert) BEFORE the details
+     * route reads it. The fine-grained type ("tmdb_movie"/"tmdb_tv"/...)
+     * rides dataSourceType so the enrichment fetches the right endpoint.
+     */
+    fun persistMetadataContent(result: DataSourceResult) {
+        val fineType = when (result.source) {
+            DataSourceKind.TMDB -> if (result.mediaType == "tv") "tmdb_tv" else "tmdb_movie"
+            DataSourceKind.TVMAZE -> "tvmaze"
+            DataSourceKind.MAL -> "mal"
+            DataSourceKind.SIMKL -> "simkl"
+            else -> result.source.id
+        }
+        val mainId = "${result.source.id}:${result.remoteId}"
+        val now = System.currentTimeMillis()
+        viewModelScope.launch {
+            runCatching {
+                metadataContentRepository.insertMainEntryIfMissing(
+                    com.confused.anikuta.core.content.ContentRecord(
+                        mainId = mainId,
+                        contentId = mainId,
+                        title = result.title,
+                        contentType = "anime",
+                        contentFormat = "video",
+                        displaySource = "metadata",
+                        createdAt = now,
+                        updatedAt = now,
+                    ),
+                )
+                metadataContentRepository.upsertContentDetails(
+                    com.confused.anikuta.core.content.ContentDetails(
+                        mainId = mainId,
+                        dataSourceType = fineType,
+                        dataSourceRefId = result.remoteId.toString(),
+                        dataScore = result.rating?.let { (it * 10).toInt().toLong() },
+                        dataSeasonYear = result.year?.toLong(),
+                        dataSynopsis = result.overview,
+                        dataCoverUrl = result.posterUrl,
+                        dataUpdatedAt = now,
+                    ),
+                )
+            }.onFailure { e ->
+                Logger.w(TAG) { "metadata persist failed (non-fatal): ${e.message}" }
+            }
+        }
+    }
+
+    // The id decoding (the details VM's metadata branch mirrors it).
+    private fun com.confused.anikuta.core.trackersimkl.SimklMediaItem.toDataSourceResult(): DataSourceResult? {
     // ROUND 170: every id path (the trending's ids.simkl_id, the search's
     // ids.simkl / the top-level simkl_id) + every poster path (the trending's
     // simkl.in path, the search's full URL).

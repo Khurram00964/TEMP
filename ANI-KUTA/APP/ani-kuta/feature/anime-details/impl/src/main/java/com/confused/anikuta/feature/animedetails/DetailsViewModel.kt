@@ -595,6 +595,15 @@ class DetailsViewModel(
     val malLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _malLinkedUsername.asStateFlow()
     internal val _simklLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
     val simklLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _simklLinkedUsername.asStateFlow()
+
+    // ROUND 171: the LINKED flags (the picker filters the unlinked — the
+    // device order: a removed tracker never shows in the Track-on menu).
+    internal val _anilistTrackerLinked = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val anilistTrackerLinked: kotlinx.coroutines.flow.StateFlow<Boolean> = _anilistTrackerLinked.asStateFlow()
+    internal val _malTrackerLinked = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val malTrackerLinked: kotlinx.coroutines.flow.StateFlow<Boolean> = _malTrackerLinked.asStateFlow()
+    internal val _simklTrackerLinked = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val simklTrackerLinked: kotlinx.coroutines.flow.StateFlow<Boolean> = _simklTrackerLinked.asStateFlow()
     init {
         // ROUND 168: the linked usernames mirror the trackers' login states
         // (the picker rows' subtitle; the trackers restore at construction,
@@ -604,6 +613,7 @@ class DetailsViewModel(
                 tracker.observeLoginState().collect { state ->
                     _anilistLinkedUsername.value =
                         (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
+                    _anilistTrackerLinked.value = state is com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn
                 }
             }
         }
@@ -612,6 +622,7 @@ class DetailsViewModel(
                 tracker.observeLoginState().collect { state ->
                     _malLinkedUsername.value =
                         (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
+                    _malTrackerLinked.value = state is com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn
                 }
             }
         }
@@ -620,6 +631,7 @@ class DetailsViewModel(
                 tracker.observeLoginState().collect { state ->
                     _simklLinkedUsername.value =
                         (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
+                    _simklTrackerLinked.value = state is com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn
                 }
             }
         }
@@ -1122,6 +1134,8 @@ class DetailsViewModel(
             4 -> "simkl"
             else -> "metadata"
         }
+        // ROUND 171: the mainId prefix matches the persist side's coarse kind
+        // (the fine-grained tmdb_movie/tmdb_tv lives in the details' type).
         val mainId = "$kind:$remoteId"
         Logger.i(TAG) { "metadata load: $mainId" }
 

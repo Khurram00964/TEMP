@@ -51,6 +51,9 @@ fun TrackerPickerSheet(
     anilistUsername: String,
     malUsername: String,
     simklUsername: String,
+    anilistLinked: Boolean,
+    malLinked: Boolean,
+    simklLinked: Boolean,
     onPick: (com.confused.anikuta.core.trackerapi.TrackerType) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -79,29 +82,48 @@ fun TrackerPickerSheet(
             )
             Spacer(Modifier.height(12.dp))
 
-            // ROUND 170 (the device order): the rows show the USERNAME ONLY
-            // below the name (the role text is gone); Simkl joins the picker
-            // when linked. The order: AniList → MAL → Simkl.
-            TrackerPickerRow(
-                name = "AniList",
-                subtitle = anilistUsername,
-                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist,
-                onClick = { onPick(com.confused.anikuta.core.trackerapi.TrackerType.ANILIST) },
-            )
-            Spacer(Modifier.height(4.dp))
-            TrackerPickerRow(
-                name = "MyAnimeList",
-                subtitle = malUsername,
-                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
-                onClick = { onPick(com.confused.anikuta.core.trackerapi.TrackerType.MAL) },
-            )
-            Spacer(Modifier.height(4.dp))
-            TrackerPickerRow(
-                name = "Simkl",
-                subtitle = simklUsername,
-                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl,
-                onClick = { onPick(com.confused.anikuta.core.trackerapi.TrackerType.SIMKL) },
-            )
+            // ROUND 171 (the device order): the rows show ONLY the LINKED
+            // trackers (an unlinked one never appears); none linked → the
+            // honest error message. The order: AniList → MAL → Simkl.
+            var anyShown = false
+            if (anilistLinked) {
+                anyShown = true
+                TrackerPickerRow(
+                    name = "AniList",
+                    subtitle = anilistUsername,
+                    logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist,
+                    onClick = { onPick(com.confused.anikuta.core.trackerapi.TrackerType.ANILIST) },
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            if (malLinked) {
+                anyShown = true
+                TrackerPickerRow(
+                    name = "MyAnimeList",
+                    subtitle = malUsername,
+                    logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
+                    onClick = { onPick(com.confused.anikuta.core.trackerapi.TrackerType.MAL) },
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            if (simklLinked) {
+                anyShown = true
+                TrackerPickerRow(
+                    name = "Simkl",
+                    subtitle = simklUsername,
+                    logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl,
+                    onClick = { onPick(com.confused.anikuta.core.trackerapi.TrackerType.SIMKL) },
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            if (!anyShown) {
+                Text(
+                    text = "No trackers are connected — link one in Settings → Trackers first.",
+                    fontFamily = RobotoFamily,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Spacer(Modifier.height(16.dp))
         }
     }
