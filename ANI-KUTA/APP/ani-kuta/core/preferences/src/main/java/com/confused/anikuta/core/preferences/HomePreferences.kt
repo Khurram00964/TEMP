@@ -46,10 +46,53 @@ class HomePreferences(
 
         /** The popular-tags cache TTL — 7 days, then a background refresh. */
         const val POPULAR_TAGS_TTL_MS = 7L * 24 * 60 * 60 * 1000
+
+        // ── ROUND 164 (STEP-3d): the multi-select home content kinds ──
+        private const val KEY_CONTENT_KINDS = "home_content_kinds"
     }
 
     private val _airsSource = MutableStateFlow(getAirsSource())
     val airsSource: StateFlow<HomeAirsSource> = _airsSource.asStateFlow()
+
+    // ── ROUND 164 (STEP-3d): the MULTI-SELECT home content kinds ─────────────
+    //
+    // The user's correction to the reverted round's 3-way enum: the home shows
+    // ANY COMBINATION of anime / movies / series / donghua — independent
+    // toggles, not a mode cycle. Stored as one delimited string
+    // ("anime,movies"); DEFAULT = anime only (the historical behavior — the
+    // upgrade is invisible until the user opts into more).
+    //
+    // INSTANT APPLICATION: [contentKindsFlow] re-emits on every toggle and the
+    // VM's flatMapLatest re-derives the merged feed without a screen reload.
+
+    fun getContentKinds(): Set<HomeContentKind> {
+        val raw = store.getString(KEY_CONTENT_KINDS, HomeContentKind.ANIME.id)
+        val parsed = raw.split(',')
+            .mapNotNull { id -> HomeContentKind.entries.firstOrNull { it.id == id.trim() } }
+            .toSet()
+        // Never empty — an empty home is worse than a fallback.
+        return parsed.ifEmpty { setOf(HomeContentKind.ANIME) }
+    }
+
+    fun setContentKinds(kinds: Set<HomeContentKind>) {
+        val safe = kinds.ifEmpty { setOf(HomeContentKind.ANIME) }
+        store.putString(KEY_CONTENT_KINDS, safe.joinToString(",") { it.id })
+        _contentKinds.value = safe
+    }
+
+    fun toggleContentKind(kind: HomeContentKind): Set<HomeContentKind> {
+        val current = getContentKinds()
+        val next = if (kind in current) {
+            current - kind
+        } else {
+            current + kind
+        }
+        setContentKinds(next)
+        return getContentKinds()
+    }
+
+    private val _contentKinds = MutableStateFlow(getContentKinds())
+    val contentKindsFlow: StateFlow<Set<HomeContentKind>> = _contentKinds.asStateFlow()
 
     fun getAirsSource(): HomeAirsSource =
         HomeAirsSource.fromValue(store.getString(KEY_AIRS_SOURCE, HomeAirsSource.LIBRARY.value))
@@ -111,5 +154,24 @@ enum class HomeAirsSource(val value: String, val displayName: String) {
     companion object {
         fun fromValue(value: String): HomeAirsSource =
             entries.firstOrNull { it.value == value } ?: LIBRARY
+    }
+}
+
+
+/**
+ * ROUND 164 (STEP-3d): a home CONTENT KIND — one toggle of the multi-select
+ * (the user's correction to the reverted round's 3-way mode cycle: ANY
+ * combination is valid). The kinds merge into ONE feed; the layout stays
+ * byte-identical, only the content changes.
+ */
+enum class HomeContentKind(val id: String, val displayName: String, val subtitle: String) {
+    ANIME("anime", "Anime", "Your AniList feed — trending, moods, genres"),
+    MOVIES("movies", "Movies", "TMDB — the day's trending + popular films"),
+    SERIES("series", "Series", "TMDB shows — trending + popular series"),
+    DONGHUA("donghua", "Donghua", "Chinese animation — AniList, keyless"),
+    ;
+
+    companion object {
+        fun fromId(id: String): HomeContentKind? = entries.firstOrNull { it.id == id }
     }
 }

@@ -227,6 +227,10 @@ fun HomeScreen(
     onOpenDetailsByMainId: (String, Int?, Boolean) -> Unit = { _, _, _ -> },
     // ROUND 152: the brand chip's art — the APP's real logo (app-side drawable
     // res id; this module can't see app resources). Null = the glyph fallback.
+    // ROUND 164 (STEP-3d): the metadata hand-off — a TMDB item's tap routes
+    // to the SEARCH screen with the title staged (the provider sheet opens
+    // there; the pick runs the playback search).
+    onOpenSearchHandOff: (String) -> Unit = {},
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -238,6 +242,24 @@ fun HomeScreen(
     val fieldCovers by viewModel.fieldCovers.collectAsState()
 
     val heroSlides = remember(trending) { trending.take(HomeViewModel.HERO_COUNT) }
+
+    // ROUND 164 (STEP-3d): the merged feed's tap routing — a TMDB synthetic
+    // carries a NEGATIVE id (the marker); it navigates to the search screen
+    // with the title staged (the CS provider sheet opens there — the playback
+    // hand-off per the user's priority rule). Positive ids = the AniList path.
+    val openAnime: (AniListAnime) -> Unit = { anime ->
+        if (anime.id < 0) {
+            onOpenSearchHandOff(anime.displayName)
+        } else {
+            onNavigate(
+                AnimeDetailsKey.AniList(
+                    anime.id,
+                    coverUrl = anime.coverUrl,
+                    title = anime.displayName,
+                ),
+            )
+        }
+    }
     val trendingRanked = remember(trending) {
         trending.mapIndexed { index, anime -> index + 1 to anime }
     }
@@ -428,15 +450,7 @@ fun HomeScreen(
                                     )
                                     HomeHero(
                                         slides = heroSlides,
-                                        onOpen = { anime ->
-                                            onNavigate(
-                                                AnimeDetailsKey.AniList(
-                                                    anime.id,
-                                                    coverUrl = anime.coverUrl,
-                                                    title = anime.displayName,
-                                                ),
-                                            )
-                                        },
+                                        onOpen = openAnime,
                                         onWashFraction = { washFraction.floatValue = it },
                                     )
                                 }
@@ -517,15 +531,7 @@ fun HomeScreen(
                                         ),
                                     )
                                 },
-                                onOpen = { anime ->
-                                    onNavigate(
-                                        AnimeDetailsKey.AniList(
-                                            anime.id,
-                                            coverUrl = anime.coverUrl,
-                                            title = anime.displayName,
-                                        ),
-                                    )
-                                },
+                                onOpen = openAnime,
                             )
                         }
 
@@ -570,14 +576,7 @@ fun HomeScreen(
                                     }
                                 },
                                 onBrowseAll = { onNavigate(HomeGenresKey) },
-                                onOpen = { anime ->
-                                    onNavigate(
-                                        AnimeDetailsKey.AniList(
-                                            anime.id,
-                                            coverUrl = anime.coverUrl,
-                                            title = anime.displayName,
-                                        ),
-                                    )
+                                onOpen = openAnime,
                                 },
                             )
                         }

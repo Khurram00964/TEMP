@@ -19,12 +19,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -100,6 +102,9 @@ class HomeViewModel(
     private val scheduleStore: ScheduleStore,
     private val contentRepository: ContentRepository,
     private val homePreferences: HomePreferences,
+    // ROUND 164 (STEP-3d): the movies/series source for the merged feed
+    // (metadata-only; the home's TMDB taps hand off to the CS search).
+    private val tmdbApi: com.confused.anikuta.core.tmdb.TmdbApi,
 ) : ViewModel() {
 
     companion object {
@@ -110,6 +115,13 @@ class HomeViewModel(
         // Search co-owns those (D-278); home_popular / home_top_rated are
         // retired with the round-148 sections.
         private const val SECTION_TRENDING = BrowseCacheCodec.SECTION_HOME_TRENDING
+        // ROUND 164 (STEP-3d): the per-kind section keys (the SAME codec —
+        // every kind encodes as AniListAnime rows; TMDB items ride synthetic
+        // NEGATIVE ids so the UI's tap routing can mark them).
+        private const val SECTION_TRENDING_MOVIES = "home_trending_movies"
+        private const val SECTION_TRENDING_SERIES = "home_trending_series"
+        private const val SECTION_TRENDING_DONGHUA = "home_trending_donghua"
+
     // ROUND 156: the remaining network sections join the same 6h cache.
     private const val SECTION_AIRS = BrowseCacheCodec.SECTION_HOME_AIRS
     private const val SECTION_FIELD_COVERS = BrowseCacheCodec.SECTION_HOME_FIELD_COVERS
@@ -214,58 +226,154 @@ class HomeViewModel(
         observeContinueWatching()
         observeAirsToday()
         observeSuggestedPool()
+        // ROUND 164 (STEP-3d): INSTANT APPLY — a Settings toggle re-derives
+        // the merged feed without a screen reload (the flatMapLatest lands
+        // the change into the same cache-first pipeline).
+        viewModelScope.launch {
+            homePreferences.contentKindsFlow
+                .distinctUntilChanged()
+                .collect {
+                    trendingSectionsJob?.cancel()
+                    loadTrending()
+                }
+        }
     }
 
     // ── Trending (the EXACT round-148 cache-first loadSection, one section) ──
 
+    private var trendingSectionsJob: Job? = null
+
+    /**
+     * ROUND 164 (STEP-3d): the MERGED multi-kind load — cache-first per
+     * enabled kind, the sections INTERLEAVED into one pool (round-robin so
+     * the hero reads varied), each section cached under its own key with the
+     * SAME codec. LAYOUT PARITY: everything maps into AniListAnime-shaped
+     * data — the home's composables are untouched.
+     */
     private fun loadTrending() {
-        viewModelScope.launch {
-            val cached = withContext(Dispatchers.IO) {
-                dataCacheRepository.getBrowseCache(SECTION_TRENDING)
-            }
+        val kinds = homePreferences.getContentKinds()
+        trendingSectionsJob = viewModelScope.launch {
             var servedFromFreshCache = false
-            if (cached != null) {
-                val cachedAnime = withContext(Dispatchers.IO) {
-                    try {
-                        BrowseCacheCodec.decode(cached.dataJson)
-                    } catch (e: Exception) {
-                        Logger.w(TAG) { "Failed to parse $SECTION_TRENDING cache: ${e.message}" }
-                        emptyList()
+            val merged = mutableListOf<AniListAnime>()
+            val toFetch = mutableListOf<com.confused.anikuta.core.preferences.HomeContentKind>()
+
+            // 1. The cache-first pass per enabled kind.
+            for (kind in kinds) {
+                val section = sectionKeyFor(kind)
+                val cached = withContext(Dispatchers.IO) { dataCacheRepository.getBrowseCache(section) }
+                var rows: List<AniListAnime> = emptyList()
+                if (cached != null) {
+                    rows = withContext(Dispatchers.IO) {
+                        runCatching { BrowseCacheCodec.decode(cached.dataJson) }
+                            .onFailure { Logger.w(TAG) { "Failed to parse $section cache: ${it.message}" } }
+                            .getOrDefault(emptyList())
                     }
                 }
-                if (cachedAnime.isNotEmpty()) {
-                    Logger.i(TAG) { "Loaded ${cachedAnime.size} $SECTION_TRENDING from cache" }
-                    onTrending(cachedAnime)
+                if (rows.isNotEmpty()) {
+                    Logger.i(TAG) { "Loaded ${rows.size} $section from cache" }
+                    merged += rows
                     servedFromFreshCache = true
                 }
+                if (cached == null || dataCacheRepository.isBrowseCacheExpired(section)) {
+                    toFetch += kind
+                }
             }
-            if (cached == null || dataCacheRepository.isBrowseCacheExpired(SECTION_TRENDING)) {
-                fetchTrending()
-            } else {
+
+            if (merged.isNotEmpty()) onTrending(merged)
+            if (toFetch.isEmpty()) {
                 settleHome(null, servedFromFreshCache)
+            } else {
+                fetchTrendingSections(toFetch)
             }
         }
     }
 
-    private suspend fun fetchTrending() {
+    private fun sectionKeyFor(kind: com.confused.anikuta.core.preferences.HomeContentKind): String = when (kind) {
+        com.confused.anikuta.core.preferences.HomeContentKind.ANIME -> SECTION_TRENDING
+        com.confused.anikuta.core.preferences.HomeContentKind.MOVIES -> SECTION_TRENDING_MOVIES
+        com.confused.anikuta.core.preferences.HomeContentKind.SERIES -> SECTION_TRENDING_SERIES
+        com.confused.anikuta.core.preferences.HomeContentKind.DONGHUA -> SECTION_TRENDING_DONGHUA
+    }
+
+    /** Fetches ONLY the expired/missing sections; each is failure-isolated. */
+    private suspend fun fetchTrendingSections(kinds: List<com.confused.anikuta.core.preferences.HomeContentKind>) {
         _isRefreshing.value = true
         try {
-            val anime = anilistApi.fetchBrowseSection(TRENDING_SORT)
-            Logger.i(TAG) { "Fetched ${anime.size} $SECTION_TRENDING from network" }
-            onTrending(anime)
-            val json = withContext(Dispatchers.IO) { BrowseCacheCodec.encode(anime) }
-            withContext(Dispatchers.IO) {
-                dataCacheRepository.upsertBrowseCache(SECTION_TRENDING, json)
+            val fetched = mutableMapOf<com.confused.anikuta.core.preferences.HomeContentKind, List<AniListAnime>>()
+            for (kind in kinds) {
+                val rows = runCatching { fetchSectionFor(kind) }
+                    .onFailure { Logger.e(TAG, it) { "Failed to fetch the $kind section: ${it.message}" } }
+                    .getOrDefault(emptyList())
+                if (rows.isNotEmpty()) {
+                    fetched[kind] = rows
+                    val json = withContext(Dispatchers.IO) { BrowseCacheCodec.encode(rows) }
+                    withContext(Dispatchers.IO) {
+                        dataCacheRepository.upsertBrowseCache(sectionKeyFor(kind), json)
+                    }
+                    Logger.i(TAG) { "Cached ${rows.size} rows for $kind" }
+                }
             }
-            Logger.i(TAG) { "Cached ${anime.size} $SECTION_TRENDING anime" }
-            settleHome(null, anime.isNotEmpty())
-        } catch (e: Exception) {
-            Logger.e(TAG, e) { "Failed to fetch $SECTION_TRENDING: ${e.message}" }
-            settleHome(e.message ?: "Unknown error", false)
+            // Re-read the caches (the fresh sections + the still-valid ones)
+            // and re-merge — the single source of truth stays the cache.
+            val merged = mutableListOf<AniListAnime>()
+            for (kind in homePreferences.getContentKinds()) {
+                val cached = withContext(Dispatchers.IO) { dataCacheRepository.getBrowseCache(sectionKeyFor(kind)) }
+                if (cached != null) {
+                    val rows = withContext(Dispatchers.IO) {
+                        runCatching { BrowseCacheCodec.decode(cached.dataJson) }.getOrDefault(emptyList())
+                    }
+                    merged += rows
+                }
+            }
+            onTrending(merged)
+            settleHome(null, merged.isNotEmpty())
         } finally {
             _isRefreshing.value = false
         }
     }
+
+    /** One kind's network fetch (the fan-out lives in fetchTrendingSections). */
+    private suspend fun fetchSectionFor(
+        kind: com.confused.anikuta.core.preferences.HomeContentKind,
+    ): List<AniListAnime> = when (kind) {
+        com.confused.anikuta.core.preferences.HomeContentKind.ANIME ->
+            anilistApi.fetchBrowseSection(TRENDING_SORT)
+        com.confused.anikuta.core.preferences.HomeContentKind.DONGHUA ->
+            anilistApi.fetchTrendingDonghua()
+        com.confused.anikuta.core.preferences.HomeContentKind.MOVIES ->
+            tmdbApi.trending()
+                .filter { it.mediaType == "movie" }
+                .ifEmpty { tmdbApi.popularMovies() }
+                .map { it.toSyntheticAnime("Movies") }
+        com.confused.anikuta.core.preferences.HomeContentKind.SERIES -> {
+            val trending = tmdbApi.trending().filter { it.mediaType == "tv" }
+            val rows = trending.ifEmpty { tmdbApi.popularTv() }
+            rows.map { it.toSyntheticAnime("Series") }
+        }
+    }
+
+    /**
+     * THE PARITY TRICK — a TMDB item rides the home as a SYNTHETIC
+     * AniListAnime with a NEGATIVE id (-tmdbId): every home composable renders
+     * it unchanged, and the tap routing recognizes the marker (a negative id
+     * opens the metadata hand-off instead of the AniList details).
+     */
+    private fun com.confused.anikuta.core.tmdb.TmdbApi.TmdbItem.toSyntheticAnime(kindGenre: String): AniListAnime {
+        // v1: the kind rides as the single genre (the mood chips filter on
+        // names; a per-item TMDB genre map lands with the genre rails work).
+        val names = listOf(kindGenre)
+        return AniListAnime(
+            id = -id,
+            title = com.confused.anikuta.core.anilist.model.AnimeTitle(romaji = title, english = title),
+            coverImage = com.confused.anikuta.core.anilist.model.CoverImage(large = posterUrl, extraLarge = posterUrl),
+            averageScore = rating?.let { (it * 10).toInt().coerceIn(0, 100) },
+            description = overview,
+            genres = names,
+            seasonYear = year,
+            status = "RELEASING",
+        )
+    }
+
 
     private fun onTrending(anime: List<AniListAnime>) {
         _trending.value = anime

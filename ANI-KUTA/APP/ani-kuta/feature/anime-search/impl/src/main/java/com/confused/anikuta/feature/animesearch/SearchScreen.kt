@@ -114,6 +114,8 @@ import org.koin.compose.viewmodel.koinViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
+    // ROUND 164 (STEP-3d): the home hand-off's staged title (null = plain entry).
+    prefillQuery: String? = null,
     // D-320: passes the full anime so the nav key can carry the cover/title
     // + the shared-element key (experimental cover transition).
     onNavigateToDetails: (AniListAnime) -> Unit,
@@ -254,6 +256,15 @@ fun SearchScreen(
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSourcePicker by remember { mutableStateOf(false) }
+
+    // ROUND 164 (STEP-3d): the home hand-off — stage the title + auto-open
+    // the provider sheet (the pick completes the playback hand-off).
+    LaunchedEffect(prefillQuery) {
+        if (!prefillQuery.isNullOrBlank()) {
+            viewModel.applyPrefillQuery(prefillQuery)
+            showSourcePicker = true
+        }
+    }
 
     // ROUND 163 (STEP-3): the DATA-SOURCE picker + the metadata results state.
     var showDataSourcePicker by remember { mutableStateOf(false) }

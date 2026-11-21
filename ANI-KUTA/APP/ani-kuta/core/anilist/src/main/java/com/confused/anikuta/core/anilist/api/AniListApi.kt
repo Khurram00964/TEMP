@@ -91,6 +91,41 @@ class AniListApi(
     }
 
     /**
+     * ROUND 164 (STEP-3d / Step 4): the DONGHUA feed — Chinese animation via
+     * AniList's `countryOfOrigin: CN` filter + the trending sort. KEYLESS and
+     * zero new infrastructure (the single-country filter is public; the bulk
+     * `_in` variant needs moderator auth). Returns the SAME [AniListAnime]
+     * shape as [fetchBrowseSection] — the home renders it unchanged.
+     */
+    suspend fun fetchTrendingDonghua(
+        page: Int = 1,
+        perPage: Int = 20,
+    ): List<AniListAnime> = withContext(dispatchers.io) {
+        val query = """
+            {
+                Page(page: $page, perPage: $perPage) {
+                    media(type: ANIME, countryOfOrigin: CN, sort: TRENDING_DESC) {
+                        id
+                        title { romaji english }
+                        coverImage { large extraLarge }
+                        bannerImage
+                        averageScore
+                        episodes
+                        seasonYear
+                        genres
+                        status
+                    }
+                }
+            }
+        """.trimIndent()
+
+        Logger.d("Anikuta:Core:AniList") { "fetchTrendingDonghua(page=$page)" }
+
+        val response = executeQuery(query)
+        json.decodeFromString<TrendingResponse>(response).data.Page.media
+    }
+
+    /**
      * ROUND 152: one page of a genre's most popular titles (the home's
      * suggestion-field cover pool + the genre browse grid). Same Media shape
      * as [fetchBrowseSection]; pageInfo.hasNextPage drives the grid's infinite

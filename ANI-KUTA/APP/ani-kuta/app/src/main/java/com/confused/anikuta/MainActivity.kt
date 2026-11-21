@@ -1272,6 +1272,10 @@ fun AppRoot() {
                 // the Continue card tap lands the user on that episode PLAYING
                 // (autoPlayEpisode on the details key); the title block and
                 // the timeline rows pass false.
+                // ROUND 164 (STEP-3d): the metadata hand-off — a TMDB home
+                // item's tap stages the title on the search screen (the CS
+                // provider sheet opens there; the pick runs the playback search).
+                onOpenSearchHandOff = { title -> pushKey(AnimeSearchKey(prefillQuery = title)) },
                 onOpenDetailsByMainId = { mainId, episodeNumber, autoplay ->
                     openDetailsByMainId(mainId, episodeNumber, autoplay)
                 },
@@ -1616,6 +1620,7 @@ fun AppRoot() {
                 }
             )
             is AnimeSearchKey -> SearchScreen(
+                prefillQuery = (currentKey as AnimeSearchKey).prefillQuery,
                 onNavigateToDetails = { anime ->
                     navigateToDetails(
                         AnimeDetailsKey.AniList(
@@ -1781,7 +1786,8 @@ fun AppRoot() {
                 onBack = pop,
             )
             is SettingsKey -> SettingsScreen(
-                onOpenAppearance = { pushKey(AppearanceKey) },
+                onOpenAppearance = { pushKey(AppearanceKey) }
+                            onOpenHomeContent = { pushKey(HomeContentKey) },
                 onOpenExtensions = { pushKey(ExtensionsSettingsKey()) },
                 onOpenAutoLink = { pushKey(AutoLinkSettingsKey) },
                 // D-388 (round 25): the UPDATES page is its own Settings row now
@@ -2281,7 +2287,7 @@ fun AppRoot() {
                     when (route) {
                         "browse" -> pushKey(AnimeBrowseKey)
                         "library" -> pushKey(AnimeLibraryKeyImpl)
-                        "search" -> pushKey(AnimeSearchKey)
+                        "search" -> pushKey(AnimeSearchKey())
                         "more" -> pushKey(MoreKey)
                     }
                 },

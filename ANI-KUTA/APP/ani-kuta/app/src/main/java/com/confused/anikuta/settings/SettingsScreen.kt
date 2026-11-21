@@ -112,6 +112,8 @@ import org.koin.compose.koinInject
 @Composable
 fun SettingsScreen(
     onOpenAppearance: () -> Unit,
+    // ROUND 164 (STEP-3d): the home's big-bold content-kind selection.
+    onOpenHomeContent: () -> Unit = {},
     onOpenExtensions: () -> Unit,
     onOpenAutoLink: () -> Unit,
     // D-388 (round 25): the UPDATES row is now its own entry (the round-25
@@ -375,6 +377,17 @@ fun SettingsScreen(
                             Column {
                                 SettingsSectionLabel("Player")
                                 SettingsHighlightTarget(anchorId = "player", activeAnchor = highlightAnchor) {
+                        item {
+                            HubSection(
+                                activeAnchor = highlightAnchor,
+                                label = "Content",
+                                anchorId = "home_content",
+                                icon = Icons.Filled.Tv,
+                                title = "Home content",
+                                subtitle = "Choose what shows on your home page",
+                                onClick = onOpenHomeContent,
+                            )
+                        }
                                     MoreListRow(
                                         icon = Icons.Filled.PlayCircle,
                                         title = "Player",

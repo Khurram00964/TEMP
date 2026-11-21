@@ -604,6 +604,18 @@ class SearchViewModel(
         search(term)
     }
 
+    /**
+     * ROUND 164 (STEP-3d): the home's metadata hand-off prefill — the title
+     * lands WITHOUT a search (the user hasn't picked the CloudStream provider
+     * yet); the screen auto-opens the provider sheet, and the pick runs the
+     * search ([onSelectCloudstreamSource] searches a non-blank query).
+     */
+    fun applyPrefillQuery(query: String) {
+        _query.value = query
+        _uiState.value = SearchUiState.Idle
+        Logger.i(TAG) { 'applyPrefillQuery — title staged for the provider pick: ' + query }
+    }
+
     fun onRemoveRecent(term: String) {
         val updated = _recents.value.filter { it != term }
         _recents.value = updated

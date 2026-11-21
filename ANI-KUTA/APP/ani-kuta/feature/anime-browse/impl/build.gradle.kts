@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:preferences"))  // D-320: cover-transition gate
     implementation(project(":core:anilist"))
+    implementation(project(":core:tmdb")) // ROUND 164 (STEP-3d): the movies/series merged feed
     implementation(project(":core:common"))
     implementation(project(":core:data-cache"))
     // Phase 3: continue-watching carousel

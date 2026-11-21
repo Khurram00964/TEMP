@@ -32,10 +32,9 @@ object TrackerKeys {
         "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyMTBkMjNlODEyYTBiMmY0ZWE3NWZlNGU5MzRmZjUyNiIsIm5iZiI6MTc5NTE5MjMwNi4yNjcsInN1YiI6IjZiMDA3NWYyZDA0N2RiYmRmMjhmNzJiZSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.t5xheRXvTuL5hMVL5nLTuLZxx76q-hDfYJ_R39KazHA"
 
     /**
-     * Simkl client id — PENDING the user's app registration at
-     * https://simkl.com/apps/ (a Free account allows 3 unverified apps).
-     * While empty, [com.confused.anikuta.core.trackersimkl.SimklTracker] is
-     * honestly "not configured" and hides its link button.
+     * Simkl client id — the user's registration (2026-11-21, redirect
+     * anikuta://simkl-auth). LINKED-LIVE: the Trackers card's link button is
+     * active and the OAuth flow is wired.
      */
-    const val SIMKL_CLIENT_ID = ""
+    const val SIMKL_CLIENT_ID = "bad5a61d7eb08f8bd0059650b1e66bf0135542014f900100bbb8069c8cd604ba"
 }
