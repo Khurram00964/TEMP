@@ -4,6 +4,15 @@
 
 ## Decisions
 
+## D-940 (round 169): THE METADATA DETAILS PAGES + THE DB LINKING
+The user's redirect: the metadata taps open the DETAILS PAGE OF THE TAPPED SOURCE (not the CS hand-off switch). The design: MetadataDetailsKey (the serializable key carrying the display set; the synthetic main_id = "kind:id"), MetadataDetailsScreen (the design-language anatomy), MetadataDetailsViewModel (the load()-seeded pattern). THE DB LINKING rides content_details' DESIGNED data axis (data_source_type/data_source_ref_id/data_score/data_synopsis/data_cover_url) + main_entry (display_source = "metadata") — the metadata content becomes a first-class row WITHOUT a schema change (the axis existed since D-198). The WATCH → the CS route (the staged-title prefill); the TRACK → the serving tracker (MAL for anime, Simkl otherwise — the fire-and-forget seed). The CS hand-off remains reachable from the details' WATCH.
+
+## D-941 (round 169): THE SIMKL SEARCH REQUIRES THE USER TOKEN + THE LIVE-VERIFIED SHAPES
+The §23 live curl verification proved: the Simkl /search/* endpoints REQUIRE a user access token ("user_token_required" 401 — the client-id-only assumption was wrong); the /trending items carry ids.simkl_id (NOT the top-level simkl_id) + the poster as a simkl.in PATH (the URL = https://simkl.in/posters/{path}_m.jpg — the suffix variants _m/_ca verified live). The old SimklSearchItem DTO parsed NOTHING → every row mapped remoteId = -1 → the duplicate LazyGrid key crash. THE FIX: the SimklMediaItem DTO (the real shape), SimklApi.searchAuthed (the token rides; the unlinked = the honest empty), the mapper builds the poster URL + SKIPS the id-less rows (a -1 can never collide).
+
+## D-942 (round 169): THE KOTLIN NESTED-COMMENT TRAP + THE DECLARATION-ORDER RULE
+Two new lessons: (1) Kotlin block comments NEST — a KDoc's literal "/search/*" text opened a nested comment that swallowed the file's remainder (the bogus "Missing '}'"/"Unclosed comment" cascade); NEVER write a "/*" sequence inside a comment's prose. (2) The declaration-order rule bites AGAIN (the round-162 lesson): the init block's synchronous-first-emission collectors MUST declare their target StateFlows ABOVE the init — the trackers restore at construction so the first emission runs DURING the constructor (Main.immediate).
+
 ## D-937 (round 168): THE ITEM-0 SKIP + THE RELEASE-LINE MIGRATION RULE
 The user's decision: the next debug build installs as a CLEAN INSTALL (delete v1.1.103 first) — the DB-v7 downgrade path never runs; the migration re-land is NOT a debug blocker. The professional line keeps the migration discipline: when 1.1.9 ships over the installed 1.1.8, the update-over migration MUST run smoothly (the release-branch work at 1.1.9 time). The schema still landed WITH the tracker work (4/5.sqm → v6) — both install paths stay safe, and the redo's future migrations continue forward from v6.
 

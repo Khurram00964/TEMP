@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":core:database")) // ROUND 165: the extension-priority tracker
     implementation(project(":core:tvmaze")) // ROUND 163 (STEP-3): the keyless TV data source
     implementation(project(":core:tracker-api"))  // ROUND 168: the Tracker supertypes (BaseTracker) must be on the classpath for the tracker-backed sources
+    implementation(project(":core:content"))  // ROUND 169: the metadata details DB linking (ContentRepository/Record/Details)
     implementation(project(":core:tracker-mal"))  // ROUND 168 (Phase E): the MAL search source
     implementation(project(":core:tracker-simkl"))  // ROUND 168 (Phase E): the Simkl search source
     implementation(project(":core:common"))

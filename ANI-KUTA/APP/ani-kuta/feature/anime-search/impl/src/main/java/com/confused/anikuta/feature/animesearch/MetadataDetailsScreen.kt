@@ -175,7 +175,8 @@ fun MetadataDetailsScreen(
             }
 
             // ── The overview ──
-            if (!key.overview.isNullOrBlank()) {
+            val overviewText = key.overview
+            if (!overviewText.isNullOrBlank()) {
                 Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                     Text(
                         text = "Overview",
@@ -186,7 +187,7 @@ fun MetadataDetailsScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = key.overview,
+                        text = overviewText,
                         fontFamily = RobotoFamily,
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
