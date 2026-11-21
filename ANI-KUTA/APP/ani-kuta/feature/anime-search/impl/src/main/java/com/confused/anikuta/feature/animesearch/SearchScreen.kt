@@ -901,9 +901,11 @@ private fun ResultsGrid(
     onLoadMore: () -> Unit = {},
 ) {
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
+    val searchPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+    val densityOverride by searchPrefs.gridColumnsFlow.collectAsState()
     LazyVerticalGrid(
         state = gridState,
-        columns = if (columnsOverride in 2..4) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
+        columns = if (densityOverride in 2..4) GridCells.Fixed(densityOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -1134,9 +1136,11 @@ private fun ExtensionResultsGrid(
         results.distinctBy { "${it.sourceKey ?: it.sourceId}:${it.url}" }
     }
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
+    val searchPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+    val densityOverride by searchPrefs.gridColumnsFlow.collectAsState()
     LazyVerticalGrid(
         state = gridState,
-        columns = if (columnsOverride in 2..4) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
+        columns = if (densityOverride in 2..4) GridCells.Fixed(densityOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
