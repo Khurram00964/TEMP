@@ -1221,7 +1221,7 @@ class DetailsViewModel(
                             dataCoverUrl = show.posterUrl ?: details?.dataCoverUrl,
                             dataSeasonYear = show.year?.toLong(),
                             dataScore = show.rating?.let { (it * 10).toInt().toLong() },
-                            dataStatus = show.status ?: details?.dataStatus,
+                            // the TvmazeShow model carries no status field — keep the existing.
                             dataUpdatedAt = System.currentTimeMillis(),
                         )
                         details?.let {
