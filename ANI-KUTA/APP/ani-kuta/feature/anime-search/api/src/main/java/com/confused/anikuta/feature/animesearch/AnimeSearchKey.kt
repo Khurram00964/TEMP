@@ -14,4 +14,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class AnimeSearchKey(
     val prefillQuery: String? = null,
+    /** ROUND 165: the data source pre-set ("tmdb"/"tvmaze") — the home's
+     *  see-all routes the non-anime kinds here (the trending defaults become
+     *  the full grid). */
+    val prefillDataSource: String? = null,
 ) : NavKey

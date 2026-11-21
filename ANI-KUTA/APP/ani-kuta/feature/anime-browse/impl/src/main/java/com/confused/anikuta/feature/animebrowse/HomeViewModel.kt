@@ -758,18 +758,11 @@ class HomeViewModel(
         val window: List<GlobalAirsRow> = if (_airsExpanded.value) {
             released + upcoming
         } else {
-            val releasedHead = released.take(AIRS_RELEASED_COUNT)
-            val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
-            val releasedPad = released.drop(releasedHead.size)
-                .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
-
-            // The CONTRACT (round-163 device fix): slot 3 is ALWAYS the next to
-            // air — the released pad rows fill AFTER the upcoming body. The old
-            // assembly displaced the next-to-air below released filler whenever
-            // released >= 3 and upcoming <= 3 (the steady state of a small
-            // airing library — the device verdict "it shows three of the ones
-            // which have been released").
-            releasedHead + upcomingBody + releasedPad
+            // The CONTRACT (round-165 device refinement): the COLLAPSED view =
+            // THREE rows only (2 released + THE next to air). The expand
+            // reveals the full window (the older released rise to the top, the
+            // upcoming extend the bottom).
+            released.take(AIRS_RELEASED_COUNT) + upcoming.take(1)
         }
         return window.map { row ->
         // air — the released pad rows fill AFTER the upcoming body. The old
@@ -817,11 +810,9 @@ class HomeViewModel(
         val window: List<ScheduleEntry> = if (_airsExpanded.value) {
             released + upcoming
         } else {
-            val releasedHead = released.take(AIRS_RELEASED_COUNT)
-            val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
-            val releasedPad = released.drop(releasedHead.size)
-                .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
-            releasedHead + upcomingBody + releasedPad
+            // The CONTRACT (round-165 device refinement): the COLLAPSED view =
+            // THREE rows only (2 released + THE next to air).
+            released.take(AIRS_RELEASED_COUNT) + upcoming.take(1)
         }
 
         val items = mutableListOf<HomeAirsItem>()

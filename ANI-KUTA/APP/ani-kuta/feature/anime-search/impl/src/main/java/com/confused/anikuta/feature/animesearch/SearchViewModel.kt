@@ -657,6 +657,16 @@ class SearchViewModel(
         Logger.i(TAG) { "applyPrefillQuery — title staged for the provider pick: $query" }
     }
 
+    /** ROUND 165: the data-source prefill (the home's see-all routing). */
+    fun applyPrefillDataSource(id: String) {
+        val kind = DataSourceKind.fromId(id)
+        if (_dataSource.value == kind) return
+        _dataSource.value = kind
+        preferenceStore.putString(KEY_SEARCH_DATASOURCE, kind.id)
+        showingDefaults = false
+        loadDefaults()
+    }
+
     fun onRemoveRecent(term: String) {
         val updated = _recents.value.filter { it != term }
         _recents.value = updated

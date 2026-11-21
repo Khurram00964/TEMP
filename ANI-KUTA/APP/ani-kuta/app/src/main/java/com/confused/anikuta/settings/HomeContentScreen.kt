@@ -76,14 +76,6 @@ fun HomeContentScreen(
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    Spacer(Modifier.size(4.dp))
-                    Text(
-                        text = "Mix anything together — the layout stays, the content follows. " +
-                            "Changes apply instantly.",
-                        fontFamily = RobotoFamily,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     Spacer(Modifier.size(16.dp))
                 }
             }
@@ -159,19 +151,6 @@ fun HomeContentScreen(
                         }
                     }
                 }
-            }
-            item {
-                Text(
-                    text = if (enabled.size == 1) {
-                        "Showing ${enabled.first().displayName} only"
-                    } else {
-                        "Mixing ${enabled.size} sources — ${enabled.joinToString(" + ") { it.displayName }}"
-                    },
-                    fontFamily = RobotoFamily,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                )
             }
         }
 

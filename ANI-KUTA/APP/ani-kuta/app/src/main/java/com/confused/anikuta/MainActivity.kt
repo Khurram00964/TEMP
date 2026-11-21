@@ -1270,6 +1270,25 @@ fun AppRoot() {
                     // Profile from the TopBar) pushes directly onto the backstack.
                     when (navKey) {
                         is AnimeDetailsKey -> navigateToDetails(navKey)
+                        // ROUND 165 (the device fix): the home's SEE-ALL routes
+                        // by the enabled kinds — the non-anime kinds' catalogs
+                        // open the SEARCH screen pre-set to their data source
+                        // (the trending defaults = the full grid). The AniList
+                        // catalog stays for the anime kind.
+                        is HomeCatalogKey -> {
+                            val kinds = org.koin.core.context.GlobalContext.get()
+                                .get<com.confused.anikuta.core.preferences.HomePreferences>()
+                                .getContentKinds()
+                            if (kinds == setOf(com.confused.anikuta.core.preferences.HomeContentKind.ANIME)) {
+                                pushKey(navKey)
+                            } else {
+                                val ds = when {
+                                    kinds.contains(com.confused.anikuta.core.preferences.HomeContentKind.SERIES) -> "tvmaze"
+                                    else -> "tmdb"
+                                }
+                                pushKey(AnimeSearchKey(prefillDataSource = ds))
+                            }
+                        }
                         else -> pushKey(navKey)
                     }
                 },
@@ -1631,6 +1650,7 @@ fun AppRoot() {
             )
             is AnimeSearchKey -> SearchScreen(
                 prefillQuery = (currentKey as AnimeSearchKey).prefillQuery,
+                prefillDataSource = (currentKey as AnimeSearchKey).prefillDataSource,
                 onNavigateToDetails = { anime ->
                     navigateToDetails(
                         AnimeDetailsKey.AniList(

@@ -116,6 +116,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun SearchScreen(
     // ROUND 164 (STEP-3d): the home hand-off's staged title (null = plain entry).
     prefillQuery: String? = null,
+    prefillDataSource: String? = null,
     // ROUND 165: the search-page customizability — where the result card's
     // title renders (OVERLAY = the AniList style; BELOW = under the poster).
     resultTitleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle = com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
@@ -273,6 +274,12 @@ fun SearchScreen(
         if (!prefillQuery.isNullOrBlank()) {
             viewModel.applyPrefillQuery(prefillQuery)
             showSourcePicker = true
+        }
+    }
+    // ROUND 165: the data-source prefill (the home's see-all routing).
+    LaunchedEffect(prefillDataSource) {
+        if (!prefillDataSource.isNullOrBlank()) {
+            viewModel.applyPrefillDataSource(prefillDataSource)
         }
     }
 
