@@ -57,3 +57,14 @@ data class MalSearchRow(
 data class MalUser(
     val name: String,
 )
+
+/** GET /anime/ranking — the ranking rows wrap the anime node (Phase E defaults). */
+@Serializable
+data class MalRankingResponse(
+    val data: List<MalRankingRow> = emptyList(),
+)
+
+@Serializable
+data class MalRankingRow(
+    val node: MalAnime,
+)

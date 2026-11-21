@@ -103,6 +103,17 @@ class SimklApi(
             runCatching { json.decodeFromString(SimklSearchResponse.serializer(), raw) }.getOrNull()
         }
 
+    /**
+     * GET /{movie|tv|anime}/trending — the blank-query default (the search
+     * source's grid fill; Phase E). The same item shape as the search.
+     */
+    fun trending(kind: String): List<SimklSearchItem> =
+        get(url("/$kind/trending"), null)?.let { raw ->
+            runCatching {
+                json.decodeFromString(kotlinx.serialization.serializer<List<SimklSearchItem>>(), raw)
+            }.getOrNull()
+        } ?: emptyList()
+
     // ── the sync family (all require the Bearer token) ──
 
     /**

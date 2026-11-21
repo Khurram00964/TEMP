@@ -179,6 +179,8 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 trackerAniListModule,
                 com.confused.anikuta.core.trackersimkl.trackerSimklModule, // ROUND 163 (STEP-2): the Simkl tracker (movies + TV)
                 com.confused.anikuta.core.trackermal.trackerMalModule, // ROUND 168 (the tracker redo): the MAL anime tracker
+                com.confused.anikuta.core.tmdb.tmdbModule, // ROUND 168 (Phase E): the TMDB data source
+                com.confused.anikuta.core.tvmaze.tvmazeModule, // ROUND 168 (Phase E): the TVmaze data source
                 watchProgressModule,
                 smartMatcherModule,
                 shareModule,  // Round 101 (WS-C): the share system (:core:share)
@@ -604,6 +606,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // ROUND 151: the home feed's own prefs (the "Airs today" source
             // toggle — library | global).
             single { com.confused.anikuta.core.preferences.HomePreferences(get()) }
+            single { com.confused.anikuta.core.preferences.SearchPreferences(get()) } // ROUND 168 (Phase E/G): the search page's appearance
 
             // ViewModels (app-level)
             viewModelOf(::NotificationsSettingsViewModel)

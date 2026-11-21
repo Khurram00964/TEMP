@@ -238,6 +238,21 @@ class SimklTracker(
         }
     }
 
+    /**
+     * ROUND 168 (Phase E): the search WITH the display fields — the search
+     * source's result rows (the title + the poster + the year). The 'all'
+     * kind returns every Simkl category.
+     */
+    suspend fun searchItems(query: String): List<SimklSearchItem> = withContext(Dispatchers.IO) {
+        val response = api.search("all", query) ?: return@withContext emptyList()
+        response.movie + response.tv + response.anime
+    }
+
+    /** ROUND 168 (Phase E): the trending default (the blank-query grid fill). */
+    suspend fun trendingItems(kind: String): List<SimklSearchItem> = withContext(Dispatchers.IO) {
+        api.trending(kind)
+    }
+
     // ── internals ──
 
     private fun theJson(): kotlinx.serialization.json.Json =

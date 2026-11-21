@@ -44,6 +44,8 @@ include(":core:tracker-api")
 include(":core:tracker-anilist")
 include(":core:tracker-simkl")  // ROUND 168 (the tracker redo): movies + TV tracking (Simkl) — ported from release/1.1.103
 include(":core:tracker-mal")  // ROUND 168 (the tracker redo): the MAL anime tracker (OAuth plain-PKCE + Jikan-capable API)
+include(":core:tmdb")  // ROUND 168 (Phase E): the movies/series data source (TMDB v3)
+include(":core:tvmaze")  // ROUND 168 (Phase E): the keyless TV/schedule data source
 include(":core:smart-matcher")
 include(":core:share")
 include(":core:content")

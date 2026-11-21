@@ -117,6 +117,19 @@ class MalApi(
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * GET /anime/ranking?ranking_type=bypopularity — the blank-query default
+     * (the search source's grid fill). App-auth (no user token).
+     */
+    fun topAnime(limit: Int = 20): List<MalAnime> {
+        val fields = "id,title,main_picture,num_episodes,mean"
+        val raw = get("/anime/ranking", "ranking_type=bypopularity&limit=$limit&fields=$fields", null)
+            ?: return emptyList()
+        return runCatching {
+            json.decodeFromString(MalRankingResponse.serializer(), raw).data.map { it.node }
+        }.getOrDefault(emptyList())
+    }
+
     // ── the list-status family (all user-token) ──
 
     /**

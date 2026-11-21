@@ -101,6 +101,11 @@ fun SearchTopBar(
     onSortChange: (SearchSort) -> Unit,
     onExtensionSourceClick: () -> Unit = {},
     selectedExtensionSourceName: String? = null,
+    onDataSourceClick: () -> Unit = {},
+    // ROUND 165: the filter sheet is AniList-native — it never applied to the
+    // movies/series data sources; the button hides for them.
+    showFilters: Boolean = true,
+    selectedDataSourceName: String? = null,
 ) {
     val titleFontSize by animateFloatAsState(
         targetValue = if (collapsed) 26f else 36f,
@@ -163,6 +168,8 @@ fun SearchTopBar(
                             onSelect = onSourceSelect,
                             onExtensionSourceClick = onExtensionSourceClick,
                             selectedExtensionSourceName = selectedExtensionSourceName,
+                            onDataSourceClick = onDataSourceClick,
+                            selectedDataSourceName = selectedDataSourceName,
                             modifier = Modifier
                                 .width(sourceWidth)
                                 .alpha(sourceAlpha),
@@ -207,8 +214,9 @@ fun SearchTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    // Filters button (LEFT)
-                    Row(
+                    // Filters button (LEFT) — hidden for the data sources
+                    // (the filter sheet is AniList-native; ROUND 165)
+                    if (showFilters) Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
@@ -329,6 +337,12 @@ private fun SourceToggle(
     modifier: Modifier = Modifier,
     onExtensionSourceClick: () -> Unit = {},
     selectedExtensionSourceName: String? = null,
+    // ROUND 163 (STEP-3): the DATA-SOURCE side now mirrors the Extension side —
+    // the label shows the chosen data source and an active tap opens the
+    // data-source picker (the old AniList segment hard-coded its own
+    // selection and the tap did nothing — the user's dead-tap report).
+    onDataSourceClick: () -> Unit = {},
+    selectedDataSourceName: String? = null,
 ) {
     Row(
         modifier = modifier
@@ -337,10 +351,16 @@ private fun SourceToggle(
             .padding(3.dp),
     ) {
         SourceToggleSegment(
-            label = "AniList",
+            label = selectedDataSourceName ?: "AniList",
             icon = Icons.Filled.Search,
             active = source == SearchSource.ANILIST,
-            onClick = { onSelect(SearchSource.ANILIST) },
+            onClick = {
+                if (source == SearchSource.ANILIST) {
+                    onDataSourceClick()
+                } else {
+                    onSelect(SearchSource.ANILIST)
+                }
+            },
         )
         SourceToggleSegment(
             label = selectedExtensionSourceName ?: "Extension",
@@ -436,23 +456,25 @@ private fun SearchBar(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Round 82 (D-573): the left icon is now DECORATIVE — the search
-            // submit trigger moved to a filled circular button at the RIGHT
-            // edge of the bar (the device report: "the search button should
-            // be shown on the right side of the search bar").
-            Box(
-                modifier = Modifier
-                    .size(if (compact) 36.dp else 40.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(if (compact) 18.dp else 20.dp),
-                )
+            // Round 82 (D-573) + ROUND 165 (the device order): the left icon is
+            // DECORATIVE and shows ONLY while the bar is EMPTY — as soon as the
+            // user types, it disappears (the text moves into its place) and the
+            // pill search button appears on the right.
+            if (value.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(if (compact) 36.dp else 40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(if (compact) 18.dp else 20.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
             }
-            Spacer(Modifier.width(8.dp))
             BasicTextField(
                 value = value,
                 onValueChange = onChange,
@@ -498,30 +520,44 @@ private fun SearchBar(
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            // Round 82 (D-573): THE search button — a filled primary circle on
-            // the right edge of the bar. Submits (same as the IME Search key).
-            Surface(
-                color = MaterialTheme.colorScheme.primary,
-                shape = CircleShape,
-                modifier = Modifier
-                    .size(if (compact) 34.dp else 38.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            onSubmit()
-                            keyboard?.hide()
-                        },
-                    ),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(if (compact) 17.dp else 19.dp),
-                    )
+            // ROUND 165 (the device order): the PILL search button appears on
+            // the right ONLY once the user has typed something (the empty bar
+            // shows no button at all). Submits (same as the IME Search key).
+            if (value.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .height(if (compact) 34.dp else 38.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                onSubmit()
+                                keyboard?.hide()
+                            },
+                        ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "Search",
+                            fontFamily = RobotoFamily,
+                            fontSize = if (compact) 12.sp else 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             }
         }

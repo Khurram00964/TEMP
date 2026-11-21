@@ -47,6 +47,10 @@ import androidx.compose.material.icons.filled.SentimentDissatisfied
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -110,6 +114,12 @@ import org.koin.compose.viewmodel.koinViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
+    // ROUND 164 (STEP-3d): the home hand-off's staged title (null = plain entry).
+    prefillQuery: String? = null,
+    prefillDataSource: String? = null,
+    // ROUND 165: the search-page customizability — where the result card's
+    // title renders (OVERLAY = the AniList style; BELOW = under the poster).
+    resultTitleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle = com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
     // D-320: passes the full anime so the nav key can carry the cover/title
     // + the shared-element key (experimental cover transition).
     onNavigateToDetails: (AniListAnime) -> Unit,
@@ -131,6 +141,10 @@ fun SearchScreen(
     onNavigateToCategory: (providerName: String, sectionTitle: String, sectionIndex: Int) -> Unit = { _, _, _ -> },
     viewModel: SearchViewModel = koinViewModel(),
 ) {
+    // ROUND 165: the search-page customizability (read internally — the grids
+    // re-derive on the Settings toggle).
+    val searchPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+    val resultTitleStyle by searchPrefs.resultTitleStyleFlow.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val query by viewModel.query.collectAsState()
     val source by viewModel.source.collectAsState()
@@ -216,6 +230,9 @@ fun SearchScreen(
                 is SearchUiState.Idle -> scrollState.value == 0
                 is SearchUiState.Success,
                 is SearchUiState.ExtensionSuccess,
+                // ROUND 165 (the device fix): the data-source grids ride the
+                // SAME gridState — the collapse works for TMDB/TVmaze too.
+                is SearchUiState.DataSourceSuccess,
                 -> gridState.firstVisibleItemIndex == 0 &&
                     gridState.firstVisibleItemScrollOffset == 0
                 is SearchUiState.ExtensionBrowseLoading,
@@ -250,6 +267,30 @@ fun SearchScreen(
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSourcePicker by remember { mutableStateOf(false) }
+
+    // ROUND 164 (STEP-3d): the home hand-off — stage the title + auto-open
+    // the provider sheet (the pick completes the playback hand-off).
+    LaunchedEffect(prefillQuery) {
+        if (!prefillQuery.isNullOrBlank()) {
+            viewModel.applyPrefillQuery(prefillQuery)
+            showSourcePicker = true
+        }
+    }
+    // ROUND 165: the data-source prefill (the home's see-all routing).
+    LaunchedEffect(prefillDataSource) {
+        if (!prefillDataSource.isNullOrBlank()) {
+            viewModel.applyPrefillDataSource(prefillDataSource)
+        }
+    }
+
+    // ROUND 163 (STEP-3): the DATA-SOURCE picker + the metadata results state.
+    var showDataSourcePicker by remember { mutableStateOf(false) }
+    val dataSourceKind by viewModel.dataSource.collectAsState()
+    val tmdbEnabled by viewModel.tmdbEnabled.collectAsState()
+    val tvmazeEnabled by viewModel.tvmazeEnabled.collectAsState()
+    val selectedDataSourceName = dataSourceKind.displayName
+    var handOffResult by remember { mutableStateOf<DataSourceResult?>(null) }
+    var pendingHandOffTitle by remember { mutableStateOf<String?>(null) }
     val activeFilterCount = pendingFilters.activeCount
 
     // D-248: trending now auto-loads on first entry (SearchViewModel.init) — recents
@@ -285,6 +326,7 @@ fun SearchScreen(
             source = source,
             onSourceSelect = viewModel::onSourceChange,
             onSubmit = viewModel::onSubmit,
+            showFilters = source == SearchSource.ANILIST || dataSourceKind == DataSourceKind.ANILIST,
             onOpenFilters = { showFilterSheet = true },
             activeFilterCount = activeFilterCount,
             sort = sort,
@@ -293,6 +335,8 @@ fun SearchScreen(
             // (even if already selected, per user spec).
             onExtensionSourceClick = { showSourcePicker = true },
             selectedExtensionSourceName = selectedExtensionSourceName,
+            onDataSourceClick = { showDataSourcePicker = true },
+            selectedDataSourceName = selectedDataSourceName,
         )
 
         // Scrollable content
@@ -481,6 +525,27 @@ fun SearchScreen(
                     )
                 }
 
+                is SearchUiState.DataSourceSuccess -> {
+                    val state = effectiveState as SearchUiState.DataSourceSuccess
+                    DataSourceResultsGrid(
+                        results = state.results,
+                        gridState = gridState,
+                        onResultTap = { result ->
+                            // ROUND 165: NO dialog — the tap resolves on
+                            // CloudStream automatically and opens the details
+                            // page of the best match (no match = the CS search
+                            // results stay in this screen).
+                            viewModel.onDataSourceResultTap(result, onNavigateToExtensionAnime)
+                        },
+                        loadingMore = state.loadingMore,
+                        canLoadMore = state.hasMore,
+                        onLoadMore = viewModel::loadMore,
+                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                            RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
+                        } else null,
+                        titleStyle = resultTitleStyle,
+                    )
+                }
                 is SearchUiState.ExtensionSuccess -> {
                     val state = effectiveState as SearchUiState.ExtensionSuccess
                     ExtensionResultsGrid(
@@ -606,6 +671,59 @@ fun SearchScreen(
         onDismiss = { showFilterSheet = false },
     )
 
+    // ── ROUND 163 (STEP-3): the DATA-SOURCE picker (AniList / TMDB / TVmaze) ──
+    if (showDataSourcePicker) {
+        DataSourcePickerSheet(
+            current = dataSourceKind,
+            tmdbEnabled = tmdbEnabled,
+            tvmazeEnabled = tvmazeEnabled,
+            onSelect = { kind ->
+                showDataSourcePicker = false
+                viewModel.onDataSourceChange(kind)
+            },
+            onDismiss = { showDataSourcePicker = false },
+        )
+    }
+
+    // The metadata result's PLAYBACK HAND-OFF (the user's priority rule):
+    // a data-source result carries no streams — the user picks a CloudStream
+    // provider from the EXISTING extension sheet and the title becomes that
+    // provider's live search (findInCloudstream on the onSelectCs intercept).
+    handOffResult?.let { result ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { handOffResult = null },
+            title = {
+                Text(
+                    "Find \"${result.title}\" where?",
+                    fontFamily = RobotoFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            text = {
+                Text(
+                    "Data sources carry no streams. Pick a CloudStream provider — " +
+                        "the title becomes that provider's search.",
+                    fontFamily = RobotoFamily,
+                    fontSize = 14.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    handOffResult = null
+                    pendingHandOffTitle = result.title
+                    showSourcePicker = true
+                }) {
+                    Text("Pick a provider", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { handOffResult = null }) {
+                    Text("Cancel", fontFamily = RobotoFamily)
+                }
+            },
+        )
+    }
+
     // ── Extension source picker sheet ──
     if (showSourcePicker) {
         ExtensionSourcePickerSheet(
@@ -629,8 +747,18 @@ fun SearchScreen(
             csSources = csSources,
             selectedCsProvider = if (selectedKind == SelectedSourceKind.CLOUDSTREAM) selectedCsProvider else null,
             onSelectCs = { name ->
-                viewModel.onSelectCloudstreamSource(name)
-                showSourcePicker = false
+                // ROUND 163 (STEP-3): a pending metadata hand-off routes the
+                // provider pick into the playback search instead of a plain
+                // mode switch.
+                val pending = pendingHandOffTitle
+                if (pending != null) {
+                    pendingHandOffTitle = null
+                    showSourcePicker = false
+                    viewModel.findInCloudstream(pending, name)
+                } else {
+                    viewModel.onSelectCloudstreamSource(name)
+                    showSourcePicker = false
+                }
             },
         )
     }
@@ -1398,6 +1526,220 @@ private fun ExtensionResultCard(anime: ExtensionAnime, onClick: (ExtensionAnime)
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
             )
+        }
+    }
+}
+
+
+// ── ROUND 163 (STEP-3): the metadata results grid (TMDB / TVmaze) ───────────
+
+@Composable
+private fun DataSourceResultsGrid(
+    results: List<DataSourceResult>,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
+    onResultTap: (DataSourceResult) -> Unit,
+    loadingMore: Boolean = false,
+    canLoadMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
+    recentsHeader: RecentsHeaderData? = null,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+) {
+    // ROUND 165: THE SHARED SKELETON — the same LazyGridState the AniList and
+    // the extension grids use, so the top bar's collapse, the recents header
+    // and the approach-bottom load-more behave IDENTICALLY for the data
+    // sources (the v1.1.101 device verdict: "the front end should stay
+    // exactly the same regardless of anything").
+    ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            end = 12.dp,
+            top = 4.dp,
+            bottom = bottomBarClearance(110.dp),
+        ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        if (recentsHeader != null) {
+            item(key = "recents-header", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                RecentSearchesCard(
+                    recents = recentsHeader.recents,
+                    onPick = recentsHeader.onPick,
+                    onRemove = recentsHeader.onRemove,
+                    onClear = recentsHeader.onClear,
+                )
+            }
+        }
+        items(results, key = { "${it.source.id}-${it.remoteId}" }) { result ->
+            DataSourceResultCard(result, onResultTap, titleStyle)
+        }
+        if (loadingMore) {
+            item(key = "ds-load-more-footer", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                LoadingMoreFooter()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DataSourceResultCard(
+    result: DataSourceResult,
+    onClick: (DataSourceResult) -> Unit,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = tween(Motion.DurationShort, easing = FastOutSlowInEasing),
+        label = "dsCardScale",
+    )
+
+    // The meta line: the YEAR + the RATING only (the device order: the source
+    // name "TMDB" was noise). The title is ONE line in both styles.
+    val meta = buildString {
+        result.year?.let { append(it) }
+        result.rating?.let {
+            if (isNotEmpty()) append(" · ")
+            append("%.1f".format(it))
+        }
+    }
+
+    if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.BELOW) {
+        // The "below" style: the poster, then the title + the meta under it.
+        Column(
+            modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = { onClick(result) },
+                ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            ) {
+                if (result.posterUrl != null) {
+                    coil3.compose.AsyncImage(
+                        model = result.posterUrl,
+                        contentDescription = result.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = result.title,
+                fontFamily = RobotoFamily,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (meta.isNotEmpty()) {
+                Text(
+                    text = meta,
+                    fontFamily = RobotoFamily,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    } else {
+        // The "overlay" style — the AniList card's anatomy verbatim (the
+        // gradient + the title inside the cover's bottom).
+        Box(
+            modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = { onClick(result) },
+                ),
+        ) {
+            if (result.posterUrl != null) {
+                coil3.compose.AsyncImage(
+                    model = result.posterUrl,
+                    contentDescription = result.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Theaters,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+                contentAlignment = Alignment.BottomStart,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.surface,
+                                ),
+                            ),
+                        ),
+                )
+                Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Text(
+                        text = result.title,
+                        fontFamily = RobotoFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
+                            ?: MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            text = meta,
+                            fontFamily = RobotoFamily,
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
         }
     }
 }
