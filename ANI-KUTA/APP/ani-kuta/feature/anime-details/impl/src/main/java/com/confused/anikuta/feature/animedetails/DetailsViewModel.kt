@@ -1186,6 +1186,21 @@ class DetailsViewModel(
                 Logger.w(TAG) { "metadata DB linking failed (non-fatal): ${e.message}" }
             }
 
+            // ROUND 171 (the device order): the saved source link RESTORES —
+            // the extension link on a metadata content persists across the
+            // reopen (the v1.1.106 bug: the relink was forced every time).
+            val savedLink = preferenceStore.getString(KEY_SOURCE_LINK_PREFIX + packedId, "")
+            if (savedLink.isNotBlank()) {
+                val parts = savedLink.split(":", limit = 2)
+                if (parts.size == 2) {
+                    val sourceId = parts[0].toLongOrNull()
+                    if (sourceId != null) {
+                        _linkedSource.value = LinkedSource(sourceId, "", parts[1])
+                        Logger.i(TAG) { "metadata content's saved source link restored: $mainId" }
+                    }
+                }
+            }
+
             var details = runCatching { contentRepository.getContentDetails(mainId) }.getOrNull()
 
             // ── ROUND 171: THE ENRICHMENT PASS (the translation layer) —
@@ -1248,6 +1263,38 @@ class DetailsViewModel(
             currentMainId = mainId
             _mainIdFlow.value = mainId
             Logger.i(TAG) { "metadata state emitted for $mainId" }
+
+            // ── ROUND 171 (the device orders): the EPISODES + the AUTO-SEARCH ──
+            val linked = _linkedSource.value
+            if (linked != null && linked.sourceId > 0) {
+                // The restored link → the episodes fetch from that extension.
+                val source = extensionManager.getSource(linked.sourceId) as? eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+                if (source != null) {
+                    runCatching {
+                        fetchEpisodes(source, linked.animeUrl, anime.title)
+                        Logger.i(TAG) { "metadata episodes fetched from ${source.name}" }
+                    }.onFailure { e ->
+                        Logger.w(TAG) { "metadata episode fetch failed: ${e.message}" }
+                    }
+                }
+            } else {
+                // The AUTO-SEARCH (the round-165 hand-off semantics): the first
+                // trusted CS provider searches the title; the best match links
+                // (LINK ≠ TRACK — the identity link only).
+                val providerSource = cloudstreamRepository.sources.value.firstOrNull()
+                if (providerSource != null) {
+                    runCatching {
+                        val page = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            providerSource.getSearchAnime(1, anime.title, eu.kanade.tachiyomi.animesource.model.AnimeFilterList())
+                        }
+                        val best = page.animes.firstOrNull() ?: return@runCatching
+                        linkSource(providerSource, best)
+                        Logger.i(TAG) { "metadata auto-search linked: ${best.url} (${providerSource.name})" }
+                    }.onFailure { e ->
+                        Logger.w(TAG) { "metadata auto-search failed (non-fatal): ${e.message}" }
+                    }
+                }
+            }
         }
     }
 
