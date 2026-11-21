@@ -448,6 +448,10 @@ object AppIconKey : NavKey
 @Serializable
 object AppearanceGeneralKey : NavKey
 
+/** ROUND 164 (STEP-3d): the home's big-bold content-kind selection. */
+@Serializable
+object HomeContentKey : NavKey
+
 @Serializable
 object DetailsPageSettingsKey : NavKey
 
@@ -1786,8 +1790,8 @@ fun AppRoot() {
                 onBack = pop,
             )
             is SettingsKey -> SettingsScreen(
-                onOpenAppearance = { pushKey(AppearanceKey) }
-                            onOpenHomeContent = { pushKey(HomeContentKey) },
+                onOpenAppearance = { pushKey(AppearanceKey) },
+                onOpenHomeContent = { pushKey(HomeContentKey) },
                 onOpenExtensions = { pushKey(ExtensionsSettingsKey()) },
                 onOpenAutoLink = { pushKey(AutoLinkSettingsKey) },
                 // D-388 (round 25): the UPDATES page is its own Settings row now
@@ -2095,6 +2099,11 @@ fun AppRoot() {
                 highlightAnchor = remember {
                     SettingsSearchNavigator.takeAnchor(SettingsSearchPage.APP_ICON)
                 },
+            )
+            is HomeContentKey -> HomeContentScreen(
+                onBack = pop,
+                homePreferences = org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.preferences.HomePreferences>(),
             )
             is AppearanceGeneralKey -> AppearanceGeneralScreen(
                 onBack = pop,

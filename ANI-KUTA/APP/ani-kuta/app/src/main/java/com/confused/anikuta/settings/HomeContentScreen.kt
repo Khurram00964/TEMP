@@ -104,7 +104,7 @@ fun HomeContentScreen(
                     text = if (enabled.size == 1) {
                         "Showing ${enabled.first().displayName} only"
                     } else {
-                        "Mixing ${enabled.size} sources — ${enabled.joinToString(\" + \") { it.displayName }}"
+                        "Mixing ${enabled.size} sources — ${enabled.joinToString(" + ") { it.displayName }}"
                     },
                     fontFamily = RobotoFamily,
                     fontSize = 12.sp,
