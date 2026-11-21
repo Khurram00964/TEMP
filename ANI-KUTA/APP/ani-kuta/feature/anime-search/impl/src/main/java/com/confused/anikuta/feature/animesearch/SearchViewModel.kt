@@ -24,6 +24,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
@@ -1195,6 +1196,7 @@ class SearchViewModel(
                 com.confused.anikuta.core.database.ExtensionUsageTracker.providerKeyAniyomi(sourceId),
                 com.confused.anikuta.core.database.ExtensionUsageTracker.TIER_PROVIDER,
                 com.confused.anikuta.core.database.ExtensionUsageTracker.Event.SEARCH,
+                nowMs = System.currentTimeMillis(),
             )
         }
 
@@ -1678,6 +1680,7 @@ class SearchViewModel(
                 com.confused.anikuta.core.database.ExtensionUsageTracker.providerKeyCs(providerName),
                 com.confused.anikuta.core.database.ExtensionUsageTracker.TIER_PROVIDER,
                 com.confused.anikuta.core.database.ExtensionUsageTracker.Event.SEARCH,
+                nowMs = System.currentTimeMillis(),
             )
         }
 
