@@ -1,6 +1,7 @@
 package com.confused.anikuta.feature.animesearch.di
 
 import com.confused.anikuta.feature.animesearch.CsCategoryViewModel
+import com.confused.anikuta.feature.animesearch.MetadataDetailsViewModel
 import com.confused.anikuta.feature.animesearch.SearchViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
