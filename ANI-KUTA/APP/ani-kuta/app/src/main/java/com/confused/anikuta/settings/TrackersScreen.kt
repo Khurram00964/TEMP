@@ -405,34 +405,41 @@ private fun CompactTrackerCard(
                         )
                     }
                 }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = when {
-                        !isConfigured -> MaterialTheme.colorScheme.outlineVariant
-                        linked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        else -> MaterialTheme.colorScheme.outlineVariant
-                    },
-                ) {
-                    Text(
-                        text = when {
-                            !isConfigured -> "Setup pending"
-                            linked -> "Linked"
-                            else -> "Not linked"
+                // ROUND 171 (the device order): the LINKED state on the
+                // populate-less trackers (Simkl/MAL) shows the WIDE Unlink
+                // button at the rightmost INSTEAD of the "Linked" chip — the
+                // compressed layout. The AniList (with the populate) keeps
+                // the chip.
+                if (!linked || populateLabel != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = when {
+                            !isConfigured -> MaterialTheme.colorScheme.outlineVariant
+                            linked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else -> MaterialTheme.colorScheme.outlineVariant
                         },
-                        fontFamily = RobotoFamily,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (linked) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        maxLines = 1,
-                        softWrap = false,
-                    )
+                    ) {
+                        Text(
+                            text = when {
+                                !isConfigured -> "Setup pending"
+                                linked -> "Linked"
+                                else -> "Not linked"
+                            },
+                            fontFamily = RobotoFamily,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (linked) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
 
-            // ── The actions row: the Populate (the primary container) + the delete (the error tint) ──
+            // ── The actions row: the Populate (the primary container) + the WIDE unlink (the error tint) ──
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -467,12 +474,18 @@ private fun CompactTrackerCard(
                             }
                             Spacer(Modifier.size(8.dp))
                         }
-                        IconButton(onClick = onUnlink) {
-                            Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = "Unlink $name",
-                                tint = MaterialTheme.colorScheme.error,
-                            )
+                        // ROUND 171: the WIDE unlink button (the outlined
+                        // error — not the bare trash-can icon).
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = onUnlink,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) {
+                            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text("Unlink", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }
