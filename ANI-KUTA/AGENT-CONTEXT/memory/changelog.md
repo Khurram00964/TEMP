@@ -2662,3 +2662,10 @@ The round-107 order: robust layout rules for the player episode list's DETAILED 
 - THE CRASHES fixed: the details-page NPE (the declaration-order rule generalized) + the Simkl duplicate-key crash (the LIVE-VERIFIED shapes: the search needs the user token; the trending items carry ids.simkl_id + the simkl.in poster paths; the mapper skips the id-less rows). THE NESTED-COMMENT TRAP caught (the '/search/*' prose swallowed the file — the lesson banked).
 - THE UNIVERSALITY: the blur on all sources, the universal title placement, THE RATING PILL at every card's cover top-right (the user's design), the grid density 1-5, the Appearance row's own section + icon, the animated search-bar swaps, the real AniList/MAL/Simkl favicons.
 - THE METADATA DETAILS: the taps open the details page OF the tapped source; the DB linking via content_details' designed data axis; WATCH → the CS route; TRACK → the serving tracker. The per-source search caching = the next cycle's first item (the design in 09-H). The CI ledger: 4 dispatches this round (1 red disclosed — the nested-comment cascade).
+
+## Round 170 (2026-11-22) — the details unification + the device-report orders (doc 150, D-943..D-946)
+- 🔴 THE DETAILS UNIFICATION: the metadata screen DELETED; the synthetic-AniList route (the ONE details page for every source); the DB linking via the designed data axis; the "Link to other" menu in the user's exact source order.
+- 🔴 THE ONE-TRACKER RULE + the isTracked dispatch + Simkl's full dispatch + the username-only picker + the TrackSheet favicon.
+- 🔴 THE SIMKL SEARCH fix (the per-kind endpoints merged; the dual-shape DTO).
+- ✅ THE UNIFIED RESULT CARD (the placements per the user's spec) + THE COMPACT TRACKER CARDS (the favicons, the colored actions) + THE SEARCH-PAGE SETTINGS REDESIGN (the Details-background anatomy).
+- The CI ledger: 8 dispatches (3 reds, each single-cause disclosed). The remaining: the caching system + the picker icons (the next session; the design ready).
