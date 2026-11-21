@@ -974,7 +974,7 @@ data class UnifiedCardModel(
     val posterUrl: String?,
     val rating: Double? = null, // 0-10
     val year: Int? = null,
-    val coverSharedElementKey: Any? = null, // the AniList shared-element (experimental)
+    val coverSharedElementKey: String? = null, // the AniList shared-element (experimental)
     val useHeadingColor: Boolean = false,   // the AniList card's LocalCardHeadingColor
 )
 
