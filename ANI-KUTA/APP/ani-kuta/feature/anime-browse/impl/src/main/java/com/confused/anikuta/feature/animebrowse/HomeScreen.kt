@@ -577,7 +577,6 @@ fun HomeScreen(
                                 },
                                 onBrowseAll = { onNavigate(HomeGenresKey) },
                                 onOpen = openAnime,
-                                },
                             )
                         }
                     }

@@ -230,9 +230,7 @@ class HomeViewModel(
         // the merged feed without a screen reload (the flatMapLatest lands
         // the change into the same cache-first pipeline).
         viewModelScope.launch {
-            homePreferences.contentKindsFlow
-                .distinctUntilChanged()
-                .collect {
+            homePreferences.contentKindsFlow.collect {
                     trendingSectionsJob?.cancel()
                     loadTrending()
                 }
@@ -835,7 +833,7 @@ class HomeViewModel(
      * airs source re-fetches through the reload token.
      */
     fun refresh() {
-        viewModelScope.launch { fetchTrending() }
+        viewModelScope.launch { fetchTrendingSections(homePreferences.getContentKinds()) }
         viewModelScope.launch {
             _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
             _suggestedRefreshToken.value += 1
