@@ -126,6 +126,13 @@ fun DetailsActionMenu(
     isExtensionEntry: Boolean,
     isAniListLinked: Boolean,
     onLinkAniList: () -> Unit,
+    // ROUND 170: the "Link to other" source picks (the AniList pick rides
+    // onLinkAniList; the MAL/Simkl picks open their link sheets; the
+    // TMDB/TVmaze picks hand off to the search pre-set to that source).
+    onLinkMal: () -> Unit = {},
+    onLinkSimkl: () -> Unit = {},
+    onLinkTmdb: () -> Unit = {},
+    onLinkTvmaze: () -> Unit = {},
     onUnlinkAniList: () -> Unit,
     // ── Share: the targets, built on demand when the submenu opens ──
     buildShareLinks: () -> List<ShareLink>,
@@ -149,6 +156,7 @@ fun DetailsActionMenu(
     }
     // The Share page swap — internal so both menus share ONE anchor Box.
     // Reset when fully closed so the next open starts on the main page.
+        var linkToOtherExpanded by remember { mutableStateOf(false) }
     var sharePage by remember { mutableStateOf(false) }
     LaunchedEffect(expanded) {
         if (!expanded) sharePage = false
@@ -206,10 +214,11 @@ fun DetailsActionMenu(
                             )
                         }
                     }
-                    // "below it it should show the option to unlink any
-                    // list" — the link/unlink row lives under the chips
-                    // (extension entries; the round-102 standalone AniList
-                    // section is folded into here).
+                    // ROUND 170 (the device order): "Link to other" — the
+                    // row expands IN-PLACE into the data-sources list
+                    // (AniList → MyAnimeList → Simkl → TMDB → TVmaze); the
+                    // linked state shows the linked source's name + the
+                    // "Unlink {source}" row below it.
                     if (isExtensionEntry) {
                         if (isAniListLinked) {
                             MenuDiscRow(
@@ -221,14 +230,33 @@ fun DetailsActionMenu(
                                     onUnlinkAniList()
                                 },
                             )
+                        } else if (linkToOtherExpanded) {
+                            com.confused.anikuta.core.designsystem.component.MenuSectionLabel("Pick a source")
+                            MenuDiscRow(
+                                label = "AniList",
+                                onClick = { onDismissRequest(); onLinkAniList() },
+                            )
+                            MenuDiscRow(
+                                label = "MyAnimeList",
+                                onClick = { onDismissRequest(); onLinkMal() },
+                            )
+                            MenuDiscRow(
+                                label = "Simkl",
+                                onClick = { onDismissRequest(); onLinkSimkl() },
+                            )
+                            MenuDiscRow(
+                                label = "TMDB",
+                                onClick = { onDismissRequest(); onLinkTmdb() },
+                            )
+                            MenuDiscRow(
+                                label = "TVMaze",
+                                onClick = { onDismissRequest(); onLinkTvmaze() },
+                            )
                         } else {
                             MenuDiscRow(
                                 icon = Icons.Filled.Link,
-                                label = "Link to AniList",
-                                onClick = {
-                                    onDismissRequest()
-                                    onLinkAniList()
-                                },
+                                label = "Link to other",
+                                onClick = { linkToOtherExpanded = true },
                             )
                         }
                     }

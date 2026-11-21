@@ -139,6 +139,9 @@ import androidx.compose.material.icons.filled.StarBorder  // Phase 4
 fun DetailsScreen(
     detailsKey: AnimeDetailsKey,
     onBack: () -> Unit,
+    // ROUND 170: the 'Link to other' TMDB/TVmaze picks hand off to the
+    // search pre-set to that source (the title rides via the key's data).
+    onSearchForSource: (String) -> Unit = {},
     // ROUND 108 (D-713): the trailing coverUrl — the player rows' thumbnail
     // fallback (the details page's cover), riding the key like coverAccent.
     // 2026-11-21: the 17 positional params became the [WatchLaunchArgs] bundle
@@ -198,7 +201,11 @@ fun DetailsScreen(
     // Dispatch to the correct load method based on the key type.
     LaunchedEffect(detailsKey) {
         when (detailsKey) {
-            is AnimeDetailsKey.AniList -> viewModel.loadFromAniList(detailsKey.animeId)
+            is AnimeDetailsKey.AniList -> viewModel.loadFromAniList(
+                detailsKey.animeId,
+                metadataTitle = detailsKey.title,
+                metadataCoverUrl = detailsKey.coverUrl,
+            )
             is AnimeDetailsKey.Extension -> viewModel.loadFromExtension(
                 sourceId = detailsKey.sourceId,
                 animeUrl = detailsKey.animeUrl,
@@ -1282,6 +1289,17 @@ fun DetailsScreen(
                                         isExtensionEntry = anime.isFromExtension == true,
                                         isAniListLinked = anime.anilistId != null,
                                         onLinkAniList = { viewModel.openManualLinkSheet() },
+                                        // ROUND 170: the "Link to other" picks —
+                                        // the MAL/Simkl link sheets exist (the
+                                        // tracker mapping flows); the
+                                        // TMDB/TVmaze picks hand off to the
+                                        // search pre-set to that source (the
+                                        // cross-source identity mapping lands
+                                        // with the caching round).
+                                        onLinkMal = { viewModel.openMalLinkSheet() },
+                                        onLinkSimkl = { viewModel.openSimklLinkSheet() },
+                                        onLinkTmdb = { onSearchForSource("tmdb") },
+                                        onLinkTvmaze = { onSearchForSource("tvmaze") },
                                         onUnlinkAniList = { viewModel.unlinkAniList() },
                                         buildShareLinks = {
                                             viewModel.buildShareContent()

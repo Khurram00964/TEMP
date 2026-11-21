@@ -357,6 +357,17 @@ fun DetailsViewModel.openSimklTrackSheet() {
     }
 }
 
+/** ROUND 170: the link-sheet opens (the "Link to other" picks from the 3-dot menu). */
+fun DetailsViewModel.openMalLinkSheet() {
+    _showTrackSheet.value = false
+    _showMalLinkSheet.value = true
+}
+
+fun DetailsViewModel.openSimklLinkSheet() {
+    _showTrackSheet.value = false
+    _showSimklLinkSheet.value = true
+}
+
 /** The SimklLinkSheet's search (the display fields). */
 fun DetailsViewModel.searchSimklForLink(query: String) {
     val simkl = simklTracker ?: return

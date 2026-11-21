@@ -124,9 +124,6 @@ fun SearchScreen(
     // D-320: passes the full anime so the nav key can carry the cover/title
     // + the shared-element key (experimental cover transition).
     onNavigateToDetails: (AniListAnime) -> Unit,
-    // ROUND 169 (the device order): the metadata taps open the DETAILS PAGE
-    // of the tapped source (NOT the CS hand-off switch).
-    onNavigateToMetadataDetails: (DataSourceResult) -> Unit = {},
     // Session 3: +sourceKey — "cloudstream:<provider>" for CloudStream results
     // (null = aniyomi; MainActivity branches the details destination on it).
     // Task 47: +year — the search-time release year (CloudStream providers
@@ -546,7 +543,27 @@ fun SearchScreen(
                         onResultTap = { result ->
                             // ROUND 169 (the device order): the tap opens the
                             // DETAILS PAGE of the tapped source.
-                            onNavigateToMetadataDetails(result)
+                            // ROUND 170 (THE DETAILS UNIFICATION): the tap
+                            // builds the SYNTHETIC AniListAnime and rides the
+                            // standard details route — the ONE details page
+                            // for every source (the device order). The VM
+                            // decodes the negative id and renders the DB's
+                            // metadata axis.
+                            val synthetic = com.confused.anikuta.core.anilist.model.AniListAnime(
+                                id = result.syntheticAniListId(),
+                                title = com.confused.anikuta.core.anilist.model.AnimeTitle(
+                                    romaji = result.title,
+                                    english = result.title,
+                                ),
+                                coverImage = com.confused.anikuta.core.anilist.model.CoverImage(
+                                    large = result.posterUrl,
+                                    extraLarge = result.posterUrl,
+                                ),
+                                averageScore = result.rating?.times(10)?.toInt(),
+                                description = result.overview,
+                                seasonYear = result.year,
+                            )
+                            onNavigateToDetails(synthetic)
                         },
                         loadingMore = state.loadingMore,
                         canLoadMore = state.hasMore,
@@ -968,6 +985,21 @@ ResultCard(anime, onResultTap, titleStyle, showRating, showDetails)
 //  - THE BELOW style — the title under the poster; the YEAR sits at the
 //    cover's BOTTOM-LEFT (an on-cover overlay chip).
 // ════════════════════════════════════════════════════════════════════════
+
+// ── ROUND 170 (THE DETAILS UNIFICATION): the metadata id packing —
+//    -(remoteId * 8 + kindIndex) with tmdb=1, tvmaze=2, mal=3, simkl=4;
+//    the details VM decodes it, reads the content_details' data axis (the
+//    DB linking from the tap), and renders THE ONE details page.
+fun DataSourceResult.syntheticAniListId(): Int {
+    val kindIndex = when (source) {
+        DataSourceKind.TMDB -> 1
+        DataSourceKind.TVMAZE -> 2
+        DataSourceKind.MAL -> 3
+        DataSourceKind.SIMKL -> 4
+        else -> 7
+    }
+    return -(remoteId * 8 + kindIndex)
+}
 
 data class UnifiedCardModel(
     val title: String,

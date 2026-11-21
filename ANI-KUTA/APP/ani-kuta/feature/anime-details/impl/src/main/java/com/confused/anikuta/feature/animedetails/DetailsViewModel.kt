@@ -1104,7 +1104,94 @@ class DetailsViewModel(
 
     // ── Load from AniList (existing flow) ──
 
-    fun loadFromAniList(animeId: Int) {
+    // ROUND 170 (THE DETAILS UNIFICATION): the metadata overload — the key
+    // carries the title/cover (the search result's data).
+    /**
+     * ROUND 170 (THE DETAILS UNIFICATION): the metadata loader — decodes the
+     * packed id, links/reads the content_details' data axis, and emits the
+     * Success state with the synthetic anime. The trackers + the CS link
+     * flows run off the metadata mainId ("kind:remoteId").
+     */
+    private fun loadMetadataContent(packedId: Int, title: String?, coverUrl: String?) {
+        val kindIndex = (-packedId) % 8
+        val remoteId = (-packedId) / 8
+        val kind = when (kindIndex) {
+            1 -> "tmdb"
+            2 -> "tvmaze"
+            3 -> "mal"
+            4 -> "simkl"
+            else -> "metadata"
+        }
+        val mainId = "$kind:$remoteId"
+        Logger.i(TAG) { "metadata load: $mainId" }
+
+        _state.value = DetailsState.Loading
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            // The DB LINKING (idempotent): the metadata content becomes a
+            // first-class row (main_entry + content_details' data axis).
+            runCatching {
+                val existing = contentRepository.getContentDetails(mainId)
+                if (existing == null) {
+                    contentRepository.insertMainEntryIfMissing(
+                        com.confused.anikuta.core.content.ContentRecord(
+                            mainId = mainId,
+                            contentId = mainId,
+                            title = title.orEmpty(),
+                            contentType = "anime",
+                            contentFormat = "video",
+                            displaySource = "metadata",
+                            createdAt = now,
+                            updatedAt = now,
+                        ),
+                    )
+                    contentRepository.upsertContentDetails(
+                        com.confused.anikuta.core.content.ContentDetails(
+                            mainId = mainId,
+                            dataSourceType = kind,
+                            dataSourceRefId = remoteId.toString(),
+                            dataCoverUrl = coverUrl,
+                            dataUpdatedAt = now,
+                        ),
+                    )
+                }
+            }.onFailure { e ->
+                Logger.w(TAG) { "metadata DB linking failed (non-fatal): ${e.message}" }
+            }
+
+            val details = runCatching { contentRepository.getContentDetails(mainId) }.getOrNull()
+            val anime = com.confused.anikuta.core.anilist.model.AniListAnime(
+                id = packedId,
+                title = com.confused.anikuta.core.anilist.model.AnimeTitle(
+                    romaji = title,
+                    english = title,
+                ),
+                coverImage = com.confused.anikuta.core.anilist.model.CoverImage(
+                    large = details?.dataCoverUrl ?: coverUrl,
+                    extraLarge = details?.dataCoverUrl ?: coverUrl,
+                ),
+                averageScore = details?.dataScore?.toInt(),
+                episodes = details?.dataEpisodes?.toInt(),
+                description = details?.dataSynopsis,
+                seasonYear = details?.dataSeasonYear?.toInt(),
+                status = details?.dataStatus,
+            )
+            _state.value = DetailsState.Success(anime)
+            currentMainId = mainId
+            _mainIdFlow.value = mainId
+            Logger.i(TAG) { "metadata state emitted for $mainId" }
+        }
+    }
+
+    fun loadFromAniList(animeId: Int, metadataTitle: String? = null, metadataCoverUrl: String? = null) {
+        if (animeId < 0) {
+            loadMetadataContent(animeId, metadataTitle, metadataCoverUrl)
+            return
+        }
+        loadFromAniListCore(animeId)
+    }
+
+    private fun loadFromAniListCore(animeId: Int) {
         currentAnimeId = animeId
         // D-192 Phase 5: Increment generation — async blocks from previous loads will be discarded.
         loadGeneration++
@@ -3258,7 +3345,7 @@ class DetailsViewModel(
     }
 
     // Legacy method (kept for compatibility — delegates to loadFromAniList)
-    fun loadDetails(animeId: Int) = loadFromAniList(animeId)
+    fun loadDetails(animeId: Int) = loadFromAniListCore(animeId)
 
     // ── Source linking ──
 
