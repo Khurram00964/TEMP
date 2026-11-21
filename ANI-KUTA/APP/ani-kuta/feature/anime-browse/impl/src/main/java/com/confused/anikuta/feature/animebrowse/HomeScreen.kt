@@ -247,7 +247,8 @@ fun HomeScreen(
     // carries a NEGATIVE id (the marker); it navigates to the search screen
     // with the title staged (the CS provider sheet opens there — the playback
     // hand-off per the user's priority rule). Positive ids = the AniList path.
-    val openAnime: (AniListAnime) -> Unit = { anime ->
+    val airsExpanded by viewModel.airsExpanded.collectAsState()
+        val openAnime: (AniListAnime) -> Unit = { anime ->
         if (anime.id < 0) {
             onOpenSearchHandOff(anime.displayName)
         } else {
@@ -517,6 +518,29 @@ fun HomeScreen(
                                     .animateItem()
                                     .padding(horizontal = 20.dp),
                             )
+                        }
+
+                        // ── ROUND 165: the EXPAND/COLLAPSE control (below the
+                        // rows — the animateItem glides carry the additions) ──
+                        item(key = "airs_expand") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp),
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = if (airsExpanded) "Show less" else "Show more",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable { viewModel.setAirsExpanded(!airsExpanded) }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                )
+                            }
                         }
 
                         // ── Trending this week (ranked posters) ──
@@ -1646,7 +1670,13 @@ private fun HomeAirsRow(
                 .fillMaxHeight()
                 .drawBehind {
                     val top = if (isFirst) railEndInsetPx else 0f
-                    val bottom = if (isLast) size.height - railEndInsetPx else size.height
+                    // ROUND 165 (the device order): the line STOPS at the last
+                    // row's node center — nothing renders below the bottom row.
+                    val bottom = if (isLast) {
+                        with(density) { 22.dp.toPx() }
+                    } else {
+                        size.height
+                    }
                     drawRect(
                         color = railColor,
                         topLeft = Offset(size.width / 2f - railWidthPx / 2f, top),
@@ -1689,6 +1719,7 @@ private fun HomeAirsRow(
                         .clip(PillShape)
                         .background(
                             if (released) MaterialTheme.colorScheme.primary
+                            else if (pulsing) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
                             else MaterialTheme.colorScheme.background,
                         )
                         .border(

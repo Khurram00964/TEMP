@@ -189,6 +189,18 @@ class HomeViewModel(
     private val _airsToday = MutableStateFlow<List<HomeAirsItem>>(emptyList())
     val airsToday: StateFlow<List<HomeAirsItem>> = _airsToday.asStateFlow()
 
+    // ── ROUND 165 (the device order): the EXPAND/COLLAPSE — the collapsed
+    // view shows the 6-row contract (2 released + next + 3); the expanded
+    // view shows the FULL window (released desc + upcoming asc), the
+    // animateItem glides animating the additions (a new released row lands at
+    // the TOP, the upcoming rows extend the BOTTOM).
+    private val _airsExpanded = MutableStateFlow(false)
+    val airsExpanded: StateFlow<Boolean> = _airsExpanded.asStateFlow()
+
+    fun setAirsExpanded(expanded: Boolean) {
+        _airsExpanded.value = expanded
+    }
+
     /** The suggestion field's pool + its refresh token (a bump reshuffles the field). */
     private val _suggestedPool = MutableStateFlow(HomeSuggestionPool(emptyList()))
     val suggestedPool: StateFlow<HomeSuggestionPool> = _suggestedPool.asStateFlow()
@@ -617,18 +629,31 @@ class HomeViewModel(
             .filter { it.scheduledAt > now }
             .sortedBy { it.scheduledAt }
 
-        val releasedHead = released.take(AIRS_RELEASED_COUNT)
-        val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
-        val releasedPad = released.drop(releasedHead.size)
-            .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
+        // ROUND 165: the EXPANDED view shows the full window (released desc +
+        // upcoming asc); the collapsed view keeps the 6-row contract.
+        val window: List<GlobalAirsRow> = if (_airsExpanded.value) {
+            released + upcoming
+        } else {
+            val releasedHead = released.take(AIRS_RELEASED_COUNT)
+            val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
+            val releasedPad = released.drop(releasedHead.size)
+                .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
 
-        // The CONTRACT (round-163 device fix): slot 3 is ALWAYS the next to
+            // The CONTRACT (round-163 device fix): slot 3 is ALWAYS the next to
+            // air — the released pad rows fill AFTER the upcoming body. The old
+            // assembly displaced the next-to-air below released filler whenever
+            // released >= 3 and upcoming <= 3 (the steady state of a small
+            // airing library — the device verdict "it shows three of the ones
+            // which have been released").
+            releasedHead + upcomingBody + releasedPad
+        }
+        return window.map { row ->
         // air — the released pad rows fill AFTER the upcoming body. The old
         // `releasedHead + releasedPad + upcomingBody` displaced the next-to-air
         // below released filler whenever released >= 3 and upcoming <= 3 (the
         // steady state of a small airing library — the device verdict "it
         // shows three of the ones which have been released").
-        return (releasedHead + upcomingBody + releasedPad).map { row ->
+
             HomeAirsItem(
                 mainId = "anilist-${row.anilistId}",
                 title = row.title,
@@ -663,11 +688,17 @@ class HomeViewModel(
             .filter { it.scheduledAt > now }
             .sortedBy { it.scheduledAt }
 
-        val releasedHead = released.take(AIRS_RELEASED_COUNT)
-        val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
-        val releasedPad = released.drop(releasedHead.size)
-            .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
-        val window = releasedHead + upcomingBody + releasedPad
+        // ROUND 165: the expanded view = the full window (released desc +
+        // upcoming asc); the collapsed view keeps the 6-row contract.
+        val window: List<ScheduleEntry> = if (_airsExpanded.value) {
+            released + upcoming
+        } else {
+            val releasedHead = released.take(AIRS_RELEASED_COUNT)
+            val upcomingBody = upcoming.take(AIRS_TOTAL - releasedHead.size)
+            val releasedPad = released.drop(releasedHead.size)
+                .take((AIRS_TOTAL - releasedHead.size - upcomingBody.size).coerceAtLeast(0))
+            releasedHead + upcomingBody + releasedPad
+        }
 
         val items = mutableListOf<HomeAirsItem>()
         for (entry in window) {
