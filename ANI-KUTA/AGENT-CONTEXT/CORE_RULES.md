@@ -206,12 +206,13 @@ repo-root/
 
 ## 11. Task Notification
 
-- **After completing every task**, send a notification via `ntfy.sh`:
+- **After completing EVERY task — this is a standing user order (reaffirmed round 162, "always notify me using ntfy.sh after completing the tasks")** — send a notification via `ntfy.sh`:
   ```bash
   curl -fsSL -H "Title: ANI-KUTA Agent" -d "<short result, one line>" https://ntfy.sh/THE-TASK-IS-DONE
+  curl -fsSL -H "Title: ANI-KUTA <round/topic>" -d "<short progress result>" https://ntfy.sh/ANIKUTAPROGRESS
   ```
-- Topic: `THE-TASK-IS-DONE` (user-specified; the older `TASKISDONE` topic predates it — every round since ~round 70 has used `THE-TASK-IS-DONE`).
-- ⚠️ **Note**: ntfy.sh topics are public. Anyone who guesses `THE-TASK-IS-DONE` can read/spoof messages. Don't put secrets in the message body. If this becomes a problem, switch to a long random topic stored in a GitHub secret.
+- Topics: **`THE-TASK-IS-DONE`** (the §11 default; the older `TASKISDONE` topic predates it) + **`ANIKUTAPROGRESS`** (the user's progress-update channel, round 162+). Send BOTH at task completion; `ANIKUTAPROGRESS` additionally carries milestone updates during long tasks.
+- ⚠️ **Note**: ntfy.sh topics are public. Anyone who guesses the topic can read/spoof messages. Don't put secrets in the message body. If this becomes a problem, switch to a long random topic stored in a GitHub secret.
 
 ---
 
@@ -523,6 +524,15 @@ APP/ani-kuta/DOCUMENTATION/database/
 ---
 
 ## 30. Debug-Build Schema Freedom
+
+> **ROUND 163 UPDATE (the user's standing order):** proper versioned migration
+> schemes are now the STANDARD for every schema change ("if we change the
+> database, implement proper database migration schemes so any other database
+> system can be migrated easily to this after the installation"). The
+> freedom below still covers the DEV-INSTALL workflow (a stale dev DB gets
+> wiped, not hand-migrated), but NO schema change may rely on it: every change
+> lands as a numbered `.sqm` per `DOCUMENTATION/database/DATABASE-CONTRACT.md`
+> §2, with a `SchemaMigrationTest` case. The contract doc WINS for DB matters.
 
 > The project is currently in **debug builds only**. There are no production users. There is no published APK. This gives us freedom to make complete schema changes without migration concerns.
 
