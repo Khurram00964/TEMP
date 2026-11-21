@@ -525,6 +525,9 @@ fun SearchScreen(
                         loadingMore = state.loadingMore,
                         canLoadMore = state.hasMore,
                         onLoadMore = viewModel::loadMore,
+                        titleStyle = resultTitleStyle,
+                        showRating = showRating,
+                        showDetails = showDetails,
                         // D-248: recents coexist with the default/trending results — shown as
                         // the grid's header (scrolls away with content; the top bar collapses
                         // to title + compact search bar). They hide only when the user
@@ -638,6 +641,8 @@ fun SearchScreen(
                         recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
+                        titleStyle = resultTitleStyle,
+                        showDetails = showDetails,
                     )
                 }
             }
@@ -902,6 +907,11 @@ private fun ResultsGrid(
     loadingMore: Boolean = false,
     canLoadMore: Boolean = false,
     onLoadMore: () -> Unit = {},
+    // ROUND 169: the universality flags (the title style + the details line).
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+    showRating: Boolean = true,
+    showDetails: Boolean = true,
 ) {
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
     val searchPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
@@ -1191,6 +1201,11 @@ private fun ExtensionResultsGrid(
     loadingMore: Boolean = false,
     canLoadMore: Boolean = false,
     onLoadMore: () -> Unit = {},
+    // ROUND 169: the universality flags (the title style + the details line).
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+    showRating: Boolean = true,
+    showDetails: Boolean = true,
 ) {
     // D-304 defense-in-depth: even though the ViewModel dedupes by URL, the
     // grid keys rows by "sourceId:url" — a duplicate would CRASH LazyGrid
@@ -1536,7 +1551,13 @@ private fun ExtensionBrowseSections(
                             key = { "${it.sourceKey ?: it.sourceId}:${it.url}" },
                         ) { anime ->
                             Box(modifier = Modifier.width(110.dp)) {
-                                ExtensionResultCard(anime, onResultTap, resultTitleStyle, showDetails)
+                                val rowPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+                                ExtensionResultCard(
+                                    anime,
+                                    onResultTap,
+                                    rowPrefs.resultTitleStyleFlow.collectAsState().value,
+                                    rowPrefs.showDetailsLineFlow.collectAsState().value,
+                                )
                             }
                         }
                     }
@@ -1729,7 +1750,7 @@ private fun DataSourceResultCard(
     // name "TMDB" was noise). The title is ONE line in both styles.
     // ROUND 169: the rating LIVES IN THE PILL now (the cover's top-right) —
     // the meta line keeps the year only (the details gate).
-    val meta = if (showDetails) result.year?.toString().orEmpty() else 
+    val meta = if (showDetails) result.year?.toString().orEmpty() else ""
 
     if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.BELOW) {
         // The "below" style: the poster, then the title + the meta under it.
