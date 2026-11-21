@@ -544,8 +544,17 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10205
+    const val versionName = "1.1.105"
+    // ROUND 169 (v1.1.105): release/1.1.105 — cut from the round-169 main head
+    // (the v1.1.104 device-report fixes: BOTH crashes (the details NPE + the
+    // Simkl duplicate keys, the LIVE-VERIFIED shapes); the universal styling
+    // (the blur on all sources, the title placement everywhere, THE RATING
+    // PILL top-right on every card, the grid density 1-5, the Appearance row
+    // with its own section + icon, the animated search-bar swaps, the real
+    // AniList/MAL/Simkl favicons); the METADATA DETAILS PAGES from every
+    // source with the DB linking via the designed data axis — CI
+    // 44936698897 GREEN).
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
