@@ -1,5 +1,8 @@
 package com.confused.anikuta.core.database
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 /**
  * ROUND 165: the EXTENSION PRIORITY SYSTEM's tracker (the spec:
  * DOCUMENTATION/EXTENSION-PRIORITY-SYSTEM.md). Records the usage events per
@@ -125,6 +128,7 @@ class ExtensionUsageTracker(private val database: AnikutaDatabase) {
     suspend fun scoreFor(key: String): Int = withContext(Dispatchers.IO) {
         runCatching { database.extensionUsageQueries.getUsage(key).executeAsOneOrNull()?.score?.toInt() ?: 0 }
             .getOrDefault(0)
+    }
 
     /** The Settings' reset action — wipes the learned history. */
     suspend fun wipeAll() = withContext(Dispatchers.IO) {
