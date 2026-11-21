@@ -2,6 +2,7 @@ package com.confused.anikuta.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -49,6 +51,7 @@ import com.confused.anikuta.core.content.ContentResolver
 import com.confused.anikuta.core.designsystem.component.CollapsingHeader
 import com.confused.anikuta.core.designsystem.component.ScrollBlurOverlay
 import com.confused.anikuta.core.designsystem.theme.RobotoFamily
+import com.confused.anikuta.R
 import com.confused.anikuta.core.trackeranilist.AniListTracker
 import com.confused.anikuta.core.trackerapi.TrackerLoginState
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +115,7 @@ fun TrackersScreen(
             // ── AniList tracker card ──
             item {
                 AniListCard(
+                    isConfigured = anilistTracker.isConfigured,
                     loginState = loginState,
                     populateState = populateState,
                     onLink = {
