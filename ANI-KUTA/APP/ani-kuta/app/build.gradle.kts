@@ -184,6 +184,7 @@ dependencies {
     implementation(project(":core:tracker-api"))
     implementation(project(":core:tracker-anilist"))
     implementation(project(":core:tracker-simkl")) // ROUND 168: the Simkl tracker (movies + TV)
+    implementation(project(":core:tracker-mal")) // ROUND 168: the MAL anime tracker
     implementation(project(":core:smart-matcher"))
     // Round 101 (WS-C): the share system (:core:share — MainActivity deep-link intake).
     implementation(project(":core:share"))

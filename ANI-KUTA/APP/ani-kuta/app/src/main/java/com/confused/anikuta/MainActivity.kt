@@ -306,10 +306,11 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
      * in a background coroutine.
      */
     private fun handleAniListOAuthRedirect(intent: android.content.Intent?) {
-        // ROUND 168 (the tracker redo): the Simkl redirect rides the same entry
-        // point — dispatch first (anikuta://simkl-auth?code=...), then fall
-        // through to the AniList fragment parse.
+        // ROUND 168 (the tracker redo): the Simkl + MAL redirects ride the same
+        // entry point — dispatch first (anikuta://simkl-auth | anikuta://mal-auth,
+        // the code in the QUERY), then fall through to the AniList fragment parse.
         if (handleSimklOAuthRedirect(intent)) return
+        if (handleMalOAuthRedirect(intent)) return
 
         val data = intent?.data ?: return
         if (data.scheme != "anikuta" || data.host != "anilist-auth") return
@@ -400,6 +401,52 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
             } catch (e: Exception) {
                 com.confused.anikuta.core.common.Logger.e("MainActivity", e) {
                     "Simkl OAuth redirect handling failed: ${e.message}"
+                }
+            }
+        }
+        return true
+    }
+
+    /**
+     * ROUND 168 (the tracker redo, Phase C): the MAL OAuth2 redirect handler
+     * (the Simkl handler's pattern). MAL redirects to
+     * `anikuta://mal-auth?code=...` — the CODE rides the QUERY; the
+     * plain-PKCE verifier from startLogin is in the tracker's memory and the
+     * exchange POSTs it.
+     *
+     * @return true when this intent WAS a MAL redirect (consumed).
+     */
+    private fun handleMalOAuthRedirect(intent: android.content.Intent?): Boolean {
+        val data = intent?.data ?: return false
+        if (data.scheme != "anikuta" || data.host != "mal-auth") return false
+
+        val code = data.getQueryParameter("code").orEmpty()
+        if (code.isBlank()) {
+            com.confused.anikuta.core.common.Logger.w("MainActivity") {
+                "MAL OAuth redirect: no code in query"
+            }
+            return true
+        }
+
+        com.confused.anikuta.core.common.Logger.i("MainActivity") {
+            "MAL OAuth redirect received — exchanging the code (plain PKCE)..."
+        }
+
+        kotlinx.coroutines.MainScope().launch {
+            try {
+                val tracker = org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.trackermal.MalTracker>()
+                val success = tracker.handleLoginCallback(code)
+                if (success) {
+                    com.confused.anikuta.core.common.Logger.i("MainActivity") { "MAL login successful!" }
+                    anilistLoginSuccess = true // the same auto-navigate to the Trackers page
+                } else {
+                    com.confused.anikuta.core.common.Logger.e("MainActivity") { "MAL login failed" }
+                    anilistLoginError = "MAL login failed — please try again."
+                }
+            } catch (e: Exception) {
+                com.confused.anikuta.core.common.Logger.e("MainActivity", e) {
+                    "MAL OAuth redirect handling failed: ${e.message}"
                 }
             }
         }

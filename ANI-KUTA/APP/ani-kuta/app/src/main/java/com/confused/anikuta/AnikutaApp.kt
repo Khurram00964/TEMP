@@ -178,8 +178,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 metadataModule,
                 trackerAniListModule,
                 com.confused.anikuta.core.trackersimkl.trackerSimklModule, // ROUND 163 (STEP-2): the Simkl tracker (movies + TV)
-                com.confused.anikuta.core.tmdb.tmdbModule, // ROUND 163 (STEP-3): the TMDB data source
-                com.confused.anikuta.core.tvmaze.tvmazeModule, // ROUND 163 (STEP-3): the TVmaze data source
+                com.confused.anikuta.core.trackermal.trackerMalModule, // ROUND 168 (the tracker redo): the MAL anime tracker
                 watchProgressModule,
                 smartMatcherModule,
                 shareModule,  // Round 101 (WS-C): the share system (:core:share)
@@ -197,6 +196,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                     ) {
                         listOf(
                             get<com.confused.anikuta.core.trackeranilist.AniListTracker>(),
+                            get<com.confused.anikuta.core.trackermal.MalTracker>(),
                             get<com.confused.anikuta.core.trackersimkl.SimklTracker>(),
                         )
                     }
@@ -489,7 +489,6 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // (identity) in release builds.
             single<SqlDriver> { wrapDebugSqlDriver(DatabaseDriverFactory(get()).create()) }
             single<AnikutaDatabase> { AnikutaDatabase(get()) }
-            single { com.confused.anikuta.core.database.ExtensionUsageTracker(get()) } // ROUND 165: the priority tracker
 
             // Phase SC-2: bind ScheduleStore as ActualReleaseUpdater (breaks the circular
             // dependency between :core:updates + :core:schedule).
@@ -605,7 +604,6 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // ROUND 151: the home feed's own prefs (the "Airs today" source
             // toggle — library | global).
             single { com.confused.anikuta.core.preferences.HomePreferences(get()) }
-            single { com.confused.anikuta.core.preferences.ExtensionPriorityPreferences(get()) } // ROUND 165: the priority toggle
 
             // ViewModels (app-level)
             viewModelOf(::NotificationsSettingsViewModel)

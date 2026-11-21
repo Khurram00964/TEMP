@@ -115,6 +115,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="anikuta" android:host="simkl-auth" />
             </intent-filter>
+
+            <!-- ROUND 168 (the tracker redo): the MAL OAuth2 redirect (PKCE plain). -->
+            <!-- MAL redirects to anikuta://mal-auth?code=... (the code in the QUERY). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="anikuta" android:host="mal-auth" />
+            </intent-filter>
             <!-- ROUND 101 (WS-C): the app's OWN share links — -->
             <!-- anikuta://content/{mainId} opens ANI-KUTA straight on the -->
             <!-- shared content (MainActivity resolves the mainId through the -->
