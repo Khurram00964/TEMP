@@ -3,6 +3,12 @@
 > One-line lessons from mistakes, corrections, and insights.
 > Read at task start (grep for tags matching your task type). Append when you learn something.
 
+## THE STREAMED-CI-LOG-TRUNCATION LESSON (round 168)
+The jobs/{id}/logs endpoint TRUNCATES huge step logs (~10MB) mid-stack — the failure summary (the "What went wrong" block) lives at the END and disappears. The first Phase B failure looked like a D8 metadata crash (154 warnings visible) but the REAL failure was :app:compileDebugKotlin. RULE: for any CI failure on a big build, fetch the ZIP (GET /actions/runs/{id}/logs → 0_build.txt, untruncated) and grep the "e: file://" lines; never diagnose from the streamed tail. ALSO: the D8 "Unexpected error during rewriting of Kotlin metadata" warnings (Yu0) are STANDING benign noise on this toolchain (Kotlin 2.2 vs AGP's D8) — 105x in GREEN runs; never treat them as the failure cause.
+
+## THE RECOVERY-CHECKOUT-CARRIES-DEFERRED-REFS LESSON (round 168)
+Checking out files from a recovery branch built on a SUPERSET tree imports that tree's references: the recovery AnikutaApp bound the priority tracker/prefs + the tmdb/tvmaze modules — none ported → :app:compileDebugKotlin died. RULE: after every recovery checkout, grep the checked-out files for the DEFERRED phases' package names (the priority/tmdb/tvmaze/home list) and strip the references in the same commit; the DI lambdas (getOrNull/get) are the usual carriers. The supertype-access error ("Cannot access 'BaseTracker'") = the module needs the supertype's project explicitly (implementation deps don't propagate transitively).
+
 ## THE REVERT-CARRIES-A-SCHEMA-FLOOR LESSON (round 167)
 Reverting CODE does not revert the DEVICES: every shipped build stamps its schema version on every installed device, and a reverted main ships a LOWER version than the fleet runs — the update-over becomes a downgrade and androidx's Callback.onDowngrade THROWS at the first DB open ("Can't downgrade database from version N to M" — verified from the cached aar's class strings, not from memory). The versionCode floor (≥10204) had a twin nobody wrote down: the SCHEMA floor (≥ v7). RULE: before ANY release from a reverted/rewound main, diff main's .sqm count against the newest shipped tag's .sqm count; if lower, re-land the shipped migrations (+ their paired .sq/query updates) verbatim from the recovery branch FIRST. A revert's recovery plan is incomplete without its schema plan.
 

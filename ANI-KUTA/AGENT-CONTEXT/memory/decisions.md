@@ -4,6 +4,15 @@
 
 ## Decisions
 
+## D-937 (round 168): THE ITEM-0 SKIP + THE RELEASE-LINE MIGRATION RULE
+The user's decision: the next debug build installs as a CLEAN INSTALL (delete v1.1.103 first) — the DB-v7 downgrade path never runs; the migration re-land is NOT a debug blocker. The professional line keeps the migration discipline: when 1.1.9 ships over the installed 1.1.8, the update-over migration MUST run smoothly (the release-branch work at 1.1.9 time). The schema still landed WITH the tracker work (4/5.sqm → v6) — both install paths stay safe, and the redo's future migrations continue forward from v6.
+
+## D-938 (round 168): THE MAL PLAIN-PKCE RESOLUTION
+The 05-T-2 spec's OAuth phrase ("the challenge = the base64url of the SHA-256 hex") was garbled — the deciding authority is MAL's official docs (myanimelist.net/apiconfig/references/authorization): ONLY the plain method is supported, the challenge must equal the verifier verbatim. MalOAuth implements plain with the 64-char base64url verifier. The redirect = anikuta://mal-auth (08-THE-KEYS's registered value, NOT the spec's "mal://redirect" slip). Jikan stays the documented FALLBACK (the MAL v2 app-auth search covers the sources; the user's "if needed").
+
+## D-939 (round 168): THE TRACKER-BACKED SEARCH SOURCES + THE HAND-OFF DELIVERS THE PER-SOURCE DETAILS
+The search sources MAL + Simkl ride the TRACKERS' APIs (the app-auth/client-id searches work whether or not the user LINKED the tracker — the tracker modules are the injectables). The defaults: MAL = the v2 popularity ranking; Simkl = the TV trending. The per-source details = the CS HAND-OFF (the 04-S-3 contract: the tap stages the title on the provider, the best match opens the details page) — no parallel metadata-details screen (the design language: one system); the metadata-native surface = the explicit follow-up if the device round asks. The picker's real-logo assets deferred one cycle (the CDN grabs returned stubs — proper sourcing needed); the branded tiles (the recovery's proven shape) ship this round.
+
 ## D-934 (round 167): 🚨 THE DB-v7 SCHEMA DOWNGRADE BLOCKER — THE REDO ITEM 0
 The devices' DB = schema v7 (v1.1.103 shipped 4.sqm+5.sqm+6.sqm); the reverted main = v4 (3 .sqm). Any release from main installed over the devices = the first DB open calls onDowngrade → androidx.sqlite 2.4.0's Callback THROWS "Can't downgrade database from version 7 to version 4" (verified from the cached aar's class strings — not from memory). DECISION: redo item 0 = re-land 4/5/6.sqm + the paired .sq/query updates VERBATIM from release/1.1.103 before ANY release from main (main's version → 7 = the devices'; 7→7 = no migration runs; the redo's future migrations continue forward from v7). The .sqm files never travel without the .sq updates they pair with (5.sqm rebuilt track_entry/content_tracking_state). The doc-07 versionCode floor (≥10204) gains the SCHEMA floor (≥ v7).
 
