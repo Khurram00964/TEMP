@@ -212,7 +212,7 @@ fun SearchPageSettingsScreen(
                         .padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    listOf(0 to "Adaptive", 2 to "2", 3 to "3", 4 to "4").forEach { (count, label) ->
+                    listOf(0 to "Adaptive", 1 to "1", 2 to "2", 3 to "3", 4 to "4", 5 to "5").forEach { (count, label) ->
                         val selected = gridColumns == count
                         Row(
                             modifier = Modifier

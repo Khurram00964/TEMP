@@ -91,14 +91,14 @@ fun DataSourcePickerSheet(
                     listOf(
                         // ROUND 165 (the device order): the simplest subtitles
                         // (no GraphQL/keyless tech-speak) + the branded marks.
-                        DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true),
+                        DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_anilist),
                         DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled),
                         DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled),
                         // ROUND 168 (Phase E): the tracker-backed sources —
                         // their searches are app/client-id auth (they work
                         // whether or not the user LINKED the tracker).
-                        DataSourceRow(DataSourceKind.MAL, "MyAnimeList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF2E51A2), enabled = true),
-                        DataSourceRow(DataSourceKind.SIMKL, "Simkl", "Movies & TV", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF0D0D0D), enabled = true),
+                        DataSourceRow(DataSourceKind.MAL, "MyAnimeList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF2E51A2), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_mal),
+                        DataSourceRow(DataSourceKind.SIMKL, "Simkl", "Movies & TV", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF0D0D0D), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_simkl),
                     ),
                     key = { it.kind.id },
                 ) { row ->
@@ -121,6 +121,10 @@ private data class DataSourceRow(
     val icon: ImageVector,
     val brandColor: androidx.compose.ui.graphics.Color,
     val enabled: Boolean,
+    // ROUND 169 (the device order): the REAL favicon renders when the asset
+    // exists; the branded tile stays the fallback (the TMDB/TVmaze assets
+    // need proper sourcing - the CDN grabs failed).
+    val logoRes: Int? = null,
 )
 
 @Composable
@@ -152,13 +156,22 @@ private fun DataSourcePickerRow(
                 .background(row.brandColor, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = row.name.first().toString(),
-                fontFamily = RobotoFamily,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = androidx.compose.ui.graphics.Color.White,
-            )
+            if (row.logoRes != null) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(row.logoRes),
+                    contentDescription = row.name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    text = row.name.first().toString(),
+                    fontFamily = RobotoFamily,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = androidx.compose.ui.graphics.Color.White,
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(

@@ -644,7 +644,8 @@ fun SearchScreen(
                 scrollOffset = {
                     when (uiState) {
                         is SearchUiState.Success,
-                        is SearchUiState.ExtensionSuccess -> {
+                        is SearchUiState.ExtensionSuccess,
+                        is SearchUiState.DataSourceSuccess -> {
                             if (gridState.firstVisibleItemIndex > 0) Float.MAX_VALUE
                             else gridState.firstVisibleItemScrollOffset.toFloat()
                         }
@@ -905,7 +906,7 @@ private fun ResultsGrid(
     val densityOverride by searchPrefs.gridColumnsFlow.collectAsState()
     LazyVerticalGrid(
         state = gridState,
-        columns = if (densityOverride in 2..4) GridCells.Fixed(densityOverride) else GridCells.Fixed(3),
+        columns = if (densityOverride in 1..5) GridCells.Fixed(densityOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -927,7 +928,7 @@ private fun ResultsGrid(
             }
         }
         items(results, key = { it.id }) { anime ->
-            ResultCard(anime, onResultTap)
+ResultCard(anime, onResultTap, resultTitleStyle, showRating, showDetails)
         }
         // Task 61 (round 21): the load-more footer (full span).
         if (loadingMore) {
@@ -942,7 +943,14 @@ private fun ResultsGrid(
 }
 
 @Composable
-private fun ResultCard(anime: AniListAnime, onClick: (AniListAnime) -> Unit) {
+private fun ResultCard(
+    anime: AniListAnime,
+    onClick: (AniListAnime) -> Unit,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+    showRating: Boolean = true,
+    showDetails: Boolean = true,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -986,37 +994,93 @@ private fun ResultCard(anime: AniListAnime, onClick: (AniListAnime) -> Unit) {
                 .clip(RoundedCornerShape(12.dp)),
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f),
-            contentAlignment = Alignment.BottomStart,
-        ) {
+        // ROUND 169: the RATING PILL - the cover's top-right corner, the
+        // height as small as possible (the user's order). The AniList
+        // 0-100 score renders as the 0-10 display.
+        if (showRating && anime.averageScore != null) {
+            RatingPill(
+                rating = anime.averageScore!! / 10.0,
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
+        if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                MaterialTheme.colorScheme.surface,
+                    .aspectRatio(2f / 3f),
+                contentAlignment = Alignment.BottomStart,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.surface,
+                                ),
                             ),
                         ),
-                    ),
-            )
-            Text(
-                text = anime.displayName,
-                fontFamily = RobotoFamily,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            )
+                )
+                Text(
+                    text = anime.displayName,
+                    fontFamily = RobotoFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                )
+            }
+        } else {
+            // The BELOW style: the title (+ the year, gated) sits under the poster.
+            Column(modifier = Modifier.padding(top = 4.dp)) {
+                Text(
+                    text = anime.displayName,
+                    fontFamily = RobotoFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (showDetails && anime.seasonYear != null) {
+                    Text(
+                        text = anime.seasonYear.toString(),
+                        fontFamily = RobotoFamily,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
+    }
+}
+
+// ── ROUND 169: the shared RATING PILL - the cover's top-right corner, the
+// minimal height (the user's order: "as small as possible", part of the
+// cover itself). Every search card renders it when a rating exists.
+@Composable
+private fun RatingPill(rating: Double, modifier: Modifier = Modifier) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        shadowElevation = 2.dp,
+        modifier = modifier.padding(4.dp),
+    ) {
+        Text(
+            text = "%.1f".format(rating),
+            fontFamily = RobotoFamily,
+            fontSize = 9.sp,
+            lineHeight = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+        )
     }
 }
 
@@ -1140,7 +1204,7 @@ private fun ExtensionResultsGrid(
     val densityOverride by searchPrefs.gridColumnsFlow.collectAsState()
     LazyVerticalGrid(
         state = gridState,
-        columns = if (densityOverride in 2..4) GridCells.Fixed(densityOverride) else GridCells.Fixed(3),
+        columns = if (densityOverride in 1..5) GridCells.Fixed(densityOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -1162,7 +1226,7 @@ private fun ExtensionResultsGrid(
             }
         }
         items(distinctResults, key = { "${it.sourceKey ?: it.sourceId}:${it.url}" }) { anime ->
-            ExtensionResultCard(anime, onResultTap)
+            ExtensionResultCard(anime, onResultTap, resultTitleStyle, showDetails)
         }
         // Task 61 (round 21): the load-more footer (full span).
         if (loadingMore) {
@@ -1310,7 +1374,7 @@ private fun ExtensionBrowseProgressiveList(
                                 key = { "${it.sourceKey ?: it.sourceId}:${it.url}" },
                             ) { anime ->
                                 Box(modifier = Modifier.width(110.dp)) {
-                                    ExtensionResultCard(anime, onResultTap)
+                                    ExtensionResultCard(anime, onResultTap, resultTitleStyle, showDetails)
                                 }
                             }
                         }
@@ -1458,7 +1522,7 @@ private fun ExtensionBrowseSections(
                             key = { "${it.sourceKey ?: it.sourceId}:${it.url}" },
                         ) { anime ->
                             Box(modifier = Modifier.width(110.dp)) {
-                                ExtensionResultCard(anime, onResultTap)
+                                ExtensionResultCard(anime, onResultTap, resultTitleStyle, showDetails)
                             }
                         }
                     }
@@ -1469,7 +1533,13 @@ private fun ExtensionBrowseSections(
 }
 
 @Composable
-private fun ExtensionResultCard(anime: ExtensionAnime, onClick: (ExtensionAnime) -> Unit) {
+private fun ExtensionResultCard(
+    anime: ExtensionAnime,
+    onClick: (ExtensionAnime) -> Unit,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+    showDetails: Boolean = true,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -1509,36 +1579,59 @@ private fun ExtensionResultCard(anime: ExtensionAnime, onClick: (ExtensionAnime)
                 .clip(RoundedCornerShape(12.dp)),
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f),
-            contentAlignment = Alignment.BottomStart,
-        ) {
+        if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                MaterialTheme.colorScheme.surface,
+                    .aspectRatio(2f / 3f),
+                contentAlignment = Alignment.BottomStart,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.surface,
+                                ),
                             ),
                         ),
-                    ),
-            )
-            Text(
-                text = anime.title,
-                fontFamily = RobotoFamily,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            )
+                )
+                Text(
+                    text = anime.title,
+                    fontFamily = RobotoFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                )
+            }
+        } else {
+            Column(modifier = Modifier.padding(top = 4.dp)) {
+                Text(
+                    text = anime.title,
+                    fontFamily = RobotoFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (showDetails && anime.year != null) {
+                    Text(
+                        text = anime.year.toString(),
+                        fontFamily = RobotoFamily,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }
@@ -1560,7 +1653,7 @@ private fun DataSourceResultsGrid(
     // ROUND 168 (Phase G): the user's customization set.
     showRating: Boolean = true,
     showDetails: Boolean = true,
-    columnsOverride: Int = 0, // 0 = the adaptive default (3)
+    columnsOverride: Int = 0, // 0 = the adaptive default (3); 1-5 = the fixed counts
 ) {
     // ROUND 165: THE SHARED SKELETON — the same LazyGridState the AniList and
     // the extension grids use, so the top bar's collapse, the recents header
@@ -1570,7 +1663,7 @@ private fun DataSourceResultsGrid(
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
     LazyVerticalGrid(
         state = gridState,
-        columns = if (columnsOverride in 2..4) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
+        columns = if (columnsOverride in 1..5) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -1620,13 +1713,9 @@ private fun DataSourceResultCard(
 
     // The meta line: the YEAR + the RATING only (the device order: the source
     // name "TMDB" was noise). The title is ONE line in both styles.
-    val meta = buildString {
-        if (showDetails) result.year?.let { append(it) }
-        if (showRating) result.rating?.let {
-            if (isNotEmpty()) append(" · ")
-            append("%.1f".format(it))
-        }
-    }
+    // ROUND 169: the rating LIVES IN THE PILL now (the cover's top-right) —
+    // the meta line keeps the year only (the details gate).
+    val meta = if (showDetails) result.year?.toString().orEmpty() else 
 
     if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.BELOW) {
         // The "below" style: the poster, then the title + the meta under it.
@@ -1653,6 +1742,13 @@ private fun DataSourceResultCard(
                         contentDescription = result.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                // ROUND 169: the rating pill at the cover's top-right.
+                if (showRating && result.rating != null) {
+                    RatingPill(
+                        rating = result.rating,
+                        modifier = Modifier.align(Alignment.TopEnd),
                     )
                 }
             }
@@ -1689,6 +1785,13 @@ private fun DataSourceResultCard(
                     onClick = { onClick(result) },
                 ),
         ) {
+            // ROUND 169: the rating pill at the cover's top-right (the overlay branch).
+            if (showRating && result.rating != null) {
+                RatingPill(
+                    rating = result.rating,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            }
             if (result.posterUrl != null) {
                 coil3.compose.AsyncImage(
                     model = result.posterUrl,

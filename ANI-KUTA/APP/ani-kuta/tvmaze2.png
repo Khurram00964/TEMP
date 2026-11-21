@@ -1,0 +1,20 @@
+<html>
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:title" content="">
+<meta property="og:description" content="">
+<title>TVmaze</title>
+</head>
+<body>
+<h1>Validating your browser</h1>
+
+<p>If this error persists, make sure to enable javascript and cookies.</p>
+
+<script src="//static.tvmaze.com/js/tvmaze.js"></script>
+<script>
+setTimeout(function() {
+    window.location.replace('/' + window.location.search.substring(7));
+}, 3000);
+</script>
+</body>
+</html>

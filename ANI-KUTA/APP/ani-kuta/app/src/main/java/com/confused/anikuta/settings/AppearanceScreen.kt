@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AppShortcut
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -104,25 +105,20 @@ fun AppearanceScreen(
                                 subtitle = "Theme mode, palettes, and colors",
                                 onClick = onOpenGeneral,
                             )
-                            androidx.compose.material3.ListItem(
-                                headlineContent = {
-                                    Text(
-                                        text = "Search page",
-                                        fontFamily = RobotoFamily,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        text = "Result card titles, more",
-                                        fontFamily = RobotoFamily,
-                                        fontSize = 12.sp,
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth().clickable { onOpenSearchPage() },
-                            )
                         }
+                    }
+                    item {
+                        // ROUND 169 (the device report): the Search page gets
+                        // its OWN section + the standard row anatomy (the bare
+                        // ListItem inside General was the mis-placement the
+                        // user rejected - no icon, wrong section).
+                        SettingsSectionLabel("Search Page")
+                        MoreListRow(
+                            icon = Icons.Filled.Search,
+                            title = "Search page",
+                            subtitle = "Title placement, ratings, grid density, recents",
+                            onClick = onOpenSearchPage,
+                        )
                     }
                     item {
                         // ROUND 105 (WS-C): the section holds BOTH pages' episode

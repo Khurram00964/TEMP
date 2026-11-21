@@ -460,20 +460,31 @@ private fun SearchBar(
             // DECORATIVE and shows ONLY while the bar is EMPTY — as soon as the
             // user types, it disappears (the text moves into its place) and the
             // pill search button appears on the right.
-            if (value.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .size(if (compact) 36.dp else 40.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(if (compact) 18.dp else 20.dp),
-                    )
+            // ROUND 169 (the device order): the swaps ANIMATE - the left icon
+            // fades+scales out as typing starts; the clear X and the pill
+            // button fade+scale in. No more hard cuts.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = value.isEmpty(),
+                enter = androidx.compose.animation.fadeIn() +
+                    androidx.compose.animation.scaleIn(initialScale = 0.6f),
+                exit = androidx.compose.animation.fadeOut() +
+                    androidx.compose.animation.scaleOut(targetScale = 0.6f),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(if (compact) 36.dp else 40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(if (compact) 18.dp else 20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 }
-                Spacer(Modifier.width(8.dp))
             }
             BasicTextField(
                 value = value,
@@ -503,27 +514,42 @@ private fun SearchBar(
                     innerTextField()
                 },
             )
-            if (value.isNotEmpty()) {
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .clickable { onClear() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Clear",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
+            androidx.compose.animation.AnimatedVisibility(
+                visible = value.isNotEmpty(),
+                enter = androidx.compose.animation.fadeIn() +
+                    androidx.compose.animation.scaleIn(initialScale = 0.6f),
+                exit = androidx.compose.animation.fadeOut() +
+                    androidx.compose.animation.scaleOut(targetScale = 0.6f),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .clickable { onClear() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Clear",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
             // ROUND 165 (the device order): the PILL search button appears on
             // the right ONLY once the user has typed something (the empty bar
             // shows no button at all). Submits (same as the IME Search key).
-            if (value.isNotEmpty()) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = value.isNotEmpty(),
+                enter = androidx.compose.animation.fadeIn() +
+                    androidx.compose.animation.expandHorizontally(expandFrom = Alignment.End),
+                exit = androidx.compose.animation.fadeOut() +
+                    androidx.compose.animation.shrinkHorizontally(shrinkTowards = Alignment.End),
+            ) {
+                Row {
                 Spacer(Modifier.width(8.dp))
                 Surface(
                     color = MaterialTheme.colorScheme.primary,
@@ -558,6 +584,7 @@ private fun SearchBar(
                             color = MaterialTheme.colorScheme.onPrimary,
                         )
                     }
+                }
                 }
             }
         }
