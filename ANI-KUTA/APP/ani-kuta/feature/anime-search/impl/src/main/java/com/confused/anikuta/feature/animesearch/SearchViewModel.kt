@@ -613,7 +613,7 @@ class SearchViewModel(
     fun applyPrefillQuery(query: String) {
         _query.value = query
         _uiState.value = SearchUiState.Idle
-        Logger.i(TAG) { 'applyPrefillQuery — title staged for the provider pick: ' + query }
+        Logger.i(TAG) { "applyPrefillQuery — title staged for the provider pick: $query" }
     }
 
     fun onRemoveRecent(term: String) {

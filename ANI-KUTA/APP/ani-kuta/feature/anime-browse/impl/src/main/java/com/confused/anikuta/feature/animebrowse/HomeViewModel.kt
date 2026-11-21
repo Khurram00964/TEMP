@@ -833,7 +833,7 @@ class HomeViewModel(
      * airs source re-fetches through the reload token.
      */
     fun refresh() {
-        viewModelScope.launch { fetchTrendingSections(homePreferences.getContentKinds()) }
+        viewModelScope.launch { fetchTrendingSections(homePreferences.getContentKinds().toList()) }
         viewModelScope.launch {
             _suggestedPool.value = withContext(Dispatchers.IO) { buildSuggestedPool() }
             _suggestedRefreshToken.value += 1
