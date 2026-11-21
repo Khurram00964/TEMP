@@ -123,6 +123,7 @@ class ExtensionUsageTracker(private val database: AnikutaDatabase) {
     suspend fun rowsByTier(tier: String): List<Extension_usage> = withContext(Dispatchers.IO) {
         runCatching { database.extensionUsageQueries.getUsageByTier(tier).executeAsList() }
             .getOrDefault(emptyList())
+    }
 
     /** The score for one key (0 when absent). */
     suspend fun scoreFor(key: String): Int = withContext(Dispatchers.IO) {
