@@ -212,3 +212,59 @@ The phase order: A (boot) → B (DB + Simkl) → C (MAL) → D (tracker UI) →
 E (search sources + picker) → F (per-source details) → G (the
 customization page). One CI cycle per phase. Routine A closes the round
 (1.1.104/10204).
+
+---
+
+## G. THE SEARCH DESIGN (Phases E–G — written before the implementation, the design-first rule)
+
+### E. The search sources + the picker
+
+- **The sources (5):** AniList (the existing GraphQL path) + TMDB + TVmaze
+  (the recovery branch's port) + **MAL** + **Simkl** (new).
+- **MAL rides the MAL v2 app-auth search** (MalApi.searchAnime — the
+  X-MAL-CLIENT-ID header, built in Phase C). **Jikan stays the documented
+  FALLBACK** (the user's "if needed"): only if the device round shows MAL
+  v2 search limits do we add a JikanApi (api.jikan.moe/v4, keyless,
+  3 req/s). Not built preemptively.
+- **Simkl rides SimklApi.search** (built in Phase B).
+- **The parity contract (the recovery's proven trick):** every non-AniList
+  result maps to a SYNTHETIC AniListAnime with a NEGATIVE id — the grid,
+  the cards, the titles render UNCHANGED (the user's "the front end stays
+  exactly the same"). The negative id marks the item as metadata-only.
+- **The picker sheet:** the recovery's DataSourcePickerSheet shell (the
+  ModalBottomSheet, the icon+name+check rows) extended to the 5 rows, each
+  with the REAL logo asset (doc 04-S-2: the initials letters were rejected
+  twice; tiny assets ~10-20KB each ride the 5MB budget). The
+  MAL row's subtitle: "Anime"; Simkl: "Movies & TV". The selection
+  persists (SearchPreferences' datasource key), applies instantly, the
+  recents survive.
+- **The ONE shared base (04-S-1):** the recovery's shared-list refactor
+  (the collapse's DataSourceSuccess branch + the canPage pagination + the
+  one-line titles + the shared skeleton) ports verbatim; the MAL/Simkl
+  sources join the SAME branches.
+- **The priority deps STRIP:** the recovery SearchViewModel's
+  ExtensionUsageTracker/ExtensionPriorityPreferences params + the SEARCH
+  records + the provider sort are DEFERRED (the priority phase re-lands
+  them) — the port removes those references.
+
+### F. The details from every source + the hand-off
+
+- Tapping a metadata-source result (the negative id) → the CS-first
+  hand-off (04-S-3): the auto-search on the highest-priority trusted CS
+  provider (the remembered/first provider until the priority phase), no
+  intermediate dialog (the round-165 approved shape).
+- The DETAILS SURFACE for the metadata sources: the synthetic-parity item
+  opens the existing Details screen in its metadata mode (the hero + the
+  meta + the actions) where supported; the CS hand-off remains the playback
+  path. The per-source details pages reuse the existing anatomy — no
+  parallel screen (the design language: one system).
+
+### G. The Appearance → Search page customization
+
+- The recovery's SearchPageSettingsScreen (145 lines) + SearchPreferences
+  port as the base; the settings: the title placement (the overlay
+  on-cover / below-cover), the rating badge, the details line, the grid
+  density (the columns), the recents visibility.
+- Settings → Appearance gains the "Search page" row (the recovery's
+  AppearanceScreen row — the round-165 placement, the user-approved).
+- The SearchScreen reads the prefs reactively (the PreferenceStore flows).

@@ -174,6 +174,10 @@ fun TrackSheet(
     error: String?,
     // SA2-F2: the Save button's in-flight state (buttons disable, "Saving…").
     isSaving: Boolean = false,
+    // ROUND 168 (the tracker redo): the ACTIVE tracker's display name — the
+    // sheet drives AniList OR MyAnimeList (the 3-dot picker decides); the
+    // strings swap with it (the layout is untouched).
+    trackerName: String = "AniList",
     onSave: (TrackEntry) -> Unit,
     // ── ROUND 103 (WS-2): the opt-in path — Start Tracking (the round-102
     // Save's full contract: the opt-in flip + the sync). ──
@@ -249,7 +253,7 @@ fun TrackSheet(
                 IconButton(onClick = { showDeleteConfirm = true }) {
                     Icon(
                         Icons.Filled.Delete,
-                        "Delete from AniList",
+                        "Delete from $trackerName",
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -568,9 +572,9 @@ fun TrackSheet(
             text = {
                 ConfirmBulletLines(
                     listOf(
-                        "Unlinks ANI-KUTA from your AniList entry for this content.",
+                        "Unlinks ANI-KUTA from your $trackerName entry for this content.",
                         "The app stops syncing your progress and rating.",
-                        "Your AniList entry, watch progress and rating are kept.",
+                        "Your $trackerName entry, watch progress and rating are kept.",
                     ),
                 )
             },
@@ -595,7 +599,7 @@ fun TrackSheet(
             text = {
                 ConfirmBulletLines(
                     listOf(
-                        "Removes the entry from your AniList list.",
+                        "Removes the entry from your $trackerName list.",
                         "Your watch progress and rating in ANI-KUTA are kept.",
                         "Tracking for this content turns off.",
                     ),

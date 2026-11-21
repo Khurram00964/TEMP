@@ -1272,7 +1272,9 @@ fun DetailsScreen(
                                             }
                                         },
                                         canViewInWebView = webViewUrl != null,
-                                        onOpenTracking = { viewModel.openTrackSheet() },
+                                        // ROUND 168: the >1-linked picker decides
+                                        // (both linked → the picker sheet; else the direct path).
+                                        onOpenTracking = { viewModel.openTrackerPickerOrSheet() },
                                         // ROUND 102 (WS-E wires the real
                                         // state; the menu contract lands in
                                         // this round's tracking phase).
@@ -2112,6 +2114,11 @@ fun DetailsScreen(
     if (showTrackSheet) {
         val trackSheetError by viewModel.trackSheetError.collectAsState()
         val trackSheetSaving by viewModel.trackSheetSaving.collectAsState()
+        // ROUND 168 (the tracker redo): the sheet drives the ACTIVE tracker —
+        // the callbacks dispatch (the AniList paths stay verbatim; the MAL
+        // paths live in DetailsViewModelMultiTracker.kt).
+        val activeTracker by viewModel.activeTrackerType.collectAsState()
+        val isMal = activeTracker == com.confused.anikuta.core.trackerapi.TrackerType.MAL
         com.confused.anikuta.core.designsystem.theme.AdaptiveAccentTheme(
             accentArgb = coverAccent?.toLong(),
         ) {
@@ -2124,13 +2131,53 @@ fun DetailsScreen(
             isTracked = isContentTracked,
             error = trackSheetError,
             isSaving = trackSheetSaving,
-            onSave = viewModel::saveTrackEntry,
-            onStartTracking = viewModel::startTracking,
-            onRemoveTracking = viewModel::removeTracking,
-            onDeleteFromAniList = viewModel::deleteFromAniList,
+            trackerName = if (isMal) "MyAnimeList" else "AniList",
+            onSave = { entry ->
+                if (isMal) viewModel.pushMalTrackEntry(entry, flipOptIn = false)
+                else viewModel.saveTrackEntry(entry)
+            },
+            onStartTracking = { entry ->
+                if (isMal) viewModel.pushMalTrackEntry(entry, flipOptIn = true)
+                else viewModel.startTracking(entry)
+            },
+            onRemoveTracking = {
+                if (isMal) viewModel.removeMalTracking() else viewModel.removeTracking()
+            },
+            onDeleteFromAniList = {
+                if (isMal) viewModel.deleteFromMal() else viewModel.deleteFromAniList()
+            },
             onDismiss = viewModel::dismissTrackSheet,
         )
         }
+    }
+
+    // ── ROUND 168 (the tracker redo): the >1-LINKED TRACKER PICKER ──
+    val showTrackerPicker by viewModel.showTrackerPicker.collectAsState()
+    if (showTrackerPicker) {
+        val malUser by viewModel.malLinkedUsername.collectAsState()
+        val anilistUser by viewModel.anilistLinkedUsername.collectAsState()
+        TrackerPickerSheet(
+            anilistUsername = anilistUser,
+            malUsername = malUser,
+            onPick = viewModel::pickTracker,
+            onDismiss = viewModel::dismissTrackerPicker,
+        )
+    }
+
+    // ── ROUND 168 (the tracker redo): the MAL LINK SHEET (the search → the pick → the mapping) ──
+    val showMalLinkSheet by viewModel.showMalLinkSheet.collectAsState()
+    if (showMalLinkSheet) {
+        val malSearching by viewModel.malLinkSearching.collectAsState()
+        val malResults by viewModel.malLinkResults.collectAsState()
+        val seedTitle = (state as? DetailsState.Success)?.anime?.title.orEmpty()
+        MalLinkSheet(
+            seedTitle = seedTitle,
+            isSearching = malSearching,
+            results = malResults,
+            onSearch = viewModel::searchMalForLink,
+            onPick = viewModel::pickMalAnime,
+            onDismiss = viewModel::dismissMalLinkSheet,
+        )
     }
 
     // ── ROUND 104 (WS-B): the tracking TOAST — the ViewModel's one-shot

@@ -42,6 +42,8 @@ val detailsModule = module {
             trackSyncManager = getOrNull(),
             // ROUND 102 (WS-E — the tracking contract): the opt-in state repo.
             trackingStateRepository = getOrNull(),
+            // ROUND 168 (the tracker redo): the MAL tracker.
+            malTracker = getOrNull(),
         )
     }
 }

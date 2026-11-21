@@ -243,7 +243,10 @@ private fun DetailsViewModel.pushTrackEntry(
      * immediate-save body): a progress decrease unmarks the trailing
      * episodes' watch progress; an increase marks the new range.
      */
-private suspend fun DetailsViewModel.applyTrackProgressToLocal(mid: String, oldProgress: Int, newProgress: Int) {
+// ROUND 168: private → internal — the multi-tracker cluster
+// (DetailsViewModelMultiTracker.kt) shares the local progress follow (the
+// D-923 widening pattern; module-only reachability).
+internal suspend fun DetailsViewModel.applyTrackProgressToLocal(mid: String, oldProgress: Int, newProgress: Int) {
         if (oldProgress == newProgress) return
         val episodes = (episodeState.value as? EpisodeState.Loaded)?.episodes ?: return
         if (episodes.isEmpty()) return

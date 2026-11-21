@@ -106,6 +106,9 @@ class DetailsViewModel(
     // ROUND 102 (WS-E — the tracking contract): the user's per-content
     // tracking INTENT (the opt-in flag gating every relay + the menu label).
     internal val trackingStateRepository: com.confused.anikuta.core.trackeranilist.TrackingStateRepository? = null,
+    // ROUND 168 (the tracker redo): the MAL tracker — the >1-linked picker +
+    // the sheet dispatch (anime = AniList + MAL per the user's split).
+    internal val malTracker: com.confused.anikuta.core.trackermal.MalTracker? = null,
 ) : ViewModel() {
 
     companion object {
@@ -547,6 +550,57 @@ class DetailsViewModel(
     /** Whether the TrackSheet should be shown. (internal — the tracking methods moved to DetailsViewModelTracking.kt, 2026-11-21) */
     internal val _showTrackSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
     val showTrackSheet: kotlinx.coroutines.flow.StateFlow<Boolean> = _showTrackSheet.asStateFlow()
+
+    // ── ROUND 168 (the tracker redo): WHICH tracker the sheet drives ──
+    // The 3-dot picker sets it (the >1-linked rule); the sheet's open/save/
+    // delete paths dispatch on it. ANILIST = the legacy default.
+    internal val _activeTrackerType = kotlinx.coroutines.flow.MutableStateFlow(
+        com.confused.anikuta.core.trackerapi.TrackerType.ANILIST,
+    )
+    val activeTrackerType: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.trackerapi.TrackerType> =
+        _activeTrackerType.asStateFlow()
+
+    // The >1-linked tracker picker sheet (the spec 05-T-2 surface).
+    internal val _showTrackerPicker = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val showTrackerPicker: kotlinx.coroutines.flow.StateFlow<Boolean> = _showTrackerPicker.asStateFlow()
+
+    // The MAL link sheet (the "MAL search → the pick → the mapping stored"
+    // flow of the spec 05-T-2): the query results carry the DISPLAY fields.
+    internal val _showMalLinkSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val showMalLinkSheet: kotlinx.coroutines.flow.StateFlow<Boolean> = _showMalLinkSheet.asStateFlow()
+    internal val _malLinkSearching = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val malLinkSearching: kotlinx.coroutines.flow.StateFlow<Boolean> = _malLinkSearching.asStateFlow()
+    internal val _malLinkResults = kotlinx.coroutines.flow.MutableStateFlow<List<com.confused.anikuta.core.trackermal.MalAnime>>(emptyList())
+    val malLinkResults: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.core.trackermal.MalAnime>> =
+        _malLinkResults.asStateFlow()
+
+    init {
+        // ROUND 168: the linked usernames mirror the trackers' login states
+        // (the picker rows' subtitle; the trackers restore at construction,
+        // so the first emission carries the restored session).
+        aniListTracker?.let { tracker ->
+            viewModelScope.launch {
+                tracker.observeLoginState().collect { state ->
+                    _anilistLinkedUsername.value =
+                        (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
+                }
+            }
+        }
+        malTracker?.let { tracker ->
+            viewModelScope.launch {
+                tracker.observeLoginState().collect { state ->
+                    _malLinkedUsername.value =
+                        (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
+                }
+            }
+        }
+    }
+
+    // The linked usernames (the picker rows' subtitle).
+    internal val _anilistLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
+    val anilistLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _anilistLinkedUsername.asStateFlow()
+    internal val _malLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
+    val malLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _malLinkedUsername.asStateFlow()
 
     // ── ROUND 104 (WS-B): the one-shot tracking NOTICE — the beautiful
     // toast's data ("it should show me a toast notification, a beautiful

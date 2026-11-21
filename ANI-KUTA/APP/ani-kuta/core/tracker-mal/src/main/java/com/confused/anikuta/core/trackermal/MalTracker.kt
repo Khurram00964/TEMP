@@ -150,6 +150,26 @@ class MalTracker(
         }
     }
 
+    /**
+     * ROUND 168 (Phase D): the search with the DISPLAY fields — the
+     * MalLinkSheet's pick rows (the title + the cover + the episodes). The
+     * app-auth read (no user token needed).
+     */
+    suspend fun searchWithMeta(query: String, limit: Int = 10): List<MalAnime> =
+        withContext(Dispatchers.IO) {
+            api.searchAnime(query, limit)
+        }
+
+    /**
+     * ROUND 168 (Phase D): the REAL remote delete — the trash-can path (the
+     * AniListTracker.deleteEntry contract). False when not linked or the
+     * write fails.
+     */
+    suspend fun deleteEntry(trackerId: Int): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFreshToken()) return@withContext false
+        api.deleteListStatus(trackerId, preferences.accessToken)
+    }
+
     // ── internals ──
 
     private fun theJson(): kotlinx.serialization.json.Json =

@@ -37,6 +37,7 @@ dependencies {
     implementation(project(":core:notifications"))  // D-193 v2: per-anime notification config UI
     implementation(project(":core:tracker-anilist"))  // D-242: AniList tracking (TrackSheet + sync)
     implementation(project(":core:tracker-api"))  // D-242: Tracker interface + TrackEntry/TrackStatus
+    implementation(project(":core:tracker-mal"))  // ROUND 168: the MAL tracker (the >1-linked picker + the sheet dispatch)
     implementation(project(":data:extension"))
     // Round 82 (D-575): the Link Source sheet's two-column source picker reads
     // the CloudStream plugin icons (CloudstreamContentRepository.sources) and
