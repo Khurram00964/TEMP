@@ -15,6 +15,8 @@ dependencies {
     implementation(project(":core:tmdb")) // ROUND 163 (STEP-3): the movies/series data source
     implementation(project(":core:database")) // ROUND 165: the extension-priority tracker
     implementation(project(":core:tvmaze")) // ROUND 163 (STEP-3): the keyless TV data source
+    implementation(project(":core:tracker-mal"))  // ROUND 168 (Phase E): the MAL search source
+    implementation(project(":core:tracker-simkl"))  // ROUND 168 (Phase E): the Simkl search source
     implementation(project(":core:common"))
     implementation(project(":core:data-cache"))  // D-278: offline trending fallback (browse_cache)
     implementation(project(":core:navigation-api"))

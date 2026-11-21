@@ -94,6 +94,11 @@ fun DataSourcePickerSheet(
                         DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true),
                         DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled),
                         DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled),
+                        // ROUND 168 (Phase E): the tracker-backed sources —
+                        // their searches are app/client-id auth (they work
+                        // whether or not the user LINKED the tracker).
+                        DataSourceRow(DataSourceKind.MAL, "MyAnimeList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF2E51A2), enabled = true),
+                        DataSourceRow(DataSourceKind.SIMKL, "Simkl", "Movies & TV", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF0D0D0D), enabled = true),
                     ),
                     key = { it.kind.id },
                 ) { row ->

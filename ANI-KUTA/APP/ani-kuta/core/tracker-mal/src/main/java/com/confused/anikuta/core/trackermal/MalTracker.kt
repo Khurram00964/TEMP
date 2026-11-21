@@ -161,6 +161,15 @@ class MalTracker(
         }
 
     /**
+     * ROUND 168 (Phase E): the popularity ranking (the search source's
+     * blank-query default). App-auth — works unlinked.
+     */
+    suspend fun topAnimeForUi(limit: Int = 20): List<MalAnime> =
+        withContext(Dispatchers.IO) {
+            api.topAnime(limit)
+        }
+
+    /**
      * ROUND 168 (Phase D): the REAL remote delete — the trash-can path (the
      * AniListTracker.deleteEntry contract). False when not linked or the
      * write fails.

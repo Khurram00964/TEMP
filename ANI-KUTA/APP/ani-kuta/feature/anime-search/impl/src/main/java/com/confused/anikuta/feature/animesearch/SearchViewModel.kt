@@ -497,7 +497,7 @@ class SearchViewModel(
             // source (the v1.1.101 device report: "at the top it was still
             // showing TMDB, but at the bottom the results were from AniList").
             when (_dataSource.value) {
-                DataSourceKind.TMDB, DataSourceKind.TVMAZE -> {
+                DataSourceKind.TMDB, DataSourceKind.TVMAZE, DataSourceKind.MAL, DataSourceKind.SIMKL -> {
                     if (_query.value.isNotBlank()) {
                         search(_query.value)
                     } else {
@@ -739,7 +739,7 @@ class SearchViewModel(
         // ROUND 163 (STEP-3): the movies/series data sources route here first —
         // metadata-only results (the playback hand-off lives in the UI).
         when (_dataSource.value) {
-            DataSourceKind.TMDB, DataSourceKind.TVMAZE -> {
+            DataSourceKind.TMDB, DataSourceKind.TVMAZE, DataSourceKind.MAL, DataSourceKind.SIMKL -> {
                 searchDataSource(q)
                 return
             }
@@ -807,6 +807,9 @@ class SearchViewModel(
             when (_dataSource.value) {
                 DataSourceKind.TMDB -> loadTmdbDefaults()
                 DataSourceKind.TVMAZE -> loadTvmazeDefaults()
+                // ROUND 168 (Phase E): the tracker-backed sources' defaults.
+                DataSourceKind.MAL -> loadMalDefaults()
+                DataSourceKind.SIMKL -> loadSimklDefaults()
                 DataSourceKind.ANILIST -> loadTrending()
             }
         } else if (_selectedKind.value == SelectedSourceKind.CLOUDSTREAM) {
@@ -929,6 +932,42 @@ class SearchViewModel(
         } else {
             emptyList()
         }
+        showingDefaults = _query.value.isBlank()
+        _uiState.value = if (_query.value.isNotBlank()) {
+            return@launch
+        } else if (results.isEmpty()) {
+            SearchUiState.Empty
+        } else {
+            SearchUiState.DataSourceSuccess(results = results)
+        }
+    }
+
+    /** ROUND 168 (Phase E): MAL's blank-query default — the MAL v2 popularity ranking. */
+    private fun loadMalDefaults(): Job = viewModelScope.launch {
+        _uiState.value = SearchUiState.Loading
+        showingDefaults = true
+        val results = runCatching { malTracker.topAnimeForUi() }
+            .onFailure { Logger.w(TAG) { "MAL defaults failed: ${it.message}" } }
+            .getOrDefault(emptyList())
+            .map { it.toDataSourceResult() }
+        showingDefaults = _query.value.isBlank()
+        _uiState.value = if (_query.value.isNotBlank()) {
+            return@launch
+        } else if (results.isEmpty()) {
+            SearchUiState.Empty
+        } else {
+            SearchUiState.DataSourceSuccess(results = results)
+        }
+    }
+
+    /** ROUND 168 (Phase E): Simkl's blank-query default — the TV trending feed. */
+    private fun loadSimklDefaults(): Job = viewModelScope.launch {
+        _uiState.value = SearchUiState.Loading
+        showingDefaults = true
+        val results = runCatching { simklTracker.trendingItems("tv") }
+            .onFailure { Logger.w(TAG) { "Simkl defaults failed: ${it.message}" } }
+            .getOrDefault(emptyList())
+            .map { it.toDataSourceResult() }
         showingDefaults = _query.value.isBlank()
         _uiState.value = if (_query.value.isNotBlank()) {
             return@launch

@@ -1664,6 +1664,10 @@ fun AppRoot() {
                 }
             )
             is AnimeSearchKey -> SearchScreen(
+                // ROUND 168 (Phase E): the prefill flow (the home hand-off +
+                // the see-all's data-source pre-set land with their phases).
+                prefillQuery = (currentKey as AnimeSearchKey).prefillQuery,
+                prefillDataSource = (currentKey as AnimeSearchKey).prefillDataSource,
                 onNavigateToDetails = { anime ->
                     navigateToDetails(
                         AnimeDetailsKey.AniList(
@@ -2329,7 +2333,7 @@ fun AppRoot() {
                     when (route) {
                         "browse" -> pushKey(AnimeBrowseKey)
                         "library" -> pushKey(AnimeLibraryKeyImpl)
-                        "search" -> pushKey(AnimeSearchKey)
+                        "search" -> pushKey(AnimeSearchKey())
                         "more" -> pushKey(MoreKey)
                     }
                 },
