@@ -4,6 +4,10 @@
 
 ## Decisions
 
+## D-929 (round 164): THE HOME CONTENT MODES (multi-select) + THE SIMKL ID LIVE + THE AUTOMATIC RELEASE CADENCE
+(1) The home shows ANY COMBINATION of anime/movies/series/donghua (the user's correction to the reverted 3-way enum): HomePreferences.contentKinds (the delimited-string set, anime-only default = the invisible upgrade) + the reactive flow = INSTANT APPLY (the VM's collect re-derives the merged feed without a reload). The merged pipeline: per-kind section keys under the SAME codec, cache-first, failure-isolated; LAYOUT PARITY via the synthetic mapping (TMDB items = AniListAnime with NEGATIVE ids — the composables untouched; the negative-id taps stage the title on the search screen where the CS provider sheet completes the playback hand-off — the CS-first rule end to end). The donghua feed rides AniList countryOfOrigin=CN (keyless). The BIG BOLD Settings screen (the user's spec): the 2x2 icon-tile cards, the live mix line, the Content-group hub row. (2) THE SIMKL CLIENT ID IS LIVE (the user's registration) — the Trackers card links end to end; the setup-pending state is unreachable. (3) THE RELEASE CADENCE: after a multi-step implementation round the debug release is cut AUTOMATICALLY (the user's lesson; the memory banked) — v1.1.101/10201 shipped per Routine A on TEMP, sha-verified.
+
+
 ## D-925 (round 163): THE AIRS-TODAY FIX + OPTION A
 The pad rows now fill AFTER the upcoming body (both composers) — slot 3 is always the next to air (the old order displaced it whenever released>=3 && upcoming<=3, the Library mode's steady state); the library released pool gained the 24h bound; the next-to-air pill's 4-layer strobe became Option A per the user's pick (the static accent time + the subtle border + the row-keyed one-shot 450ms entrance — no scroll-return replay per the review).
 
