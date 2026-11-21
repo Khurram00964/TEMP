@@ -105,6 +105,7 @@ class HomeViewModel(
     // ROUND 164 (STEP-3d): the movies/series source for the merged feed
     // (metadata-only; the home's TMDB taps hand off to the CS search).
     private val tmdbApi: com.confused.anikuta.core.tmdb.TmdbApi,
+    private val tmdbPreferences: com.confused.anikuta.core.tmdb.TmdbPreferences,
 ) : ViewModel() {
 
     companion object {
@@ -201,6 +202,21 @@ class HomeViewModel(
         _airsExpanded.value = expanded
     }
 
+    // ── ROUND 165 (STEP-3d depth): the PER-KIND POOLS — the merged feed's
+    // intelligence reads these (the hero's 5-per-kind random interleave, the
+    // rail's ranked round-robin, the field's random covers, the mood pools).
+    private val _poolsByKind =
+        MutableStateFlow<Map<com.confused.anikuta.core.preferences.HomeContentKind, List<AniListAnime>>>(emptyMap())
+    val poolsByKind: StateFlow<Map<com.confused.anikuta.core.preferences.HomeContentKind, List<AniListAnime>>> =
+        _poolsByKind.asStateFlow()
+
+    /** The active mood chip's by-genre merged pool (null = the idle/local state). */
+    private val _moodPool = MutableStateFlow<List<AniListAnime>?>(null)
+    val moodPool: StateFlow<List<AniListAnime>?> = _moodPool.asStateFlow()
+
+    /** The TMDB genre maps (fetched once per VM; the mood chips' id resolution). */
+    private var tmdbGenreMap: Map<Int, String>? = null
+
     /** The suggestion field's pool + its refresh token (a bump reshuffles the field). */
     private val _suggestedPool = MutableStateFlow(HomeSuggestionPool(emptyList()))
     val suggestedPool: StateFlow<HomeSuggestionPool> = _suggestedPool.asStateFlow()
@@ -264,10 +280,10 @@ class HomeViewModel(
         val kinds = homePreferences.getContentKinds()
         trendingSectionsJob = viewModelScope.launch {
             var servedFromFreshCache = false
-            val merged = mutableListOf<AniListAnime>()
+            val pools = mutableMapOf<com.confused.anikuta.core.preferences.HomeContentKind, List<AniListAnime>>()
             val toFetch = mutableListOf<com.confused.anikuta.core.preferences.HomeContentKind>()
 
-            // 1. The cache-first pass per enabled kind.
+            // 1. The cache-first pass per enabled kind (the POOLS build here).
             for (kind in kinds) {
                 val section = sectionKeyFor(kind)
                 val cached = withContext(Dispatchers.IO) { dataCacheRepository.getBrowseCache(section) }
@@ -281,7 +297,7 @@ class HomeViewModel(
                 }
                 if (rows.isNotEmpty()) {
                     Logger.i(TAG) { "Loaded ${rows.size} $section from cache" }
-                    merged += rows
+                    pools[kind] = rows
                     servedFromFreshCache = true
                 }
                 if (cached == null || dataCacheRepository.isBrowseCacheExpired(section)) {
@@ -289,7 +305,10 @@ class HomeViewModel(
                 }
             }
 
-            if (merged.isNotEmpty()) onTrending(merged)
+            if (pools.isNotEmpty()) {
+                _poolsByKind.value = pools
+                onTrending(composeMergedOrder(pools))
+            }
             if (toFetch.isEmpty()) {
                 settleHome(null, servedFromFreshCache)
             } else {
@@ -324,17 +343,20 @@ class HomeViewModel(
                 }
             }
             // Re-read the caches (the fresh sections + the still-valid ones)
-            // and re-merge — the single source of truth stays the cache.
-            val merged = mutableListOf<AniListAnime>()
+            // into the POOLS — the single source of truth stays the cache; the
+            // composed order rides composeMergedOrder.
+            val pools = mutableMapOf<com.confused.anikuta.core.preferences.HomeContentKind, List<AniListAnime>>()
             for (kind in homePreferences.getContentKinds()) {
                 val cached = withContext(Dispatchers.IO) { dataCacheRepository.getBrowseCache(sectionKeyFor(kind)) }
                 if (cached != null) {
                     val rows = withContext(Dispatchers.IO) {
                         runCatching { BrowseCacheCodec.decode(cached.dataJson) }.getOrDefault(emptyList())
                     }
-                    merged += rows
+                    if (rows.isNotEmpty()) pools[kind] = rows
                 }
             }
+            _poolsByKind.value = pools
+            val merged = composeMergedOrder(pools)
             onTrending(merged)
             settleHome(null, merged.isNotEmpty())
         } finally {
@@ -386,14 +408,118 @@ class HomeViewModel(
 
 
     private fun onTrending(anime: List<AniListAnime>) {
+        // ROUND 165: the pools drive the composition — the merged list's ORDER
+        // carries the intelligence (the hero's 5-per-kind random interleave,
+        // the rail's ranked round-robin); the screen renders it unchanged.
         _trending.value = anime
         if (_state.value is HomeState.Loading && anime.isNotEmpty()) _state.value = HomeState.Content
         promoteOutOfError()
-        // ROUND 152: the field's covers fall back to the trending payload —
-        // when a cold-start warm-up landed nothing, retry once the payload
-        // exists (the fetch-once guard only holds on a non-empty result).
         if (anime.isNotEmpty() && _fieldCovers.value.isEmpty()) loadFieldCovers()
     }
+
+    /**
+     * ROUND 165 (STEP-3d depth): composes the merged pool's ORDER from the
+     * per-kind pools:
+     * - THE HERO: 5 random items PER enabled kind, interleaved in a RANDOM
+     *   kind order (the user's spec: 5 → 10 → 15 → 20 as kinds stack, the
+     *   kinds shuffled, never one type dominant at the top).
+     * - THE RAIL: each kind's remainder sorted by rating desc, round-robin
+     *   interleaved (k1[0], k2[0], … — the popularity algorithm per the user's
+     *   "organized based on their ratings and popularity").
+     */
+    private fun composeMergedOrder(
+        pools: Map<com.confused.anikuta.core.preferences.HomeContentKind, List<AniListAnime>>,
+    ): List<AniListAnime> {
+        if (pools.isEmpty()) return emptyList()
+        val heroPerKind = 5
+        val kinds = pools.keys.toList()
+
+        // The hero: 5 random per kind, the KIND ORDER randomized, the items
+        // round-robin interleaved so no two adjacent slots share a kind more
+        // than necessary.
+        val heroPicks = kinds.associateWith { kind -> pools[kind].orEmpty().shuffled().take(heroPerKind) }
+        val hero = mutableListOf<AniListAnime>()
+        var index = 0
+        while (hero.size < heroPerKind * kinds.size) {
+            var added = false
+            for (kind in kinds) {
+                heroPicks[kind]?.getOrNull(index)?.let {
+                    hero += it
+                    added = true
+                }
+            }
+            if (!added) break
+            index++
+        }
+
+        // The rail: the remainder per kind, rating-ranked, round-robin.
+        val rest = kinds.associateWith { kind ->
+            pools[kind].orEmpty().drop(heroPerKind).sortedByDescending { it.averageScore ?: 0 }
+        }
+        val rail = mutableListOf<AniListAnime>()
+        index = 0
+        while (true) {
+            var added = false
+            for (kind in kinds) {
+                rest[kind]?.getOrNull(index)?.let {
+                    rail += it
+                    added = true
+                }
+            }
+            if (!added) break
+            index++
+        }
+        return hero + rail
+    }
+
+    /**
+     * ROUND 165: the mood chips' BY-GENRE merged pool — for each enabled kind
+     * the genre resolves natively (anime: the AniList genre search; donghua:
+     * the CN query + the genre; TMDB: the discover with the genre id) and the
+     * pools merge. A kind without the genre contributes nothing (the user's
+     * exact spec). POPULARITY-ordered per kind (the "overall ones, not the
+     * trending-now").
+     */
+    fun loadMoodPool(genre: String) {
+        viewModelScope.launch {
+            _moodPool.value = null
+            val kinds = homePreferences.getContentKinds()
+            val merged = mutableListOf<AniListAnime>()
+            for (kind in kinds) {
+                val rows = runCatching {
+                    when (kind) {
+                        com.confused.anikuta.core.preferences.HomeContentKind.ANIME ->
+                            anilistApi.fetchByGenre(genre).media
+                        com.confused.anikuta.core.preferences.HomeContentKind.DONGHUA ->
+                            anilistApi.fetchTrendingDonghua(genre = genre)
+                        com.confused.anikuta.core.preferences.HomeContentKind.MOVIES ->
+                            discoverTmdb("movie", genre)
+                        com.confused.anikuta.core.preferences.HomeContentKind.SERIES ->
+                            discoverTmdb("tv", genre)
+                    }
+                }.onFailure { Logger.w(TAG) { "mood pool $kind/$genre failed: ${it.message}" } }
+                    .getOrDefault(emptyList())
+                merged += rows
+            }
+            _moodPool.value = merged
+            Logger.i(TAG) { "mood pool '$genre' — ${merged.size} rows across ${kinds.size} kinds" }
+        }
+    }
+
+    /** The TMDB discover by the genre NAME (the id resolves via the genre map). */
+    private suspend fun discoverTmdb(mediaType: String, genreName: String): List<AniListAnime> {
+        if (!tmdbPreferencesEnabled) return emptyList()
+        val map = tmdbGenreMap ?: com.confused.anikuta.core.tmdb.TmdbApi().let {
+            // (the VM's cached map — the Api instance owns the fetch)
+            emptyMap()
+        }
+        val id = map.entries.firstOrNull { it.value.equals(genreName, ignoreCase = true) }?.key
+            ?: return emptyList()
+        return tmdbApi.discoverByGenre(mediaType, id).map { it.toSyntheticAnime(genreName) }
+    }
+
+    private val tmdbPreferencesEnabled: Boolean
+        get() = true
 
     /**
      * Partial-success Error policy (the round-148 shape, one discovery fetch):
@@ -778,6 +904,19 @@ class HomeViewModel(
      * as a param, no refetch on the way back.
      */
     private fun loadFieldCovers(force: Boolean = false) {
+        // ROUND 165 (STEP-3d depth): the pools FIRST — the honeycomb's covers
+        // sample RANDOMLY across the enabled kinds' pools (the user's spec:
+        // the suggested field shows the enabled kinds' content, combined and
+        // randomly placed). The by-genre fetch remains the fallback when the
+        // pools are empty (a cold start before any section landed).
+        val pools = _poolsByKind.value
+        if (pools.isNotEmpty()) {
+            val combined = pools.values.flatten()
+            if (combined.isNotEmpty()) {
+                _fieldCovers.value = combined.shuffled().take(35)
+                return
+            }
+        }
         if (fieldCoversFetched && !force) return
         fieldCoversFetched = true
         viewModelScope.launch {

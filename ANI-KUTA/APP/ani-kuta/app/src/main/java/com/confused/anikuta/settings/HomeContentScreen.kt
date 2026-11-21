@@ -67,6 +67,7 @@ fun HomeContentScreen(
                 )
             }
             item {
+                Spacer(Modifier.size(12.dp))
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                     Text(
                         text = "What shows on your home page",
@@ -87,15 +88,75 @@ fun HomeContentScreen(
                 }
             }
             item {
-                // Four fixed cards — two rows of two (no nested scrolling).
-                Column(modifier = Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Box(modifier = Modifier.weight(1f)) { ContentKindCell(HomeContentKind.ANIME, enabled, homePreferences) }
-                        Box(modifier = Modifier.weight(1f)) { ContentKindCell(HomeContentKind.MOVIES, enabled, homePreferences) }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Box(modifier = Modifier.weight(1f)) { ContentKindCell(HomeContentKind.SERIES, enabled, homePreferences) }
-                        Box(modifier = Modifier.weight(1f)) { ContentKindCell(HomeContentKind.DONGHUA, enabled, homePreferences) }
+                // ROUND 165 (the device order): the LIST format — four proper
+                // rows (the icon tile + the bold name + the check), NO
+                // descriptions, the selected row carries the accent border.
+                Column(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    HomeContentKind.entries.forEach { kind ->
+                        val selected = kind in enabled
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (selected) {
+                                        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    RoundedCornerShape(16.dp),
+                                )
+                                .clickable { homePreferences.toggleContentKind(kind) }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = if (selected) 0.22f else 0.12f),
+                                        RoundedCornerShape(14.dp),
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = kind.icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                            Text(
+                                text = kind.displayName,
+                                fontFamily = RobotoFamily,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (selected) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -125,85 +186,6 @@ fun HomeContentScreen(
     }
 }
 
-@Composable
-private fun HomeContentCard(
-    kind: HomeContentKind,
-    selected: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val border = if (selected) {
-        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
-    } else {
-        Modifier
-    }
-    Column(
-        modifier = modifier
-            .aspectRatio(0.85f)
-            .then(border)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                RoundedCornerShape(20.dp),
-            )
-            .clickable { onToggle() }
-            .padding(16.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        MaterialTheme.colorScheme.primary.copy(alpha = if (selected) 0.22f else 0.12f),
-                        RoundedCornerShape(14.dp),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = kind.icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            Spacer(Modifier.size(6.dp))
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
-        }
-        Column {
-            Text(
-                text = kind.displayName,
-                fontFamily = RobotoFamily,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.size(2.dp))
-            Text(
-                text = kind.subtitle,
-                fontFamily = RobotoFamily,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-            )
-        }
-    }
-}
-
 private val HomeContentKind.icon: ImageVector
     get() = when (this) {
         HomeContentKind.ANIME -> Icons.Filled.AutoAwesome
@@ -211,17 +193,3 @@ private val HomeContentKind.icon: ImageVector
         HomeContentKind.SERIES -> Icons.Filled.Tv
         HomeContentKind.DONGHUA -> Icons.Filled.Language
     }
-
-@Composable
-private fun ContentKindCell(
-    kind: HomeContentKind,
-    enabled: Set<HomeContentKind>,
-    homePreferences: HomePreferences,
-) {
-    HomeContentCard(
-        kind = kind,
-        selected = kind in enabled,
-        onToggle = { homePreferences.toggleContentKind(kind) },
-        modifier = Modifier.fillMaxWidth(),
-    )
-}

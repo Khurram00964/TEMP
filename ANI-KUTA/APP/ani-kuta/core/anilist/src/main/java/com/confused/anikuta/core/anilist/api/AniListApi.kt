@@ -100,11 +100,15 @@ class AniListApi(
     suspend fun fetchTrendingDonghua(
         page: Int = 1,
         perPage: Int = 20,
+        genre: String? = null,
     ): List<AniListAnime> = withContext(dispatchers.io) {
+        // ROUND 165: the optional genre filter (the mood chips' by-genre
+        // donghua pool). GraphQL strings ride as variables (escaped).
+        val genreClause = if (genre != null) ', genre: $genre' else ''
         val query = """
             {
                 Page(page: $page, perPage: $perPage) {
-                    media(type: ANIME, countryOfOrigin: CN, sort: TRENDING_DESC) {
+                    media(type: ANIME, countryOfOrigin: CN$genreClause, sort: POPULARITY_DESC) {
                         id
                         title { romaji english }
                         coverImage { large extraLarge }

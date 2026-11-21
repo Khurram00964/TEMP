@@ -248,6 +248,7 @@ fun HomeScreen(
     // with the title staged (the CS provider sheet opens there — the playback
     // hand-off per the user's priority rule). Positive ids = the AniList path.
     val airsExpanded by viewModel.airsExpanded.collectAsState()
+    val moodPool by viewModel.moodPool.collectAsState()
         val openAnime: (AniListAnime) -> Unit = { anime ->
         if (anime.id < 0) {
             onOpenSearchHandOff(anime.displayName)
@@ -577,6 +578,8 @@ fun HomeScreen(
                                 trending = trending,
                                 activeMood = activeMood,
                                 surpriseSeed = surpriseSeed,
+                                moodPool = moodPool,
+                                onMoodLoad = viewModel::loadMoodPool,
                                 onSelect = { mood ->
                                     // ROUND 153 (the device round): Surprise me is the
                                     // ALWAYS-HIGHLIGHTED brand button — tapping it keeps
@@ -2181,6 +2184,11 @@ private fun HomeMoodChips(
     trending: List<AniListAnime>,
     activeMood: String,
     surpriseSeed: Int,
+    // ROUND 165 (STEP-3d depth): the by-genre merged pool (loaded per chip
+    // across the enabled kinds) — null while loading (the local filter renders
+    // until the pool lands).
+    moodPool: List<AniListAnime>?,
+    onMoodLoad: (String) -> Unit,
     onSelect: (String) -> Unit,
     onBrowseAll: () -> Unit,
     onOpen: (AniListAnime) -> Unit,
@@ -2244,15 +2252,23 @@ private fun HomeMoodChips(
                     },
                     onOpen = onOpen,
                 )
-                // v1: the local trending-pool filter (the payload carries genres).
-                // The LIVE genre query lands with the catalog agent's work.
-                else -> HomeMoodRail(
-                    title = activeMood,
-                    items = remember(activeMood, trending) {
-                        trending.filter { current -> current.genres?.contains(activeMood) == true }
-                    },
-                    onOpen = onOpen,
-                )
+                // ROUND 165 (STEP-3d depth): the BY-GENRE merged pool — the
+                // VM loads each enabled kind's genre content (anime/donghua by
+                // name, TMDB by the discover id) and the rail renders the
+                // merge; while the pool loads, the local filter renders.
+                else -> {
+                    androidx.compose.runtime.LaunchedEffect(activeMood) {
+                        onMoodLoad(activeMood)
+                    }
+                    val pool = moodPool ?: trending.filter { current ->
+                        current.genres?.contains(activeMood) == true
+                    }
+                    HomeMoodRail(
+                        title = activeMood,
+                        items = pool,
+                        onOpen = onOpen,
+                    )
+                }
             }
         }
     }

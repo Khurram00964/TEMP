@@ -155,4 +155,49 @@ class TmdbApi(
         if (!configured()) return@withContext emptyList()
         parseItems(get("/movie/popular", "language" to "en-US", "page" to "1"))
     }
+
+    /**
+     * ROUND 165 (STEP-3d depth): the TMDB genre-id → name maps (movie + tv,
+     * merged — the ids are disjoint per type but the names collide, so the
+     * map keys are the ids as-is and the discover call passes the matching
+     * type's id). Fetched once per call site (the VM caches).
+     */
+    suspend fun genreNames(): Map<Int, String> = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext emptyMap()
+        val merged = mutableMapOf<Int, String>()
+        for (path in listOf("/genre/movie/list", "/genre/tv/list")) {
+            runCatching {
+                val payload = get(path, "language" to "en-US") ?: return@runCatching
+                val arr = json.parseToJsonElement(payload).jsonObject["genres"]?.jsonArray ?: return@runCatching
+                arr.forEach { element ->
+                    val obj = element.jsonObject
+                    val id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@forEach
+                    val name = obj["name"]?.jsonPrimitive?.content ?: return@forEach
+                    merged[id] = name
+                }
+            }
+        }
+        merged
+    }
+
+    /**
+     * ROUND 165 (STEP-3d depth): the by-genre discover (the mood chips' overall
+     * content — NOT the trending). Sorted by popularity, page 1.
+     */
+    suspend fun discoverByGenre(
+        mediaType: String, // "movie" | "tv"
+        genreId: Int,
+    ): List<TmdbItem> = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext emptyList()
+        parseItems(
+            get(
+                "/discover/$mediaType",
+                "language" to "en-US",
+                "with_genres" to genreId.toString(),
+                "include_adult" to "false",
+                "sort_by" to "popularity.desc",
+                "page" to "1",
+            ),
+        )
+    }
 }
