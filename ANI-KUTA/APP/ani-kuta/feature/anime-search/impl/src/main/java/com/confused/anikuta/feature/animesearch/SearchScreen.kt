@@ -579,6 +579,8 @@ fun SearchScreen(
                         loadingMore = state.loadingMore,
                         canLoadMore = state.hasMore,
                         onLoadMore = viewModel::loadMore,
+                        titleStyle = resultTitleStyle,
+                        showDetails = showDetails,
                         recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
@@ -641,8 +643,6 @@ fun SearchScreen(
                         recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
-                        titleStyle = resultTitleStyle,
-                        showDetails = showDetails,
                     )
                 }
             }
@@ -940,7 +940,7 @@ private fun ResultsGrid(
             }
         }
         items(results, key = { it.id }) { anime ->
-ResultCard(anime, onResultTap, resultTitleStyle, showRating, showDetails)
+ResultCard(anime, onResultTap, titleStyle, showRating, showDetails)
         }
         // Task 61 (round 21): the load-more footer (full span).
         if (loadingMore) {
