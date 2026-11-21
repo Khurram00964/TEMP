@@ -583,6 +583,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // ROUND 151: the home feed's own prefs (the "Airs today" source
             // toggle — library | global).
             single { com.confused.anikuta.core.preferences.HomePreferences(get()) }
+            single { com.confused.anikuta.core.preferences.SearchPreferences(get()) } // ROUND 165: the search-page appearance
 
             // ViewModels (app-level)
             viewModelOf(::NotificationsSettingsViewModel)

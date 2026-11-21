@@ -131,10 +131,16 @@ class TmdbApi(
     }
 
     /** The multi search (movies + TV) — the search page's TMDB source. */
-    suspend fun search(query: String): List<TmdbItem> = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, page: Int = 1): List<TmdbItem> = withContext(Dispatchers.IO) {
         if (!configured() || query.isBlank()) return@withContext emptyList()
         parseItems(
-            get("/search/multi", "language" to "en-US", "query" to query, "include_adult" to "false"),
+            get(
+                "/search/multi",
+                "language" to "en-US",
+                "query" to query,
+                "include_adult" to "false",
+                "page" to page.toString(),
+            ),
         )
     }
 

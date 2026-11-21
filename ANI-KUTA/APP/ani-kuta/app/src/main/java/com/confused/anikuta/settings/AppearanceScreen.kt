@@ -51,6 +51,8 @@ import com.confused.anikuta.settings.search.rememberSettingsAnchorScroll
 @Composable
 fun AppearanceScreen(
     onOpenGeneral: () -> Unit,
+    // ROUND 165: the search page appearance settings.
+    onOpenSearchPage: () -> Unit = {},
     onOpenDetailsPage: () -> Unit,
     onOpenEpisodeSettings: () -> Unit,
     onOpenPlayerEpisodeSettings: () -> Unit = {},
@@ -95,6 +97,24 @@ fun AppearanceScreen(
                                 title = "General",
                                 subtitle = "Theme mode, palettes, and colors",
                                 onClick = onOpenGeneral,
+                            )
+                            androidx.compose.material3.ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = "Search page",
+                                        fontFamily = RobotoFamily,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = "Result card titles, more",
+                                        fontFamily = RobotoFamily,
+                                        fontSize = 12.sp,
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth().clickable { onOpenSearchPage() },
                             )
                         }
                     }

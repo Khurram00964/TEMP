@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.Job
@@ -210,7 +211,8 @@ class SearchViewModel(
         ANIYOMI_POPULAR,
         ANIYOMI_SEARCH,
         CS_SEARCH,
-        NONE, // ROUND 163 (STEP-3): the metadata data sources paginate no further yet
+        TMDB_SEARCH, // ROUND 165: the TMDB multi-search paginates (20/page)
+        NONE,
     }
 
     /** D-305: starts a new request — cancels superseded loads, returns its generation. */
@@ -483,10 +485,27 @@ class SearchViewModel(
                 loadExtensionPopular()
             }
         } else {
-            if (_query.value.isNotBlank()) {
-                search(_query.value)
-            } else {
-                loadTrending()
+            // ROUND 165 (the device fix): the ANILIST tab routes by the DATA
+            // SOURCE — switching back from Extension must NOT revert the
+            // results to the GraphQL feed when TMDB/TVmaze is the chosen
+            // source (the v1.1.101 device report: "at the top it was still
+            // showing TMDB, but at the bottom the results were from AniList").
+            when (_dataSource.value) {
+                DataSourceKind.TMDB, DataSourceKind.TVMAZE -> {
+                    if (_query.value.isNotBlank()) {
+                        search(_query.value)
+                    } else {
+                        showingDefaults = false
+                        loadDefaults()
+                    }
+                }
+                DataSourceKind.ANILIST -> {
+                    if (_query.value.isNotBlank()) {
+                        search(_query.value)
+                    } else {
+                        loadTrending()
+                    }
+                }
             }
         }
     }
@@ -803,16 +822,19 @@ class SearchViewModel(
     }
 
     /** The unified metadata search across TMDB / TVmaze (the enabled-gated pair). */
-    private fun searchDataSource(q: String) {
+    private fun searchDataSource(q: String, page: Int = 1) {
         showingDefaults = false
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
         searchJob = viewModelScope.launch {
             try {
+                // ROUND 165: TMDB paginates (/search/multi&page=N, 20/page);
+                // TVmaze's search does not (the hasMore stays false).
+                val isTmdb = _dataSource.value == DataSourceKind.TMDB
                 val results = when (_dataSource.value) {
                     DataSourceKind.TMDB -> {
                         if (!tmdbPreferences.enabled) emptyList()
-                        else tmdbApi.search(q).map { it.toDataSourceResult() }
+                        else tmdbApi.search(q, page).map { it.toDataSourceResult() }
                     }
                     DataSourceKind.TVMAZE -> {
                         if (!tvmazePreferences.enabled) emptyList()
@@ -822,11 +844,17 @@ class SearchViewModel(
                 }
                 if (_query.value.isBlank()) return@launch
                 if (!isCurrent(gen)) return@launch
-                pagingMode = PagingMode.NONE
-                _uiState.value = if (results.isEmpty()) {
+                pagingMode = if (isTmdb) PagingMode.TMDB_SEARCH else PagingMode.NONE
+                lastLoadedPage = page
+                _uiState.value = if (results.isEmpty() && page == 1) {
                     SearchUiState.Empty
                 } else {
-                    SearchUiState.DataSourceSuccess(results = results)
+                    val previous = (uiState.value as? SearchUiState.DataSourceSuccess)?.results.orEmpty()
+                    SearchUiState.DataSourceSuccess(
+                        results = if (page == 1) results else previous + results,
+                        hasMore = isTmdb && results.size >= 20,
+                        loadingMore = false,
+                    )
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -836,6 +864,17 @@ class SearchViewModel(
                 _uiState.value = SearchUiState.Error
             }
         }
+    }
+
+    /** ROUND 165: the TMDB load-more append (the DataSourceSuccess grid's footer). */
+    private fun appendDataSource(more: List<DataSourceResult>, page: Int, hasMore: Boolean) {
+        val current = _uiState.value as? SearchUiState.DataSourceSuccess ?: return
+        _uiState.value = current.copy(
+            results = current.results + more,
+            hasMore = hasMore,
+            loadingMore = false,
+        )
+        lastLoadedPage = page
     }
 
     /** TMDB's blank-query default: the day's trending (movies + TV). */
@@ -878,10 +917,75 @@ class SearchViewModel(
     }
 
     /**
-     * THE PLAYBACK HAND-OFF (the user's round-163 priority rule): a data-source
-     * result carries no streams — the user picks a CloudStream provider and
-     * the title becomes that provider's live search. Everything rides the
-     * existing extension machinery (the selection persists; the query runs).
+     * THE PLAYBACK HAND-OFF (the user's round-165 order): NO dialog — the tap
+     * resolves on CloudStream AUTOMATICALLY and opens the DETAILS page of the
+     * best match (the "same searching system" as the AniList flow — the
+     * details screen carries its own resolver/search machinery). No match on
+     * the provider = the CS search results render in this screen as the
+     * fallback (the user still sees the search happening).
+     *
+     * The provider: the remembered CloudStream selection, else the first
+     * trusted one. The FUTURE priority system (the most-used extensions
+     * first, persisted + backed up) refines this pick — noted for the next
+     * round.
+     *
+     * @param onNavigate the host's extension-details navigation (the same
+     *   callback the extension results' taps use — the details page is
+     *   IDENTICAL for both).
+     */
+    fun onDataSourceResultTap(
+        result: DataSourceResult,
+        onNavigate: (Long, String?, String, String, String?, Int?) -> Unit,
+    ) {
+        val provider = _selectedCsProvider.value
+            ?: cloudstreamRepository.sources.value.firstOrNull()?.providerName
+        if (provider == null) {
+            Logger.w(TAG) { "hand-off — no trusted CloudStream provider to resolve on" }
+            _uiState.value = SearchUiState.ExtensionNotAvailable
+            _source.value = SearchSource.EXTENSION
+            preferenceStore.putString(KEY_SEARCH_SOURCE, SOURCE_EXTENSION)
+            return
+        }
+        // Stage the hand-off context: the extension mode + the provider + the
+        // title as the query, then search. The BEST match (the first result —
+        // CS search is relevance-ordered) navigates to the details page.
+        _source.value = SearchSource.EXTENSION
+        preferenceStore.putString(KEY_SEARCH_SOURCE, SOURCE_EXTENSION)
+        _query.value = result.title
+        onSelectCloudstreamSource(provider)
+        searchJob = viewModelScope.launch {
+            // The provider search already ran via onSelectCloudstreamSource
+            // (a non-blank staged query searches immediately) — wait for its
+            // results, then navigate on the best match. StateFlow.firstOrNull
+            // waits for the FIRST MATCHING emission (the current Loading value
+            // does not match, so it waits for the results to land).
+            _uiState.firstOrNull { state ->
+                state is SearchUiState.ExtensionSuccess ||
+                    state is SearchUiState.ExtensionEmpty ||
+                    state is SearchUiState.ExtensionError
+            }
+            val success = results as? SearchUiState.ExtensionSuccess
+            val best = success?.results?.firstOrNull()
+            if (best != null) {
+                Logger.i(TAG) { "hand-off — resolved on $provider: ${best.title}" }
+                onNavigate(
+                    best.sourceId,
+                    best.sourceKey,
+                    best.url,
+                    best.title,
+                    best.thumbnailUrl,
+                    best.year,
+                )
+            } else {
+                Logger.i(TAG) { "hand-off — no match on $provider; the CS results stay on screen" }
+                // The extension results/empty state IS the fallback view.
+            }
+        }
+    }
+
+    /**
+     * The manual variant (kept): the user picks a provider explicitly — the
+     * title becomes that provider's live search in this screen.
      */
     fun findInCloudstream(title: String, providerName: String) {
         _query.value = title
@@ -1659,12 +1763,18 @@ class SearchViewModel(
         when (state) {
             is SearchUiState.Success -> _uiState.value = state.copy(loadingMore = true)
             is SearchUiState.ExtensionSuccess -> _uiState.value = state.copy(loadingMore = true)
+            is SearchUiState.DataSourceSuccess -> _uiState.value = state.copy(loadingMore = true)
             else -> return
         }
 
         loadMoreJob = viewModelScope.launch {
             try {
                 when (mode) {
+                    PagingMode.TMDB_SEARCH -> {
+                        val more = tmdbApi.search(_query.value, nextPage).map { it.toDataSourceResult() }
+                        appendDataSource(more, nextPage, hasMore = more.size >= 20)
+                    }
+
                     PagingMode.NONE -> return@launch
 
                     PagingMode.ANILIST_TRENDING -> {
@@ -1933,6 +2043,9 @@ sealed interface SearchUiState {
      */
     data class DataSourceSuccess(
         val results: List<DataSourceResult>,
+        /** ROUND 165: TMDB paginates (20/page); TVmaze does not. */
+        val hasMore: Boolean = false,
+        val loadingMore: Boolean = false,
     ) : SearchUiState
 
     /**

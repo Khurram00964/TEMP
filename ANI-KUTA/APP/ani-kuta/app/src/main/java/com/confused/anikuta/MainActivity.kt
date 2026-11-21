@@ -136,6 +136,7 @@ import com.confused.anikuta.settings.TorrentSettingsScreen
 import com.confused.anikuta.settings.search.SettingsSearchNavigator
 import com.confused.anikuta.settings.search.SettingsSearchPage
 import com.confused.anikuta.settings.HomeContentScreen
+import com.confused.anikuta.settings.SearchPageSettingsScreen
 import com.confused.anikuta.settings.SettingsScreen
 import com.confused.anikuta.settings.UpdateCategoriesScreen
 import com.confused.anikuta.settings.UpdatesSettingsScreen
@@ -452,6 +453,10 @@ object AppearanceGeneralKey : NavKey
 /** ROUND 164 (STEP-3d): the home's big-bold content-kind selection. */
 @Serializable
 object HomeContentKey : NavKey
+
+/** ROUND 165: the search page's appearance settings. */
+@Serializable
+object SearchPageSettingsKey : NavKey
 
 @Serializable
 object DetailsPageSettingsKey : NavKey
@@ -2083,6 +2088,7 @@ fun AppRoot() {
             )
             is AppearanceKey -> AppearanceScreen(
                 onOpenGeneral = { pushKey(AppearanceGeneralKey) },
+                onOpenSearchPage = { pushKey(SearchPageSettingsKey) },
                 onOpenDetailsPage = { pushKey(DetailsPageSettingsKey) },
                 onOpenEpisodeSettings = { pushKey(EpisodeSettingsKey) },
                 // ROUND 102 (WS-G): the player page's episode-list page.
@@ -2105,6 +2111,11 @@ fun AppRoot() {
                 onBack = pop,
                 homePreferences = org.koin.core.context.GlobalContext.get()
                     .get<com.confused.anikuta.core.preferences.HomePreferences>(),
+            )
+            is SearchPageSettingsKey -> SearchPageSettingsScreen(
+                onBack = pop,
+                searchPreferences = org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.preferences.SearchPreferences>(),
             )
             is AppearanceGeneralKey -> AppearanceGeneralScreen(
                 onBack = pop,

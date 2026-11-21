@@ -116,6 +116,9 @@ import org.koin.compose.viewmodel.koinViewModel
 fun SearchScreen(
     // ROUND 164 (STEP-3d): the home hand-off's staged title (null = plain entry).
     prefillQuery: String? = null,
+    // ROUND 165: the search-page customizability — where the result card's
+    // title renders (OVERLAY = the AniList style; BELOW = under the poster).
+    resultTitleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle = com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
     // D-320: passes the full anime so the nav key can carry the cover/title
     // + the shared-element key (experimental cover transition).
     onNavigateToDetails: (AniListAnime) -> Unit,
@@ -137,6 +140,10 @@ fun SearchScreen(
     onNavigateToCategory: (providerName: String, sectionTitle: String, sectionIndex: Int) -> Unit = { _, _, _ -> },
     viewModel: SearchViewModel = koinViewModel(),
 ) {
+    // ROUND 165: the search-page customizability (read internally — the grids
+    // re-derive on the Settings toggle).
+    val searchPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+    val resultTitleStyle by searchPrefs.resultTitleStyleFlow.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val query by viewModel.query.collectAsState()
     val source by viewModel.source.collectAsState()
@@ -309,6 +316,7 @@ fun SearchScreen(
             source = source,
             onSourceSelect = viewModel::onSourceChange,
             onSubmit = viewModel::onSubmit,
+            showFilters = source == SearchSource.ANILIST || dataSourceKind == DataSourceKind.ANILIST,
             onOpenFilters = { showFilterSheet = true },
             activeFilterCount = activeFilterCount,
             sort = sort,
@@ -508,9 +516,24 @@ fun SearchScreen(
                 }
 
                 is SearchUiState.DataSourceSuccess -> {
+                    val state = effectiveState as SearchUiState.DataSourceSuccess
                     DataSourceResultsGrid(
-                        results = effectiveState.results,
-                        onResultTap = { result -> handOffResult = result },
+                        results = state.results,
+                        gridState = gridState,
+                        onResultTap = { result ->
+                            // ROUND 165: NO dialog — the tap resolves on
+                            // CloudStream automatically and opens the details
+                            // page of the best match (no match = the CS search
+                            // results stay in this screen).
+                            viewModel.onDataSourceResultTap(result, onNavigateToExtensionAnime)
+                        },
+                        loadingMore = state.loadingMore,
+                        canLoadMore = state.hasMore,
+                        onLoadMore = viewModel::loadMore,
+                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                            RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
+                        } else null,
+                        titleStyle = resultTitleStyle,
                     )
                 }
                 is SearchUiState.ExtensionSuccess -> {
@@ -1503,66 +1526,209 @@ private fun ExtensionResultCard(anime: ExtensionAnime, onClick: (ExtensionAnime)
 @Composable
 private fun DataSourceResultsGrid(
     results: List<DataSourceResult>,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     onResultTap: (DataSourceResult) -> Unit,
+    loadingMore: Boolean = false,
+    canLoadMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
+    recentsHeader: RecentsHeaderData? = null,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
 ) {
+    // ROUND 165: THE SHARED SKELETON — the same LazyGridState the AniList and
+    // the extension grids use, so the top bar's collapse, the recents header
+    // and the approach-bottom load-more behave IDENTICALLY for the data
+    // sources (the v1.1.101 device verdict: "the front end should stay
+    // exactly the same regardless of anything").
+    ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            end = 12.dp,
+            top = 4.dp,
+            bottom = bottomBarClearance(110.dp),
+        ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        items(results, key = { "${it.source.id}-${it.remoteId}" }) { result ->
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onResultTap(result) },
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                ) {
-                    if (result.posterUrl != null) {
-                        coil3.compose.AsyncImage(
-                            model = result.posterUrl,
-                            contentDescription = result.title,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.Theaters,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(36.dp),
-                        )
-                    }
-                }
-                Spacer(Modifier.size(6.dp))
-                Text(
-                    text = result.title,
-                    fontFamily = RobotoFamily,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface,
+        if (recentsHeader != null) {
+            item(key = "recents-header", span = { GridItemSpan(maxLineSpan) }) {
+                RecentSearchesCard(
+                    recents = recentsHeader.recents,
+                    onPick = recentsHeader.onPick,
+                    onRemove = recentsHeader.onRemove,
+                    onClear = recentsHeader.onClear,
                 )
+            }
+        }
+        items(results, key = { "${it.source.id}-${it.remoteId}" }) { result ->
+            DataSourceResultCard(result, onResultTap, titleStyle)
+        }
+        if (loadingMore) {
+            item(key = "ds-load-more-footer", span = { GridItemSpan(maxLineSpan) }) {
+                LoadingMoreFooter()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DataSourceResultCard(
+    result: DataSourceResult,
+    onClick: (DataSourceResult) -> Unit,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = tween(Motion.DurationShort, easing = FastOutSlowInEasing),
+        label = "dsCardScale",
+    )
+
+    // The meta line: the YEAR + the RATING only (the device order: the source
+    // name "TMDB" was noise). The title is ONE line in both styles.
+    val meta = buildString {
+        result.year?.let { append(it) }
+        result.rating?.let {
+            if (isNotEmpty()) append(" · ")
+            append("%.1f".format(it))
+        }
+    }
+
+    if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.BELOW) {
+        // The "below" style: the poster, then the title + the meta under it.
+        Column(
+            modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = { onClick(result) },
+                ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            ) {
+                if (result.posterUrl != null) {
+                    coil3.compose.AsyncImage(
+                        model = result.posterUrl,
+                        contentDescription = result.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = result.title,
+                fontFamily = RobotoFamily,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (meta.isNotEmpty()) {
                 Text(
-                    text = buildString {
-                        append(result.source.displayName)
-                        result.year?.let { append(" · ").append(it) }
-                        result.rating?.let { append(" · ").append("%.1f".format(it)) }
-                    },
+                    text = meta,
                     fontFamily = RobotoFamily,
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
+            }
+        }
+    } else {
+        // The "overlay" style — the AniList card's anatomy verbatim (the
+        // gradient + the title inside the cover's bottom).
+        Box(
+            modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = { onClick(result) },
+                ),
+        ) {
+            if (result.posterUrl != null) {
+                coil3.compose.AsyncImage(
+                    model = result.posterUrl,
+                    contentDescription = result.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Theaters,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+                contentAlignment = Alignment.BottomStart,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.surface,
+                                ),
+                            ),
+                        ),
+                )
+                Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Text(
+                        text = result.title,
+                        fontFamily = RobotoFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
+                            ?: MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            text = meta,
+                            fontFamily = RobotoFamily,
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
         }
     }
