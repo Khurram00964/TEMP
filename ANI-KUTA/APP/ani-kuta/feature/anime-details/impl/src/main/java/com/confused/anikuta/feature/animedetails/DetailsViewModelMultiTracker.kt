@@ -3,6 +3,7 @@ package com.confused.anikuta.feature.animedetails
 import androidx.lifecycle.viewModelScope
 import com.confused.anikuta.core.common.Logger
 import com.confused.anikuta.core.trackerapi.TrackEntry
+import com.confused.anikuta.core.trackerapi.TrackStatus
 import com.confused.anikuta.core.trackerapi.TrackerType
 import kotlinx.coroutines.launch
 

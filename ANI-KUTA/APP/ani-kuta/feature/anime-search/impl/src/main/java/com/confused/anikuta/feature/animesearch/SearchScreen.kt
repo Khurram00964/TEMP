@@ -954,68 +954,118 @@ ResultCard(anime, onResultTap, titleStyle, showRating, showDetails)
     }
 }
 
+// ════════════════════════════════════════════════════════════════════════
+//  ROUND 170 (the device order): THE UNIFIED RESULT CARD — ONE base system
+//  for EVERY source (the user: "the underlying base system should be the
+//  exact same one — only the difference is the data received"). The three
+//  source cards are thin adapters over THIS.
+//
+//  The placements (the user's spec):
+//  - THE RATING PILL — the cover's top-right, the minimal height.
+//  - THE OVERLAY style — the gradient carries the YEAR at the title's
+//    top-left (a small line ABOVE the title), then the title moved DOWN
+//    a bit (the gradient unchanged).
+//  - THE BELOW style — the title under the poster; the YEAR sits at the
+//    cover's BOTTOM-LEFT (an on-cover overlay chip).
+// ════════════════════════════════════════════════════════════════════════
+
+data class UnifiedCardModel(
+    val title: String,
+    val posterUrl: String?,
+    val rating: Double? = null, // 0-10
+    val year: Int? = null,
+    val coverSharedElementKey: Any? = null, // the AniList shared-element (experimental)
+    val useHeadingColor: Boolean = false,   // the AniList card's LocalCardHeadingColor
+)
+
 @Composable
-private fun ResultCard(
-    anime: AniListAnime,
-    onClick: (AniListAnime) -> Unit,
-    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
-        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
-    showRating: Boolean = true,
-    showDetails: Boolean = true,
+private fun UnifiedResultCard(
+    model: UnifiedCardModel,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle,
+    showRating: Boolean,
+    showDetails: Boolean,
+    onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.95f else 1f,
         animationSpec = tween(Motion.DurationShort, easing = FastOutSlowInEasing),
-        label = "resultCardScale",
+        label = "unifiedCardScale",
     )
-    // D-320/D-328: shared-element key — screen-namespaced (cover:search:<url>)
-    // so a Search card can never collide with a Library card showing the SAME
-    // anime (pre-D-328 both built "cover:<url>", and the shared cover flew
-    // between the two pages on every Library ⇄ Search switch). Null when the
-    // experimental transition is disabled or the cover is missing.
-    val appPrefs = koinInject<com.confused.anikuta.core.preferences.AppPreferences>()
-    val transitionKey = if (appPrefs.coverTransitionEnabled) {
-        searchCoverKey(anime.coverUrl)
-    } else null
 
-    Box(
+    val below = titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.BELOW
+
+    Column(
         modifier = Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(12.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = { onClick(anime) },
+                onClick = onClick,
             ),
     ) {
-        AsyncImage(
-            model = anime.coverUrl,
-            contentDescription = anime.displayName,
-            contentScale = ContentScale.Crop,
+        // ── THE COVER (identical for both styles) ──
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                // Task 61 (round 21 — the performance round): a dim placeholder
-                // surface behind the cover — the loading phase shows a quiet tone
-                // (no white pop-in flash) + the global crossfade lands the image
-                // softly. Cheap (no subcomposition) + zero jank.
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                .coverSharedElement(transitionKey)
-                .clip(RoundedCornerShape(12.dp)),
-        )
-
-        // ROUND 169: the RATING PILL - the cover's top-right corner, the
-        // height as small as possible (the user's order). The AniList
-        // 0-100 score renders as the 0-10 display.
-        if (showRating && anime.averageScore != null) {
-            RatingPill(
-                rating = anime.averageScore!! / 10.0,
-                modifier = Modifier.align(Alignment.TopEnd),
-            )
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        ) {
+            if (model.posterUrl != null) {
+                coil3.compose.AsyncImage(
+                    model = model.posterUrl,
+                    contentDescription = model.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .coverSharedElement(model.coverSharedElementKey),
+                )
+            }
+            // THE RATING PILL — the cover's top-right (every style, every source).
+            if (showRating && model.rating != null) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                ) {
+                    Text(
+                        text = "%.1f".format(model.rating),
+                        fontFamily = RobotoFamily,
+                        fontSize = 9.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
+            // THE BELOW style: the YEAR chip at the cover's BOTTOM-LEFT.
+            if (below && showDetails && model.year != null) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+                ) {
+                    Text(
+                        text = model.year.toString(),
+                        fontFamily = RobotoFamily,
+                        fontSize = 9.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
         }
-        if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY) {
+
+        if (!below) {
+            // ── THE OVERLAY: the gradient + the year (the title's top-left) +
+            //    the title moved DOWN a bit (the user's order). ──
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1025,7 +1075,7 @@ private fun ResultCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(52.dp)
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
@@ -1036,41 +1086,81 @@ private fun ResultCard(
                             ),
                         ),
                 )
-                Text(
-                    text = anime.displayName,
-                    fontFamily = RobotoFamily,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Column(
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                )
-            }
-        } else {
-            // The BELOW style: the title (+ the year, gated) sits under the poster.
-            Column(modifier = Modifier.padding(top = 4.dp)) {
-                Text(
-                    text = anime.displayName,
-                    fontFamily = RobotoFamily,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (showDetails && anime.seasonYear != null) {
+                ) {
+                    if (showDetails && model.year != null) {
+                        Text(
+                            text = model.year.toString(),
+                            fontFamily = RobotoFamily,
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.size(1.dp))
                     Text(
-                        text = anime.seasonYear.toString(),
+                        text = model.title,
                         fontFamily = RobotoFamily,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (model.useHeadingColor) {
+                            LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
+                                ?: MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+        } else {
+            // ── THE BELOW: the title under the poster (the year rides the
+            //    cover's bottom-left chip above). ──
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = model.title,
+                fontFamily = RobotoFamily,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
+}
+
+@Composable
+private fun ResultCard(
+    anime: AniListAnime,
+    onClick: (AniListAnime) -> Unit,
+    titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
+        com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+    showRating: Boolean = true,
+    showDetails: Boolean = true,
+) {
+    val appPrefs = koinInject<com.confused.anikuta.core.preferences.AppPreferences>()
+    val transitionKey = if (appPrefs.coverTransitionEnabled) {
+        searchCoverKey(anime.coverUrl)
+    } else null
+    UnifiedResultCard(
+        model = UnifiedCardModel(
+            title = anime.displayName,
+            posterUrl = anime.coverUrl,
+            rating = anime.averageScore?.div(10.0),
+            year = anime.seasonYear,
+            coverSharedElementKey = transitionKey,
+            useHeadingColor = true,
+        ),
+        titleStyle = titleStyle,
+        showRating = showRating,
+        showDetails = showDetails,
+        onClick = { onClick(anime) },
+    )
 }
 
 // ── ROUND 169: the shared RATING PILL - the cover's top-right corner, the
@@ -1575,100 +1665,23 @@ private fun ExtensionResultCard(
         com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
     showDetails: Boolean = true,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f,
-        animationSpec = tween(Motion.DurationShort, easing = FastOutSlowInEasing),
-        label = "extResultCardScale",
-    )
-    // D-320/D-328: shared-element key for extension results (cover:search:<url>
-    // — same namespace as the AniList result cards above; the two lists never
-    // compose together, so uniqueness within the screen is what matters).
     val appPrefs = koinInject<com.confused.anikuta.core.preferences.AppPreferences>()
     val transitionKey = if (appPrefs.coverTransitionEnabled) {
         searchCoverKey(anime.thumbnailUrl)
     } else null
-
-    Box(
-        modifier = Modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = { onClick(anime) },
-            ),
-    ) {
-        AsyncImage(
-            model = anime.thumbnailUrl,
-            contentDescription = anime.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-                // Task 61 (round 21 — the performance round): the dim loading
-                // placeholder (see ResultCard).
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                .coverSharedElement(transitionKey)
-                .clip(RoundedCornerShape(12.dp)),
-        )
-
-        if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f),
-                contentAlignment = Alignment.BottomStart,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.surface,
-                                ),
-                            ),
-                        ),
-                )
-                Text(
-                    text = anime.title,
-                    fontFamily = RobotoFamily,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                )
-            }
-        } else {
-            Column(modifier = Modifier.padding(top = 4.dp)) {
-                Text(
-                    text = anime.title,
-                    fontFamily = RobotoFamily,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (showDetails && anime.year != null) {
-                    Text(
-                        text = anime.year.toString(),
-                        fontFamily = RobotoFamily,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
-    }
+    UnifiedResultCard(
+        model = UnifiedCardModel(
+            title = anime.title,
+            posterUrl = anime.thumbnailUrl,
+            rating = null,
+            year = anime.year,
+            coverSharedElementKey = transitionKey,
+        ),
+        titleStyle = titleStyle,
+        showRating = false,
+        showDetails = showDetails,
+        onClick = { onClick(anime) },
+    )
 }
 
 
@@ -1738,165 +1751,16 @@ private fun DataSourceResultCard(
     showRating: Boolean = true,
     showDetails: Boolean = true,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f,
-        animationSpec = tween(Motion.DurationShort, easing = FastOutSlowInEasing),
-        label = "dsCardScale",
+    UnifiedResultCard(
+        model = UnifiedCardModel(
+            title = result.title,
+            posterUrl = result.posterUrl,
+            rating = result.rating,
+            year = result.year,
+        ),
+        titleStyle = titleStyle,
+        showRating = showRating,
+        showDetails = showDetails,
+        onClick = { onClick(result) },
     )
-
-    // The meta line: the YEAR + the RATING only (the device order: the source
-    // name "TMDB" was noise). The title is ONE line in both styles.
-    // ROUND 169: the rating LIVES IN THE PILL now (the cover's top-right) —
-    // the meta line keeps the year only (the details gate).
-    val meta = if (showDetails) result.year?.toString().orEmpty() else ""
-
-    if (titleStyle == com.confused.anikuta.core.preferences.ResultTitleStyle.BELOW) {
-        // The "below" style: the poster, then the title + the meta under it.
-        Column(
-            modifier = Modifier
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = { onClick(result) },
-                ),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-            ) {
-                if (result.posterUrl != null) {
-                    coil3.compose.AsyncImage(
-                        model = result.posterUrl,
-                        contentDescription = result.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                // ROUND 169: the rating pill at the cover's top-right.
-                if (showRating && result.rating != null) {
-                    RatingPill(
-                        rating = result.rating,
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
-                }
-            }
-            Spacer(Modifier.size(6.dp))
-            Text(
-                text = result.title,
-                fontFamily = RobotoFamily,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (meta.isNotEmpty()) {
-                Text(
-                    text = meta,
-                    fontFamily = RobotoFamily,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
-        }
-    } else {
-        // The "overlay" style — the AniList card's anatomy verbatim (the
-        // gradient + the title inside the cover's bottom).
-        Box(
-            modifier = Modifier
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = { onClick(result) },
-                ),
-        ) {
-            // ROUND 169: the rating pill at the cover's top-right (the overlay branch).
-            if (showRating && result.rating != null) {
-                RatingPill(
-                    rating = result.rating,
-                    modifier = Modifier.align(Alignment.TopEnd),
-                )
-            }
-            if (result.posterUrl != null) {
-                coil3.compose.AsyncImage(
-                    model = result.posterUrl,
-                    contentDescription = result.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                        .clip(RoundedCornerShape(12.dp)),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Theaters,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(36.dp),
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f),
-                contentAlignment = Alignment.BottomStart,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.surface,
-                                ),
-                            ),
-                        ),
-                )
-                Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                    Text(
-                        text = result.title,
-                        fontFamily = RobotoFamily,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = LocalCardHeadingColor.current.takeIf { it != Color.Unspecified }
-                            ?: MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (meta.isNotEmpty()) {
-                        Text(
-                            text = meta,
-                            fontFamily = RobotoFamily,
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
