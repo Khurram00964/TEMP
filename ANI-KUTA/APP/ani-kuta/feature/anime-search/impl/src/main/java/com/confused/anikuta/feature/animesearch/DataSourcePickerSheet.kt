@@ -81,13 +81,6 @@ fun DataSourcePickerSheet(
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Metadata only — playback runs through your extensions.",
-                fontFamily = RobotoFamily,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             Spacer(Modifier.height(12.dp))
 
             LazyColumn(
@@ -96,9 +89,11 @@ fun DataSourcePickerSheet(
             ) {
                 items(
                     listOf(
-                        DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime — GraphQL, keyless", Icons.Filled.Search, enabled = true),
-                        DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies + series metadata", Icons.Filled.Theaters, enabled = tmdbEnabled),
-                        DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series + airing schedule — keyless", Icons.Filled.Tv, enabled = tvmazeEnabled),
+                        // ROUND 165 (the device order): the simplest subtitles
+                        // (no GraphQL/keyless tech-speak) + the branded marks.
+                        DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true),
+                        DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled),
+                        DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled),
                     ),
                     key = { it.kind.id },
                 ) { row ->
@@ -119,6 +114,7 @@ private data class DataSourceRow(
     val name: String,
     val subtitle: String,
     val icon: ImageVector,
+    val brandColor: androidx.compose.ui.graphics.Color,
     val enabled: Boolean,
 )
 
@@ -143,20 +139,20 @@ private fun DataSourcePickerRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // ROUND 165: the BRANDED mark — each source's own color + initial
+        // (the device order: proper cover images, not the generic icons).
         Box(
             modifier = Modifier
                 .size(32.dp)
-                .background(
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    RoundedCornerShape(10.dp),
-                ),
+                .background(row.brandColor, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = row.icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
+            Text(
+                text = row.name.first().toString(),
+                fontFamily = RobotoFamily,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = androidx.compose.ui.graphics.Color.White,
             )
         }
         Column(modifier = Modifier.weight(1f)) {
