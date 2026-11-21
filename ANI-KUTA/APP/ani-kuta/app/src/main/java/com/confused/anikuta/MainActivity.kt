@@ -306,6 +306,11 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
      * in a background coroutine.
      */
     private fun handleAniListOAuthRedirect(intent: android.content.Intent?) {
+        // ROUND 168 (the tracker redo): the Simkl redirect rides the same entry
+        // point — dispatch first (anikuta://simkl-auth?code=...), then fall
+        // through to the AniList fragment parse.
+        if (handleSimklOAuthRedirect(intent)) return
+
         val data = intent?.data ?: return
         if (data.scheme != "anikuta" || data.host != "anilist-auth") return
 
@@ -351,6 +356,54 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * ROUND 168 (the tracker redo, ported from release/1.1.103): the Simkl
+     * OAuth2 AUTH-V2 redirect handler.
+     *
+     * Simkl redirects to `anikuta://simkl-auth?code=...` — the CODE rides the
+     * QUERY (unlike AniList's fragment token); the PKCE verifier from
+     * startLogin is in the tracker's memory and the exchange POSTs it.
+     *
+     * @return true when this intent WAS a Simkl redirect (consumed — the
+     *   AniList handler must not look at it).
+     */
+    private fun handleSimklOAuthRedirect(intent: android.content.Intent?): Boolean {
+        val data = intent?.data ?: return false
+        if (data.scheme != "anikuta" || data.host != "simkl-auth") return false
+
+        val code = data.getQueryParameter("code").orEmpty()
+        if (code.isBlank()) {
+            com.confused.anikuta.core.common.Logger.w("MainActivity") {
+                "Simkl OAuth redirect: no code in query"
+            }
+            return true
+        }
+
+        com.confused.anikuta.core.common.Logger.i("MainActivity") {
+            "Simkl OAuth redirect received — exchanging the code (PKCE)..."
+        }
+
+        kotlinx.coroutines.MainScope().launch {
+            try {
+                val tracker = org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.trackersimkl.SimklTracker>()
+                val success = tracker.handleLoginCallback(code)
+                if (success) {
+                    com.confused.anikuta.core.common.Logger.i("MainActivity") { "Simkl login successful!" }
+                    anilistLoginSuccess = true // the same auto-navigate to the Trackers page
+                } else {
+                    com.confused.anikuta.core.common.Logger.e("MainActivity") { "Simkl login failed" }
+                    anilistLoginError = "Simkl login failed — please try again."
+                }
+            } catch (e: Exception) {
+                com.confused.anikuta.core.common.Logger.e("MainActivity", e) {
+                    "Simkl OAuth redirect handling failed: ${e.message}"
+                }
+            }
+        }
+        return true
     }
 }
 

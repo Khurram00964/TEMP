@@ -1,7 +1,5 @@
 package com.confused.anikuta.core.trackeranilist
 
-import com.confused.anikuta.core.trackerapi.Tracker
-import kotlinx.serialization.json.Json
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
@@ -19,12 +17,9 @@ val trackerAniListModule = module {
     // track_entry cache by design — see TrackingStateRepository's KDoc.
     single { TrackingStateRepository(get()) }
 
-    // Multi-binding: List<Tracker> for TrackSyncManager
-    single<List<Tracker>>(named("trackers")) {
-        listOf(
-            get<AniListTracker>(),
-        )
-    }
+    // The named("trackers") list MOVED to the composition root (AnikutaApp,
+    // ROUND 163 STEP-2): the Simkl tracker joins it without this module
+    // growing a tracker-simkl dependency.
 
     single { TrackSyncManager(get(named("trackers")), get(), get(), get()) }
 

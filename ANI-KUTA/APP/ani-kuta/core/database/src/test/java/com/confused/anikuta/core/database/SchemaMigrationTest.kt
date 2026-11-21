@@ -128,7 +128,12 @@ class SchemaMigrationTest {
 
     @Test
     fun `migration 1 to 2 preserves existing watch progress data`() {
-        AnikutaDatabase.Schema.migrate(driver, 1, 2)
+        // ROUND 163 review fix: the chain runs to the CURRENT version (6) —
+        // the generated row mapper reads the FULL v6 shape positionally, so a
+        // chain that stops at v2 hands it a 12-column table (the reviewer's
+        // P1: "tests that read through the generated code must end the chain
+        // at the CURRENT schema version").
+        AnikutaDatabase.Schema.migrate(driver, 1, 6)
 
         val database = AnikutaDatabase(driver)
         val row = database.watchQueries.getWatchProgress("main-1|00001").executeAsOneOrNull()
@@ -143,7 +148,7 @@ class SchemaMigrationTest {
 
     @Test
     fun `migrated database is fully usable by the generated code`() {
-        AnikutaDatabase.Schema.migrate(driver, 1, 2)
+        AnikutaDatabase.Schema.migrate(driver, 1, 6)
 
         val database = AnikutaDatabase(driver)
         // A save through the typed API on the MIGRATED database must work —
@@ -161,6 +166,8 @@ class SchemaMigrationTest {
             auto_mark_suppressed = 0L,
             user_marked_watched = 0L,
             played_time_ms = 61_000L,
+            season_number = 1L,
+            episode_number = 2L,
         )
         val row = database.watchQueries.getWatchProgress("main-1|00002").executeAsOneOrNull()
         assertNotNull(row)
@@ -325,5 +332,382 @@ class SchemaMigrationTest {
         val sessions = database.watchQueries.getAllWatchSessions().executeAsList()
         assertEquals("the session ledger must survive main_entry deletion", 1, sessions.size)
         assertEquals(2520000L, sessions.first().played_ms)
+    }
+
+    // ── ROUND 163 (STEP-1): the v4 → v6 hardening migrations ────────────────
+    //
+    // 4.sqm (v4→v5): the watch_progress denorm (season_number + episode_number
+    // + the backfill + the index). 5.sqm (v5→v6): the TRACKING-SURVIVAL fix —
+    // the D-862 doctrine finally covers the TRACKER data (track_entry +
+    // content_tracking_state lose the CASCADE FK that silently erased the
+    // tracker link + opt-in flag on every library removal), track_entry gains
+    // times_watched, the (tracker_type, tracker_id) index becomes UNIQUE after
+    // an in-file dedup, and browse_cache gains its expires sweep index.
+
+    /** The faithful v4 shape: the tracking tables still WITH the cascade FK. */
+    private fun createV4Shape() {
+        driver.execute(
+            null,
+            """
+            CREATE TABLE main_entry (
+                main_id TEXT NOT NULL PRIMARY KEY,
+                content_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'anime',
+                content_format TEXT NOT NULL DEFAULT 'video',
+                data_source_id INTEGER,
+                system_id INTEGER,
+                extension_repo_id INTEGER,
+                extension_id INTEGER,
+                source_id INTEGER,
+                anime_url TEXT,
+                display_source TEXT NOT NULL DEFAULT 'extension',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE watch_progress (
+                episode_key TEXT NOT NULL PRIMARY KEY,
+                position INTEGER NOT NULL,
+                duration INTEGER NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0,
+                completed_at INTEGER,
+                last_watched_at INTEGER NOT NULL,
+                main_id TEXT,
+                watch_count INTEGER NOT NULL DEFAULT 0,
+                first_watched_at INTEGER,
+                auto_mark_suppressed INTEGER NOT NULL DEFAULT 0,
+                user_marked_watched INTEGER NOT NULL DEFAULT 0,
+                played_time_ms INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE track_entry (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracker_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                score INTEGER,
+                progress INTEGER NOT NULL DEFAULT 0,
+                total_episodes INTEGER,
+                list_id INTEGER,
+                started_at INTEGER,
+                completed_at INTEGER,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type),
+                FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_tracking_state (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracked INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type),
+                FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE browse_cache (
+                section_key TEXT NOT NULL PRIMARY KEY,
+                data_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """.trimMargin(),
+            0,
+        )
+        // The user's data: one watched episode + one tracker link + one opt-in
+        // flag + one (expired) browse row.
+        driver.execute(
+            null,
+            "INSERT INTO watch_progress(episode_key, position, duration, completed, completed_at, last_watched_at, main_id, watch_count, first_watched_at, auto_mark_suppressed, user_marked_watched, played_time_ms) " +
+                "VALUES ('main-1|00001', 600, 1440, 1, 1729800001000, 1729800000000, 'main-1', 1, 1729800000000, 0, 0, 2520000)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, score, progress, total_episodes, list_id, started_at, completed_at, updated_at) " +
+                "VALUES ('main-1', 'anilist', 555, 'WATCHING', 85, 3, 12, 9001, NULL, NULL, 1729800000000)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO content_tracking_state(main_id, tracker_type, tracked, updated_at) " +
+                "VALUES ('main-1', 'anilist', 1, 1729800000000)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO browse_cache(section_key, data_json, fetched_at, expires_at) " +
+                "VALUES ('home_trending', '[]', 1, 2)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-1', 'cid-1', 'Test Anime', 1, 1)",
+            0,
+        )
+    }
+
+    @Test
+    fun "migration 4 to 6 adds the denorm columns and backfills them"() {
+        createV4Shape()
+        assertTrue("precondition: no season_number", "season_number" !in columnNames("watch_progress"))
+
+        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+
+        assertTrue("season_number must exist", "season_number" in columnNames("watch_progress"))
+        assertTrue("episode_number must exist", "episode_number" in columnNames("watch_progress"))
+        val database = AnikutaDatabase(driver)
+        val row = database.watchQueries.getWatchProgress("main-1|00001").executeAsOneOrNull()
+        assertNotNull(row)
+        assertEquals("the legacy 2-part key backfills season 1", 1L, row!!.season_number)
+        assertEquals("the key's numeric tail backfills the number", 1L, row.episode_number)
+    }
+
+    @Test
+    fun "migration 4 to 6 strips the tracker-table cascade foreign keys"() {
+        createV4Shape()
+        driver.execute(null, "PRAGMA foreign_keys = ON", 0)
+        assertTrue(
+            "precondition: v4 track_entry carries the main_entry FK",
+            foreignKeysOf("track_entry").contains("main_entry"),
+        )
+
+        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+
+        assertTrue(
+            "v6 track_entry must have NO foreign keys",
+            foreignKeysOf("track_entry").isEmpty(),
+        )
+        assertTrue(
+            "v6 content_tracking_state must have NO foreign keys",
+            foreignKeysOf("content_tracking_state").isEmpty(),
+        )
+    }
+
+    @Test
+    fun "migration 4 to 6 keeps the tracker link and opt-in alive after main_entry deletion"() {
+        createV4Shape()
+        driver.execute(null, "PRAGMA foreign_keys = ON", 0)
+
+        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+
+        // THE device-critical scenario: library removal deletes the identity
+        // row — the tracker link + the user's opt-in flag MUST survive (the
+        // pre-v6 CASCADE silently erased both; the user's "very huge issue").
+        driver.execute(null, "DELETE FROM main_entry WHERE main_id = 'main-1'", 0)
+
+        val database = AnikutaDatabase(driver)
+        val entry = database.trackQueries.getTrackEntry("main-1", "anilist").executeAsOneOrNull()
+        assertNotNull("the tracker link must survive main_entry deletion", entry)
+        assertEquals(555L, entry!!.tracker_id)
+        assertEquals(0L, entry.times_watched)
+        val state = database.trackQueries.getTrackingState("main-1", "anilist").executeAsOneOrNull()
+        assertNotNull("the opt-in flag must survive main_entry deletion", state)
+        assertEquals(1L, state!!.tracked)
+    }
+
+    @Test
+    fun "migration 4 to 6 dedups tracker ids and enforces uniqueness"() {
+        createV4Shape()
+        // A second content claiming the SAME AniList entry — the silent-winner
+        // bug's exact shape (the old index was non-unique).
+        driver.execute(
+            null,
+            "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, score, progress, total_episodes, list_id, started_at, completed_at, updated_at) " +
+                "VALUES ('main-2', 'anilist', 555, 'COMPLETED', NULL, 12, 12, NULL, NULL, NULL, 1729900000000)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-2', 'cid-2', 'Test Anime 2', 1, 1)",
+            0,
+        )
+
+        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+
+        val database = AnikutaDatabase(driver)
+        val rows = database.trackQueries.getTrackEntryByTrackerId("anilist", 555L)
+        // The generated query is LIMIT 1 — count via the raw driver instead.
+        var count = 0
+        driver.executeQuery(
+            null,
+            "SELECT COUNT(*) FROM track_entry WHERE tracker_type = 'anilist' AND tracker_id = 555",
+            { cursor ->
+                cursor.next().value
+                count = cursor.getLong(0)!!.toInt()
+                app.cash.sqldelight.db.QueryResult.Value(Unit)
+            },
+            0,
+        )
+        assertEquals("the dedup must leave exactly one row per remote entry", 1, count)
+        assertTrue("the survivor must carry times_watched", rows.executeAsOneOrNull() != null)
+        // The UNIQUE index now rejects a second claim.
+        val insertRejected = runCatching {
+            driver.execute(
+                null,
+                "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, progress, updated_at, times_watched) " +
+                    "VALUES ('main-3', 'anilist', 555, 'WATCHING', 0, 1730000000000, 0)",
+                0,
+            )
+        }.isFailure
+        assertTrue("the unique index must reject a duplicate remote link", insertRejected)
+    }
+
+    @Test
+    fun "migration 4 to 6 keeps the browse sweep usable and data intact"() {
+        createV4Shape()
+        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+        val database = AnikutaDatabase(driver)
+        // The expired row sweeps away; the table stays queryable.
+        database.dataCacheQueries.deleteExpiredBrowseCache(10L)
+        assertEquals(null, database.dataCacheQueries.getBrowseCache("home_trending").executeAsOneOrNull())
+    }
+
+    // ── ROUND 163 (the adversarial review's P0): the WS-A-v5 COHORT ──────────
+    //
+    // v1.1.96-99 shipped schema v5 with watch_progress.episode_number ONLY
+    // (no season_number). The versioned chain skips 4.sqm for oldVersion == 5
+    // (the generated guard: oldVersion <= 4), so the cohort's shape repair
+    // lives in DatabaseDriverFactory.migrateV5ShapeIfNeeded — an onUpgrade
+    // pre-flight that cannot be exercised through Schema.migrate (which owns
+    // only the .sqm chain). This test pins the COHORT SHAPE itself: a v5
+    // table (episode_number present, season_number missing) must NOT be
+    // accepted as-is — the detector's precondition column must be provably
+    // missing so the guard fires on the real device. The detector's ALTER is
+    // DB-driver SQL (SupportSQLiteDatabase), verified on device; the unit
+    // lock here is the SHAPE CONTRACT: the v5 shape differs from the v4 shape
+    // by exactly episode_number, and 5.sqm alone (what the cohort runs)
+    // yields a season-carrying table.
+
+    @Test
+    fun "the WS-A v5 cohort shape is recoverable by 5.sqm after the detector adds season_number"() {
+        // The faithful WS-A-v5 shape: 13 columns — the v4 table + episode_number.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE watch_progress (
+                episode_key TEXT NOT NULL PRIMARY KEY,
+                position INTEGER NOT NULL,
+                duration INTEGER NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0,
+                completed_at INTEGER,
+                last_watched_at INTEGER NOT NULL,
+                main_id TEXT,
+                watch_count INTEGER NOT NULL DEFAULT 0,
+                first_watched_at INTEGER,
+                auto_mark_suppressed INTEGER NOT NULL DEFAULT 0,
+                user_marked_watched INTEGER NOT NULL DEFAULT 0,
+                played_time_ms INTEGER NOT NULL DEFAULT 0,
+                episode_number INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO watch_progress(episode_key, position, duration, completed, completed_at, last_watched_at, main_id, watch_count, first_watched_at, auto_mark_suppressed, user_marked_watched, played_time_ms, episode_number) " +
+                "VALUES ('main-1|00003', 600, 1440, 1, 1729800001000, 1729800000000, 'main-1', 1, 1729800000000, 0, 0, 2520000, 3)",
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE track_entry (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracker_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                score INTEGER,
+                progress INTEGER NOT NULL DEFAULT 0,
+                total_episodes INTEGER,
+                list_id INTEGER,
+                started_at INTEGER,
+                completed_at INTEGER,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type)
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_tracking_state (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracked INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type)
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE browse_cache (
+                section_key TEXT NOT NULL PRIMARY KEY,
+                data_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, score, progress, total_episodes, list_id, started_at, completed_at, updated_at) " +
+                "VALUES ('main-1', 'anilist', 555, 'WATCHING', 85, 3, 12, 9001, NULL, NULL, 1729800000000)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO content_tracking_state(main_id, tracker_type, tracked, updated_at) " +
+                "VALUES ('main-1', 'anilist', 1, 1729800000000)",
+            0,
+        )
+        // The detector's move (what migrateV5ShapeIfNeeded does on device):
+        // season_number lands BEFORE the chain runs 5.sqm.
+        driver.execute(
+            null,
+            "ALTER TABLE watch_progress ADD COLUMN season_number INTEGER NOT NULL DEFAULT 1",
+            0,
+        )
+
+        // The cohort's chain: 4.sqm is SKIPPED (oldVersion 5) — only 5.sqm runs.
+        AnikutaDatabase.Schema.migrate(driver, 5, 6)
+
+        val database = AnikutaDatabase(driver)
+        val row = database.watchQueries.getWatchProgress("main-1|00003").executeAsOneOrNull()
+        assertNotNull("the cohort's rows must survive", row)
+        assertEquals("the detector's default stamps season 1", 1L, row!!.season_number)
+        assertEquals("the WS-A backfilled values are untouched", 3L, row.episode_number)
+        assertTrue(
+            "the tracker tables are FK-free for the cohort too",
+            foreignKeysOf("track_entry").isEmpty(),
+        )
+        val entry = database.trackQueries.getTrackEntry("main-1", "anilist").executeAsOneOrNull()
+        assertNotNull("the tracker link survives", entry)
     }
 }

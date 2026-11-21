@@ -40,6 +40,30 @@ class TrackEntryRepository(
      */
     suspend fun upsert(entry: TrackEntry, trackerType: TrackerType = TrackerType.ANILIST) {
         withContext(Dispatchers.IO) {
+            // ROUND 163 (v6, the review's P2 guard): the UNIQUE
+            // (tracker_type, tracker_id) index makes INSERT OR REPLACE delete
+            // a CONFLICTING row — if another content already claims this
+            // remote id, the replace would silently erase THAT content's
+            // link (its times_watched with it). Refuse loudly instead.
+            val foreign = database.trackQueries.getTrackEntryByTrackerId(
+                trackerType.id,
+                entry.trackerId.toLong(),
+            ).executeAsOneOrNull()
+            if (foreign != null && foreign.main_id != entry.contentKey) {
+                Logger.w(TAG) {
+                    "upsert REFUSED — remote id ${entry.trackerId} ($trackerType) already belongs to " +
+                        "mainId=${foreign.main_id}; content ${entry.contentKey} tried to claim it (a double-link bug upstream)"
+                }
+                return@withContext
+            }
+            // times_watched is DB-level (not on the TrackEntry model — an
+            // additive model field would ripple every tracker's entry.copy).
+            // The sync overwrite PRESERVES the stored count; the dedicated
+            // increment method owns the writes.
+            val storedTimesWatched = database.trackQueries.getTrackEntry(
+                entry.contentKey,
+                trackerType.id,
+            ).executeAsOneOrNull()?.times_watched ?: 0L
             database.trackQueries.upsertTrackEntry(
                 main_id = entry.contentKey,
                 tracker_type = trackerType.id,
@@ -52,11 +76,28 @@ class TrackEntryRepository(
                 started_at = entry.startedAt,
                 completed_at = entry.completedAt,
                 updated_at = entry.updatedAt,
+                times_watched = storedTimesWatched,
             )
             Logger.d(TAG) {
                 "upsert — mainId=${entry.contentKey}, tracker=$trackerType, " +
                     "status=${entry.status}, progress=${entry.progress}, score=${entry.score}"
             }
+        }
+    }
+
+    /** ROUND 163 (v6): the stored movie-rewatch count (0 when no row exists). */
+    suspend fun getTimesWatched(mainId: String, trackerType: TrackerType = TrackerType.ANILIST): Int {
+        return withContext(Dispatchers.IO) {
+            database.trackQueries.getTrackEntry(mainId, trackerType.id)
+                .executeAsOneOrNull()?.times_watched?.toInt() ?: 0
+        }
+    }
+
+    /** ROUND 163 (v6): the movie-rewatch increment (DB-side, race-safe). */
+    suspend fun incrementTimesWatched(mainId: String, trackerType: TrackerType = TrackerType.ANILIST) {
+        withContext(Dispatchers.IO) {
+            database.trackQueries.incrementTimesWatched(mainId, trackerType.id)
+            Logger.d(TAG) { "incrementTimesWatched — mainId=$mainId, tracker=$trackerType" }
         }
     }
 

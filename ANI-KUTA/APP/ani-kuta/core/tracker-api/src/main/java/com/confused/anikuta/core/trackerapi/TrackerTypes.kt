@@ -11,7 +11,8 @@ package com.confused.anikuta.core.trackerapi
  */
 enum class TrackerType(val id: String) {
     ANILIST("anilist"),
-    MAL("mal"),           // future
+    MAL("mal"),           // the anime tracker redo (pending; the client id is registered)
+    SIMKL("simkl"),       // ROUND 163 (STEP-2): movies + TV series tracking (one account covers anime too)
     SHIKIMORI("shikimori"), // future
 }
 

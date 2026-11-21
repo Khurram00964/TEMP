@@ -42,6 +42,7 @@ include(":core:download")
 include(":core:metadata")
 include(":core:tracker-api")
 include(":core:tracker-anilist")
+include(":core:tracker-simkl")  // ROUND 168 (the tracker redo): movies + TV tracking (Simkl) — ported from release/1.1.103
 include(":core:smart-matcher")
 include(":core:share")
 include(":core:content")

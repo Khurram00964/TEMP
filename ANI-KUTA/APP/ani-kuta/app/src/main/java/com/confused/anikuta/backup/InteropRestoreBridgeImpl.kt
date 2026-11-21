@@ -222,6 +222,10 @@ class InteropRestoreBridgeImpl(
             auto_mark_suppressed = existing?.auto_mark_suppressed ?: 0L,
             user_marked_watched = existing?.user_marked_watched ?: 0L,
             played_time_ms = playedMs,
+            // ROUND 163 (v5): the denormalized axis mirrors the key (the interop
+            // path builds 2-part anime keys → season 1).
+            season_number = EpisodeKeys.parseSeasonNumber(epKey).toLong(),
+            episode_number = EpisodeKeys.parseEpisodeNumber(epKey).toLong(),
         )
     }.getOrElse { e ->
         Logger.w(TAG, e) { "upsertProgress($mainId, ep ${episode.number}) failed: ${e.message}" }
@@ -235,6 +239,7 @@ class InteropRestoreBridgeImpl(
         // preserved in the file and simply not imported.
         if (tracking.trackerWireId != 2 || tracking.remoteId <= 0) return@runCatching
         val now = System.currentTimeMillis()
+        val existingTrack = database.trackQueries.getTrackEntry(mainId, "anilist").executeAsOneOrNull()
         database.trackQueries.upsertTrackEntry(
             main_id = mainId,
             tracker_type = "anilist",
@@ -247,6 +252,9 @@ class InteropRestoreBridgeImpl(
             started_at = tracking.startedMs.takeIf { it > 0 },
             completed_at = tracking.finishedMs.takeIf { it > 0 },
             updated_at = now,
+            // ROUND 163 (v6): the interop restore carries no rewatch count —
+            // preserve an existing row's count, else 0.
+            times_watched = existingTrack?.times_watched ?: 0L,
         )
         // The user TRACKED this in the donor app — restore the tracking intent
         // (the round-102 contract: nothing relays unless the intent is set).

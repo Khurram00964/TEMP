@@ -916,6 +916,18 @@ class BackupManager(
                     val count = restoreTable(table, rows)
                     tableCounts[table] = count
                 }
+                // ROUND 163 (STEP-1, the adversarial review's P1 fix): the
+                // denormalized episode_number mirrors the KEY, not a default —
+                // pre-v6 archives carry no episode_number column, so the
+                // restored rows land at 0 and feed the tracking bridge a
+                // computed progress of 0 → it relays the wipe DOWN to AniList
+                // for every restored TRACKED content. The 4.sqm backfill
+                // re-runs here, inside the restore transaction.
+                driver.execute(
+                    null,
+                    "UPDATE watch_progress SET episode_number = CAST(SUBSTR(episode_key, INSTR(episode_key, '|') + 1) AS INTEGER)",
+                    0,
+                )
                 driver.execute(null, "COMMIT", 0)
             } catch (e: Exception) {
                 runCatching { driver.execute(null, "ROLLBACK", 0) }

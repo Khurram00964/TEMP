@@ -1,0 +1,310 @@
+package com.confused.anikuta.core.trackersimkl
+
+import com.confused.anikuta.core.common.Logger
+import com.confused.anikuta.core.trackerapi.BaseTracker
+import com.confused.anikuta.core.trackerapi.TrackEntry
+import com.confused.anikuta.core.trackerapi.TrackStatus
+import com.confused.anikuta.core.trackerapi.TrackerKeys
+import com.confused.anikuta.core.trackerapi.TrackerType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+
+/**
+ * ROUND 163 (STEP-2): the Simkl tracker — the MOVIES + TV SERIES tracking
+ * backend (one Simkl account covers anime too; the anime side stays
+ * AniList/MAL per the user's order, and Simkl rows co-exist by tracker_type).
+ *
+ * The ROLE (the user's round-163 order): anime tracking = AniList (+ the MAL
+ * redo, its client id registered); Simkl = movies + TV series. Simkl accepts
+ * `anilist`/`tmdb` ids on writes (the /redirect bridge), so a future TV/movies
+ * content carries its TMDB id as trackerId and this tracker resolves it
+ * honestly through Simkl's own answer.
+ *
+ * NOT CONFIGURED state: [TrackerKeys.SIMKL_CLIENT_ID] is empty until the user
+ * registers the app at simkl.com/apps — every entry point returns honestly
+ * (no half-links, the reverted Trakt skeleton's precedent).
+ *
+ * The status/progress mapping (https://api.simkl.org/api-reference/sync.md):
+ * - anime/shows: add-to-list statuses watching/plantowatch/completed/hold/
+ *   dropped + history seasons[{number, episodes[{number}]}] marks.
+ * - movies: statuses plantowatch/completed/dropped (watching/hold are invalid
+ *   for movies); a watched movie rides history's watched_at stamp. A
+ *   half-watched movie's real position lives in /sync/playback (future work).
+ * - ratings: 1-10 (the app's 0-100 → /10 at the boundary).
+ */
+class SimklTracker(
+    private val api: SimklApi,
+    private val preferences: SimklPreferences,
+    private val client: OkHttpClient,
+) : BaseTracker(TrackerType.SIMKL, "Simkl") {
+
+    companion object {
+        private const val TAG = "Anikuta:Core:Tracker:Simkl"
+        private const val REFRESH_MARGIN_MS = 60_000L
+    }
+
+    val isConfigured: Boolean get() = TrackerKeys.SIMKL_CLIENT_ID.isNotBlank()
+
+    init {
+        // ROUND 165 (the device bug): the stored tokens SURVIVE process death
+        // (PreferenceStore) but BaseTracker seeds the in-memory login flow
+        // LoggedOut — so every cold start showed Simkl as unlinked and forced
+        // a pointless re-link. Restore the LoggedIn state from the stored
+        // tokens at construction.
+        if (preferences.isLinked) {
+            _loginState.value = com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn(
+                preferences.userName,
+            )
+            Logger.i(TAG) { "init — Simkl login restored from the stored tokens (user=$preferences.userName)" }
+        }
+    }
+
+    // ── authentication ──
+
+    override suspend fun isLoggedIn(): Boolean =
+        isConfigured && preferences.isLinked
+
+    override suspend fun startLogin(): String? {
+        if (!isConfigured) {
+            Logger.w(TAG) { "startLogin — not configured (no client id)" }
+            return null
+        }
+        return SimklOAuth.startLogin()
+    }
+
+    /**
+     * The redirect handler — MainActivity's simkl-auth dispatch calls this
+     * with the authorization code. Exchanges it (the PKCE verifier rides in
+     * memory from startLogin), stores the tokens, fetches the account name.
+     */
+    override suspend fun handleLoginCallback(code: String): Boolean = withContext(Dispatchers.IO) {
+        val tokens = SimklOAuth.exchangeCode(client, theJson(), code)
+        if (tokens == null) {
+            _loginState.value = com.confused.anikuta.core.trackerapi.TrackerLoginState.Error(
+                "Simkl login failed — the code exchange didn't go through.",
+            )
+            return@withContext false
+        }
+        storeTokens(tokens)
+        val me = api.usersMe(tokens.accessToken)
+        preferences.userName = me?.user?.name.orEmpty()
+        _loginState.value = com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn(
+            preferences.userName,
+        )
+        Logger.i(TAG) { "handleLoginCallback — linked as ${preferences.userName}" }
+        true
+    }
+
+    override suspend fun logout() = withContext(Dispatchers.IO) {
+        SimklOAuth.cancelLogin()
+        preferences.clear()
+        _loginState.value = com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedOut
+        Logger.i(TAG) { "logout — tokens cleared" }
+    }
+
+    // ── sync ──
+
+    override suspend fun syncEntry(entry: TrackEntry): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFreshToken()) return@withContext false
+        val token = preferences.accessToken
+        val resolution = resolveEntry(entry.trackerId)
+            ?: run {
+                Logger.w(TAG) { "syncEntry — id ${entry.trackerId} unresolved on Simkl" }
+                return@withContext false
+            }
+        val simklId = resolution.simkl ?: return@withContext false
+        val isMovie = resolution.type == "movie"
+        val ids = mapOf("simkl" to jsonNumber(simklId))
+
+        // 1. The watch status (add-to-list; movies skip watching/hold).
+        val status = mapStatus(entry.status, isMovie)
+        val item = SimklSyncItem(ids = ids, to = status)
+        val body = when {
+            isMovie -> SimklSyncBody(movies = listOf(item))
+            resolution.type == "anime" -> SimklSyncBody(anime = listOf(item))
+            else -> SimklSyncBody(shows = listOf(item))
+        }
+        val statusOk = api.addToList(body, token)
+
+        // 2. The progress — movies stamp watched_at; shows/anime mark episodes.
+        val progressOk = when {
+            isMovie && entry.progress > 0 -> api.addHistory(
+                SimklSyncBody(
+                    movies = listOf(
+                        SimklSyncItem(
+                            ids = ids,
+                            watched_at = isoNow(),
+                        ),
+                    ),
+                ),
+                token,
+            )
+            !isMovie && entry.progress > 0 -> api.addHistory(
+                SimklSyncBody(
+                    shows = listOf(
+                        SimklSyncItem(
+                            ids = ids,
+                            seasons = listOf(
+                                SimklSeason(
+                                    number = 1,
+                                    episodes = (1..entry.progress).map { SimklEpisodeMark(number = it) },
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                token,
+            )
+            else -> true
+        }
+
+        // 3. The rating (0-100 → 1-10; 0/null = unrated).
+        val ratingOk = entry.score?.takeIf { it > 0 }?.let {
+            api.addRatings(
+                when {
+                    isMovie -> SimklSyncBody(movies = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
+                    resolution.type == "anime" -> SimklSyncBody(anime = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
+                    else -> SimklSyncBody(shows = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
+                },
+                token,
+            ) != null
+        } ?: true
+
+        val ok = statusOk && progressOk && ratingOk
+        _syncState.value = if (ok) {
+            com.confused.anikuta.core.trackerapi.TrackerSyncState.Success(System.currentTimeMillis())
+        } else {
+            com.confused.anikuta.core.trackerapi.TrackerSyncState.Failed("Simkl sync failed (status=$statusOk progress=$progressOk rating=$ratingOk)")
+        }
+        ok
+    }
+
+    override suspend fun fetchEntry(trackerId: Int): TrackEntry? = withContext(Dispatchers.IO) {
+        if (!ensureFreshToken()) return@withContext null
+        val resolution = resolveEntry(trackerId) ?: return@withContext null
+        val simklId = resolution.simkl ?: return@withContext null
+        val kinds = when (resolution.type) {
+            "movie" -> listOf("movie")
+            "anime" -> listOf("anime")
+            else -> listOf("tv")
+        }
+        // The list state reads scan the library sections for the id (Simkl has
+        // no single-item "my state" endpoint; three bounded reads beat one
+        // unbounded guess).
+        for (kind in kinds) {
+            for (status in listOf("watching", "plantowatch", "completed", "hold", "dropped")) {
+                val items = api.allItems(kind, status, preferences.accessToken)
+                val hit = items.firstOrNull { it.ids?.simkl == simklId }
+                if (hit != null) {
+                    return@withContext TrackEntry(
+                        contentKey = "", // the caller keys by mainId — the fetch is identity-free
+                        trackerId = trackerId,
+                        status = mapFromSimkl(hit.status ?: status),
+                        score = hit.user_rating?.times(10),
+                        progress = hit.seasons.maxOfOrNull { season -> season.episodes.maxOfOrNull { it.number } ?: 0 }
+                            ?: if (resolution.type == "movie") 1 else 0,
+                        totalEpisodes = null,
+                        listId = null,
+                        startedAt = null,
+                        completedAt = hit.last_watched_at?.let { isoToMillis(it) },
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                }
+            }
+        }
+        null
+    }
+
+    override suspend fun search(query: String): List<TrackEntry> = withContext(Dispatchers.IO) {
+        val response = api.search("all", query) ?: return@withContext emptyList()
+        (response.anime + response.tv + response.movie).mapNotNull { item ->
+            val id = item.simkl_id ?: item.ids?.simkl ?: return@mapNotNull null
+            // NOTE: TrackEntry carries no title field (the linking UIs surface
+            // titles through their own search models); these rows are the
+            // id-bearing contract for the TrackSheet-style pickers.
+            TrackEntry(
+                contentKey = "",
+                trackerId = id.toInt(),
+                status = TrackStatus.PLAN_TO_WATCH,
+                score = null,
+                progress = 0,
+                totalEpisodes = null,
+                listId = null,
+                startedAt = null,
+                completedAt = null,
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    // ── internals ──
+
+    private fun theJson(): kotlinx.serialization.json.Json =
+        kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    /**
+     * The id-resolution ladder: the entry's trackerId is an AniList id for
+     * anime content and a TMDB id for movies/TV (the two axes' existing
+     * semantics). Resolve anilist first; fall through to tmdb.
+     */
+    private fun resolveEntry(trackerId: Int): SimklIdResolution? {
+        return api.resolveExternalId("anilist", trackerId.toLong())
+            ?: api.resolveExternalId("tmdb", trackerId.toLong())
+    }
+
+    private suspend fun ensureFreshToken(): Boolean {
+        if (!isConfigured) {
+            Logger.w(TAG) { "ensureFreshToken — not configured" }
+            return false
+        }
+        if (!preferences.isLinked) {
+            _loginState.value = com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedOut
+            return false
+        }
+        val expiresAt = preferences.accessExpiresAtMs
+        if (expiresAt > System.currentTimeMillis() + REFRESH_MARGIN_MS) return true
+        val refreshed = SimklOAuth.refresh(client, theJson(), preferences.refreshToken)
+        if (refreshed == null) {
+            Logger.w(TAG) { "token refresh failed — the user re-links (the refresh token is 180d sliding; a failure means revocation or expiry)" }
+            return false
+        }
+        storeTokens(refreshed)
+        return true
+    }
+
+    private fun storeTokens(tokens: SimklTokens) {
+        preferences.accessToken = tokens.accessToken
+        preferences.refreshToken = tokens.refreshToken
+        preferences.accessExpiresAtMs = System.currentTimeMillis() + tokens.expiresInSeconds * 1000L
+    }
+
+    private fun mapStatus(status: TrackStatus, isMovie: Boolean): String = when (status) {
+        TrackStatus.WATCHING -> if (isMovie) "completed" else "watching"
+        TrackStatus.COMPLETED, TrackStatus.REWATCHING -> "completed"
+        TrackStatus.PAUSED -> if (isMovie) "completed" else "hold"
+        TrackStatus.DROPPED -> "dropped"
+        TrackStatus.PLAN_TO_WATCH -> "plantowatch"
+    }
+
+    private fun mapFromSimkl(status: String): TrackStatus = when (status.lowercase()) {
+        "watching" -> TrackStatus.WATCHING
+        "completed" -> TrackStatus.COMPLETED
+        "hold" -> TrackStatus.PAUSED
+        "dropped" -> TrackStatus.DROPPED
+        "plantowatch" -> TrackStatus.PLAN_TO_WATCH
+        else -> TrackStatus.WATCHING
+    }
+
+    private fun toSimklScore(appScore: Int): Int =
+        ((appScore.coerceIn(0, 100) / 10.0).let { kotlin.math.round(it) }).toInt().coerceIn(1, 10)
+
+    private fun jsonNumber(value: Long): kotlinx.serialization.json.JsonPrimitive =
+        kotlinx.serialization.json.JsonPrimitive(value)
+
+    private fun isoNow(): String =
+        java.time.Instant.ofEpochMilli(System.currentTimeMillis()).toString()
+
+    private fun isoToMillis(iso: String): Long? =
+        runCatching { java.time.Instant.parse(iso).toEpochMilli() }.getOrNull()
+}

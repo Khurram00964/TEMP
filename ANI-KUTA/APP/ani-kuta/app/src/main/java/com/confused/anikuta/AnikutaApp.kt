@@ -177,6 +177,9 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 downloadFeatureModule,
                 metadataModule,
                 trackerAniListModule,
+                com.confused.anikuta.core.trackersimkl.trackerSimklModule, // ROUND 163 (STEP-2): the Simkl tracker (movies + TV)
+                com.confused.anikuta.core.tmdb.tmdbModule, // ROUND 163 (STEP-3): the TMDB data source
+                com.confused.anikuta.core.tvmaze.tvmazeModule, // ROUND 163 (STEP-3): the TVmaze data source
                 watchProgressModule,
                 smartMatcherModule,
                 shareModule,  // Round 101 (WS-C): the share system (:core:share)
@@ -184,6 +187,20 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
                 dataCacheModule,
                 playbackCacheModule,
                 appModule,
+                // ROUND 163 (STEP-2): the composition root owns the tracker
+                // aggregation (the named("trackers") list moved OUT of the
+                // anilist module — the Simkl tracker joins without that module
+                // growing a tracker-simkl dependency).
+                org.koin.dsl.module {
+                    single<List<com.confused.anikuta.core.trackerapi.Tracker>>(
+                        org.koin.core.qualifier.named("trackers"),
+                    ) {
+                        listOf(
+                            get<com.confused.anikuta.core.trackeranilist.AniListTracker>(),
+                            get<com.confused.anikuta.core.trackersimkl.SimklTracker>(),
+                        )
+                    }
+                },
             )
             // Debug-only Koin modules (debug-bubble, etc.). No-op in release
             // builds — debugKoinModules() returns emptyList() there.
@@ -250,6 +267,35 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             Logger.i("AnikutaApp") { "Tracking watch-sync bridge started" }
         } catch (e: Exception) {
             Logger.e("AnikutaApp", e) { "Failed to start the tracking watch-sync bridge" }
+        }
+
+        // ── ROUND 163 (STEP-1): the growth-bound maintenance pass — throttled
+        // to once per day on the app-open path (the preference stamp; 0 = the
+        // first open runs it). The sweeps are failure-isolated inside
+        // DatabaseMaintenance, so this can never take the boot down. ──
+        try {
+            val koin = org.koin.core.context.GlobalContext.get()
+            val appPreferences = koin.get<com.confused.anikuta.core.preferences.AppPreferences>()
+            appScope.launch {
+                // ROUND 165 (the startup hardening): the DB driver resolves
+                // INSIDE the coroutine — an eager get() here opened the
+                // database (and ran the v4-to-v6 migration) on the MAIN
+                // thread during onCreate, the prime suspect for the
+                // update-over-old splash hang on the v1.1.101 device round.
+                val database = koin.get<com.confused.anikuta.core.database.AnikutaDatabase>()
+                val now = System.currentTimeMillis()
+                if (now - appPreferences.lastDatabaseMaintenanceAt >= 24L * 60L * 60L * 1000L) {
+                    val result = com.confused.anikuta.core.database.DatabaseMaintenance.run(database, now)
+                    appPreferences.lastDatabaseMaintenanceAt = now
+                    Logger.i("AnikutaApp") {
+                        "Database maintenance pass complete " +
+                            "(sessions=${result.watchSessionsSwept}, metadata=${result.episodeMetadataSwept}, " +
+                            "browse=${result.browseCacheSwept})"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.e("AnikutaApp", e) { "Failed to run the database maintenance pass" }
         }
 
         // D-562 (round 74): the launcher-icon self-heal. PackageManager
@@ -443,6 +489,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // (identity) in release builds.
             single<SqlDriver> { wrapDebugSqlDriver(DatabaseDriverFactory(get()).create()) }
             single<AnikutaDatabase> { AnikutaDatabase(get()) }
+            single { com.confused.anikuta.core.database.ExtensionUsageTracker(get()) } // ROUND 165: the priority tracker
 
             // Phase SC-2: bind ScheduleStore as ActualReleaseUpdater (breaks the circular
             // dependency between :core:updates + :core:schedule).
@@ -558,6 +605,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // ROUND 151: the home feed's own prefs (the "Airs today" source
             // toggle — library | global).
             single { com.confused.anikuta.core.preferences.HomePreferences(get()) }
+            single { com.confused.anikuta.core.preferences.ExtensionPriorityPreferences(get()) } // ROUND 165: the priority toggle
 
             // ViewModels (app-level)
             viewModelOf(::NotificationsSettingsViewModel)

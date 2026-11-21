@@ -12,6 +12,13 @@ class AppPreferences(private val store: PreferenceStore) {
         get() = store.getString(KEY_CONTENT_MODE, "anime")
         set(value) = store.putString(KEY_CONTENT_MODE, value)
 
+    // ── ROUND 163 (STEP-1): the daily DatabaseMaintenance throttle stamp ──
+    // The last epoch-ms a maintenance pass ran; the app-open path runs the
+    // sweeps when this is > 24h stale. 0 = never ran (the first open runs it).
+    var lastDatabaseMaintenanceAt: Long
+        get() = store.getLong(KEY_LAST_DB_MAINTENANCE, 0L)
+        set(value) = store.putLong(KEY_LAST_DB_MAINTENANCE, value)
+
     var activityTrackingRetentionDays: Int
         get() = store.getInt(KEY_TRACKING_RETENTION, 365) // 0 = unlimited
         set(value) = store.putInt(KEY_TRACKING_RETENTION, value)
@@ -157,6 +164,7 @@ class AppPreferences(private val store: PreferenceStore) {
         private const val KEY_LOGGING_ENABLED = "logging_enabled"
         private const val KEY_LAST_TAB = "last_tab" // D-267: last-selected tab
         private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed" // D-403: the wizard flag
+        private const val KEY_LAST_DB_MAINTENANCE = "last_db_maintenance_at" // ROUND 163: the daily prune throttle
         private const val KEY_ENABLED_EXTENSIONS = "enabled_extensions"
         // D-236: Details page background customization.
         private const val KEY_DETAILS_BANNER_TINT = "details_banner_tint"
