@@ -131,6 +131,16 @@ class TvmazeApi(
      * excluded — /schedule/web covers them and is called for the same day).
      */
     suspend fun schedule(date: String): List<TvmazeShow> = withContext(Dispatchers.IO) {
+
+    /** ROUND 171: the single-show detail (the enrichment pass). */
+    suspend fun show(id: Int): TvmazeShow? = withContext(Dispatchers.IO) {
+        val payload = get("https://api.tvmaze.com/shows/$id") ?: return@withContext null
+        runCatching {
+            val obj = kotlinx.serialization.json.Json.parseToJsonElement(payload).jsonObject
+            parseShow(obj, embeddedNext = false)
+        }.getOrNull()
+    }
+
         // ROUND 165 (the empty-first-load fix): /schedule EXCLUDES the
         // web-only series — /schedule/web covers them; BOTH merge so the
         // default feed is complete.

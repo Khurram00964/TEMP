@@ -1186,13 +1186,59 @@ class DetailsViewModel(
                 Logger.w(TAG) { "metadata DB linking failed (non-fatal): ${e.message}" }
             }
 
-            val details = runCatching { contentRepository.getContentDetails(mainId) }.getOrNull()
+            var details = runCatching { contentRepository.getContentDetails(mainId) }.getOrNull()
+
+            // ── ROUND 171: THE ENRICHMENT PASS (the translation layer) —
+            // the sparse row (no synopsis) + the TMDB/TVmaze source → the
+            // detail fetch merges into the data axis (the device report:
+            // the descriptions blank for some of them, the refresh dead).
+            // The fine type (tmdb_movie/tmdb_tv) rides dataSourceType. ──
+            val fineType = details?.dataSourceType
+            val refId = details?.dataSourceRefId?.toIntOrNull()
+            if (details?.dataSynopsis.isNullOrBlank() && refId != null && refId > 0) {
+                when (fineType) {
+                    "tmdb_movie", "tmdb_tv" -> tmdbApi?.detail(
+                        if (fineType == "tmdb_tv") "tv" else "movie",
+                        refId,
+                    )?.let { d ->
+                        details = details?.copy(
+                            dataSynopsis = d.item.overview,
+                            dataCoverUrl = d.item.posterUrl ?: details?.dataCoverUrl,
+                            dataSeasonYear = d.item.year?.toLong(),
+                            dataScore = d.item.rating?.let { (it * 10).toInt().toLong() },
+                            dataEpisodes = d.episodes?.toLong(),
+                            dataStatus = d.status,
+                            dataGenres = d.genres.joinToString(","),
+                            dataUpdatedAt = System.currentTimeMillis(),
+                        )
+                        details?.let {
+                            runCatching { contentRepository.upsertContentDetails(it) }
+                        }
+                    }
+                    "tvmaze" -> tvmazeApi?.show(refId)?.let { show ->
+                        details = details?.copy(
+                            dataSynopsis = show.overview?.replace(Regex("<[^>]*>"), ""),
+                            dataCoverUrl = show.posterUrl ?: details?.dataCoverUrl,
+                            dataSeasonYear = show.year?.toLong(),
+                            dataScore = show.rating?.let { (it * 10).toInt().toLong() },
+                            dataStatus = show.status ?: details?.dataStatus,
+                            dataUpdatedAt = System.currentTimeMillis(),
+                        )
+                        details?.let {
+                            runCatching { contentRepository.upsertContentDetails(it) }
+                        }
+                    }
+                }
+                Logger.i(TAG) { "metadata enriched ($fineType:$refId)" }
+            }
+
             val anime = com.confused.anikuta.core.common.model.UnifiedAnime(
                 title = title ?: "",
                 coverUrl = details?.dataCoverUrl ?: coverUrl,
                 description = details?.dataSynopsis,
                 status = details?.dataStatus,
                 episodes = details?.dataEpisodes?.toInt(),
+                genres = details?.dataGenres?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
                 averageScore = details?.dataScore?.toInt(),
                 seasonYear = details?.dataSeasonYear?.toInt(),
                 anilistId = packedId,

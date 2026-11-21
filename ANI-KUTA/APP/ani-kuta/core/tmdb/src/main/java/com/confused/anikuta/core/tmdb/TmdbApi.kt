@@ -144,6 +144,57 @@ class TmdbApi(
         )
     }
 
+    /**
+     * ROUND 171: the FULL detail (the enrichment pass) — /movie/{id} or
+     * /tv/{id} with the genres resolved to the names + the episode count
+     * (tv: number_of_seasons/episodes via the last_season). The data axis
+     * merges this for the sparse rows (the device report: the descriptions
+     * blank for some of them).
+     */
+    data class TmdbDetail(
+        val item: TmdbItem,
+        val genres: List<String>,
+        val episodes: Int?,
+        val status: String?,
+    )
+
+    suspend fun detail(mediaType: String, id: Int): TmdbDetail? = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext null
+        val payload = get("/$mediaType/$id", "language" to "en-US") ?: return@withContext null
+        try {
+            val obj = json.parseToJsonElement(payload).jsonObject
+            val title = when (mediaType) {
+                "tv" -> obj["name"]?.jsonPrimitive?.content ?: obj["original_name"]?.jsonPrimitive?.content
+                else -> obj["title"]?.jsonPrimitive?.content ?: obj["original_title"]?.jsonPrimitive?.content
+            } ?: return@withContext null
+            val posterPath = obj["poster_path"]?.jsonPrimitive?.content
+            val backdropPath = obj["backdrop_path"]?.jsonPrimitive?.content
+            val item = TmdbItem(
+                id = id,
+                mediaType = mediaType,
+                title = title,
+                overview = obj["overview"]?.jsonPrimitive?.content,
+                posterUrl = posterPath?.takeIf { it.isNotBlank() }?.let { IMAGE_BASE + it },
+                backdropUrl = backdropPath?.takeIf { it.isNotBlank() }?.let { BACKDROP_BASE + it },
+                year = yearOf(
+                    obj["release_date"]?.jsonPrimitive?.content
+                        ?: obj["first_air_date"]?.jsonPrimitive?.content,
+                ),
+                rating = obj["vote_average"]?.jsonPrimitive?.content?.toDoubleOrNull(),
+            )
+            val genres = obj["genres"]?.jsonArray?.mapNotNull { g ->
+                g.jsonObject["name"]?.jsonPrimitive?.content
+            } ?: emptyList()
+            val episodes = obj["number_of_episodes"]?.jsonPrimitive?.content?.toIntOrNull()
+                ?: obj["runtime"]?.jsonPrimitive?.content?.toIntOrNull()
+            val status = obj["status"]?.jsonPrimitive?.content
+            TmdbDetail(item, genres, episodes, status)
+        } catch (e: Exception) {
+            Logger.w(TAG) { "detail parse failed: " + (e.message ?: "") }
+            null
+        }
+    }
+
     /** Popular TV series (the home shelf). */
     suspend fun popularTv(): List<TmdbItem> = withContext(Dispatchers.IO) {
         if (!configured()) return@withContext emptyList()
