@@ -41,6 +41,7 @@
 | `06-THE-EXTENSION-PRIORITY-SPEC.md` | The full priority-system spec (the copy — the system was reverted with the code) |
 | `07-THE-LEFTOVER-AND-THE-ORDER.md` | The remaining items + the implementation order for the redo |
 | `08-THE-KEYS.md` | ALL the credentials/keys (the MAL, the Trakt, the TMDB, the Simkl, the redirects) |
+| `09-THE-PLAN.md` | The round-167 investigation: the PM-6 code evidence, **the DB-v7 DOWNGRADE BLOCKER** (item 0 — no release from main before the migration re-land), the PM-6 hardening plan, the normalization plan (the 5 giants), the consolidated redo queue |
 
 ## The rules for the redo (the user's standing orders, restated)
 

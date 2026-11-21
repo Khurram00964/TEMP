@@ -3,6 +3,9 @@
 > One-line lessons from mistakes, corrections, and insights.
 > Read at task start (grep for tags matching your task type). Append when you learn something.
 
+## THE REVERT-CARRIES-A-SCHEMA-FLOOR LESSON (round 167)
+Reverting CODE does not revert the DEVICES: every shipped build stamps its schema version on every installed device, and a reverted main ships a LOWER version than the fleet runs — the update-over becomes a downgrade and androidx's Callback.onDowngrade THROWS at the first DB open ("Can't downgrade database from version N to M" — verified from the cached aar's class strings, not from memory). The versionCode floor (≥10204) had a twin nobody wrote down: the SCHEMA floor (≥ v7). RULE: before ANY release from a reverted/rewound main, diff main's .sqm count against the newest shipped tag's .sqm count; if lower, re-land the shipped migrations (+ their paired .sq/query updates) verbatim from the recovery branch FIRST. A revert's recovery plan is incomplete without its schema plan.
+
 ## THE COHORT-AWARE MIGRATION LESSON (round 163)
 A migration chain guards on version NUMBERS, not SHAPES: the generated `oldVersion <= 4` guard skipped 4.sqm for the v1.1.96-99 cohort (their user_version was 5 with a DIFFERENT column set — the reverted round's 4.sqm), so the new chain never delivered the column the new mapper reads → a crash loop for exactly the devices that exist on TEMP. The adversarial reviewer caught what the implementer's own contract rule ("no new hasColumn probes") had made unreachable. RULE: enumerate EVERY schema version any released build ever stamped (git tag --contains the migration commits) and write a shape-repair pre-flight for each non-chain shape (DatabaseDriverFactory.migrateV5ShapeIfNeeded — the documented exception); a version-only view of migrations is a cohort blind spot.
 

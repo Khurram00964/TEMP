@@ -2,7 +2,7 @@
 
 **ANI-KUTA** is an Android anime streaming/downloading app built with Kotlin + Jetpack Compose + MPV + SQLDelight + Koin. There is also a companion web dashboard (Next.js) that visualizes the project's architecture, decisions, and progress.
 
-**GitHub repository:** `https://github.com/testplay-byte/ANI-KUTA`
+**GitHub repository:** the dev repo `testplay-byte/ANI-KUTA` is UNREACHABLE (the flagged account) — **the LIVE line is the TEMP mirror `https://github.com/Khurram00964/TEMP`** (CI + debug releases; clone THIS). The official releases + site live at `https://github.com/Confused-Creature-180/ANI-KUTA`.
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### Task 1 (your very first task): download and read CORE_RULES.md
 
-**Before you do anything else — before setting up your environment, before opening any code, before reading any other documentation — read the core rules. https://github.com/testplay-byte/ANI-KUTA/blob/main/ANI-KUTA/AGENT-CONTEXT/CORE_RULES.md** (note: the default branch IS `main` — renamed from `feature/round-57-cloudstream-downloads` in Round 118, D-743)
+**Before you do anything else — before setting up your environment, before opening any code, before reading any other documentation — read the core rules. https://github.com/Khurram00964/TEMP/blob/main/ANI-KUTA/AGENT-CONTEXT/CORE_RULES.md** (note: the default branch IS `main` — renamed from `feature/round-57-cloudstream-downloads` in Round 118, D-743)
 
 This file contains non-negotiable rules that supersede everything else in the project. Pay special attention to:
 
@@ -32,15 +32,16 @@ After CORE_RULES.md, read these files in order:
 2. **`AGENT-CONTEXT/master.md`** — project orientation: what ANI-KUTA is, folder layout, tech stack
 3. **`AGENT-CONTEXT/workflow.md`** — the task execution loop + project phases
 4. **`AGENT-CONTEXT/SESSION.md`** — per-session bootstrap checklist (the current phase + standing orders live here — including the round-115 D-738 order: DEBUG BUILDS ONLY, no releases of any kind until the user's explicit order)
+4.5. **`ANI-KUTA/IMPROVEMENTS-TO-DO-2/`** — THE GOVERNING RECORD of the current phase (the round-166 revert): the state, the post-mortems PM-1..7, the home/search/tracking/priority specs, the keys, the redo order (07) + the plan with the DB-v7 release blocker (09). Read README.md first, then 01-09.
 5. **`AGENT-CONTEXT/memory/progress.md`** — what's done, what's next, blockers (read the top CURRENT STATUS block + the Round sections at the BOTTOM first — the middle is historical)
 6. **`AGENT-CONTEXT/memory/decisions.md`** — all architecture decisions (D-001 through D-741, newest at the top). Read the "Pending Decisions" section + the latest decisions.
 7. **`AGENT-CONTEXT/memory/changelog.md`** — high-level change history
 8. **`AGENT-CONTEXT/memory/lessons-learned.md`** — mistakes, corrections, insights, patterns (grep for tags matching your task type)
 9. **`AGENT-CONTEXT/HANDOFF-ROUND-116.md`** — the round-116 delta handoff, written for YOU (the gate rebuild, the lost-predecessor story, the environment refresh) + **`AGENT-CONTEXT/HANDOFF-ROUND-115.md`** — the round-115 full original (the phase, the loop, the environment gotchas, the open items)
 10. **`AGENT-CONTEXT/knowledge/`** — read every file in this folder:
-   - `architecture.md` — the 57-module architecture
+   - `architecture.md` — the 59-module architecture
    - `tech-stack.md` — technologies used
-   - `module-map.md` — all 57 modules (name, job, deps, key files — re-verified round 115)
+   - `module-map.md` — all 59 modules (name, job, deps, key files — re-verified round 162)
    - `project-overview.md`
    - `dashboard.md`
    - `old-vs-new.md`
@@ -62,12 +63,12 @@ Take your time. Read thoroughly. The goal is to build a complete mental model of
 
 After reading the documentation, explore the actual code structure:
 
-- `ANI-KUTA/APP/ani-kuta/` — look at `settings.gradle.kts` to see all modules (57: 1 app + 33 core + 2 data + 21 feature)
+- `ANI-KUTA/APP/ani-kuta/` — look at `settings.gradle.kts` to see all modules (59: 1 app + 35 core + 2 data + 21 feature — the api/impl pairs make the feature count)
 - `ANI-KUTA/APP/ani-kuta/core/` — the core modules (database, network, common, etc.)
 - `ANI-KUTA/APP/ani-kuta/feature/` — the feature modules (12 features: anime-details, anime-browse, anime-library, anime-search, anime-history, watch, cs-watch, extensions-settings, updates, download, onboarding, debug-bubble)
 - `ANI-KUTA/APP/ani-kuta/app/` — the app module (wiring, MainActivity, navigation)
-- `ANI-KUTA/APP/ani-kuta/core/database/src/main/sqldelight/` — the SQLDelight `.sq` files (database schema — 25 tables / 17 files)
-- `ANI-KUTA/APP/ani-kuta/DOCUMENTATION/cloudstream-v2/` — the round records (docs 72-97 = rounds 90-115; the newest = the current state)
+- `ANI-KUTA/APP/ani-kuta/core/database/src/main/sqldelight/` — the SQLDelight `.sq` files (database schema — 26 tables / 15 .sq files + 3 .sqm migrations; the schema floor is v7 — read ANI-KUTA/IMPROVEMENTS-TO-DO-2/09-THE-PLAN.md section B BEFORE any release work)
+- `ANI-KUTA/APP/ani-kuta/DOCUMENTATION/cloudstream-v2/` — the round records (docs 100-146 = rounds 118-165; the newest = the current state; docs 142-146 = the rounds 163-165 records preserved through the revert)
 - `ANI-KUTA/APP/ani-kuta/DOCUMENTATION/release/` — the build & release guides (RELEASE-PLAYBOOK.md + BUILD-AND-BRANCH-GUIDE.md — dormant under D-738 until the user orders a release)
 
 You don't need to read every Kotlin file — just understand the module layout and how things connect. you can use multiple sub agents for this too
