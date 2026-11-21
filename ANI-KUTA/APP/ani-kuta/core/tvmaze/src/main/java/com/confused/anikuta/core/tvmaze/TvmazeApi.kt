@@ -1,6 +1,8 @@
 package com.confused.anikuta.core.tvmaze
 
 import com.confused.anikuta.core.common.Logger
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -63,34 +65,47 @@ class TvmazeApi(
         }
     }.getOrNull()
 
-    /** Maps a TVmaze show object (the shared shape across endpoints). */
+    /**
+     * Maps a TVmaze show object (the shared shape across endpoints).
+     *
+     * ROUND 165 (the device crash fix): TVmaze emits literal JSON nulls for
+     * absent objects (image/rating/network/_embedded/summary) — a missing key
+     * passes  but a JsonNull VALUE does NOT:  threw
+     * IllegalArgumentException (the v1.1.101 device crash on selecting
+     * TVmaze). EVERY object access goes through the null-safe cast now, and
+     * JsonNull primitives are filtered (a null summary must not render the
+     * literal string "null").
+     */
     private fun parseShow(obj: kotlinx.serialization.json.JsonObject, embeddedNext: Boolean): TvmazeShow? {
-        val id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val title = obj["name"]?.jsonPrimitive?.content ?: return null
-        val image = obj["image"]?.jsonObject
+        fun jsonObject(key: String): JsonObject? = obj[key] as? JsonObject
+        fun jsonText(key: String): String? =
+            (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+        val id = jsonText("id")?.toIntOrNull() ?: return null
+        val title = jsonText("name") ?: return null
+        val image = jsonObject("image")
         var nextName: String? = null
         var nextDate: String? = null
         var nextNumber: Int? = null
         if (embeddedNext) {
-            val next = obj["_embedded"]?.jsonObject?.get("nextepisode")?.jsonObject
-            nextName = next?.get("name")?.jsonPrimitive?.content
-            nextDate = next?.get("airdate")?.jsonPrimitive?.content
-            nextNumber = next?.get("number")?.jsonPrimitive?.content?.toIntOrNull()
+            val next = jsonObject("_embedded")?.get("nextepisode") as? JsonObject
+            nextName = (next?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+            nextDate = (next?.get("airdate") as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+            nextNumber = (next?.get("number") as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is JsonNull }?.content?.toIntOrNull()
         }
         return TvmazeShow(
             id = id,
             title = title,
-            overview = obj["summary"]?.jsonPrimitive?.content?.let { summary ->
+            overview = jsonText("summary")?.let { summary ->
                 // TVmaze summaries are HTML fragments — strip the tags for the line.
                 summary.replace(Regex("<[^>]*>"), "").trim()
             },
-            posterUrl = image?.get("medium")?.jsonPrimitive?.content
-                ?: image?.get("original")?.jsonPrimitive?.content,
-            year = obj["premiered"]?.jsonPrimitive?.content?.takeIf { it.length >= 4 }
-                ?.substring(0, 4)?.toIntOrNull(),
-            rating = obj["rating"]?.jsonObject?.get("average")?.jsonPrimitive?.content?.toDoubleOrNull(),
-            network = (obj["network"]?.jsonObject ?: obj["webChannel"]?.jsonObject)
-                ?.get("name")?.jsonPrimitive?.content,
+            posterUrl = image?.get("medium")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.content }
+                ?: image?.get("original")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.content },
+            year = jsonText("premiered")?.takeIf { it.length >= 4 }?.substring(0, 4)?.toIntOrNull(),
+            rating = (jsonObject("rating")?.get("average") as? kotlinx.serialization.json.JsonPrimitive)
+                ?.takeIf { it !is JsonNull }?.content?.toDoubleOrNull(),
+            network = (jsonObject("network") ?: jsonObject("webChannel"))
+                ?.get("name")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p !is JsonNull }?.content },
             nextEpisodeName = nextName,
             nextEpisodeAirDate = nextDate,
             nextEpisodeNumber = nextNumber,
@@ -123,8 +138,8 @@ class TvmazeApi(
         val seen = mutableSetOf<Int>()
         episodes.mapNotNull { element ->
             val obj = element.jsonObject
-            val show = obj["_embedded"]?.jsonObject?.get("show")?.jsonObject
-                ?: obj["show"]?.jsonObject
+            val show = (obj["_embedded"] as? JsonObject)?.get("show") as? JsonObject
+                ?: obj["show"] as? JsonObject
                 ?: return@mapNotNull null
             val parsed = parseShow(show, embeddedNext = false) ?: return@mapNotNull null
             // The schedule is PER-EPISODE rows — dedupe to one row per show.

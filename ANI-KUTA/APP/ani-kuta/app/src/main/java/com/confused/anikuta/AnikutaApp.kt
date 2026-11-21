@@ -254,9 +254,14 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
         // DatabaseMaintenance, so this can never take the boot down. ──
         try {
             val koin = org.koin.core.context.GlobalContext.get()
-            val database = koin.get<com.confused.anikuta.core.database.AnikutaDatabase>()
             val appPreferences = koin.get<com.confused.anikuta.core.preferences.AppPreferences>()
             appScope.launch {
+                // ROUND 165 (the startup hardening): the DB driver resolves
+                // INSIDE the coroutine — an eager get() here opened the
+                // database (and ran the v4-to-v6 migration) on the MAIN
+                // thread during onCreate, the prime suspect for the
+                // update-over-old splash hang on the v1.1.101 device round.
+                val database = koin.get<com.confused.anikuta.core.database.AnikutaDatabase>()
                 val now = System.currentTimeMillis()
                 if (now - appPreferences.lastDatabaseMaintenanceAt >= 24L * 60L * 60L * 1000L) {
                     val result = com.confused.anikuta.core.database.DatabaseMaintenance.run(database, now)

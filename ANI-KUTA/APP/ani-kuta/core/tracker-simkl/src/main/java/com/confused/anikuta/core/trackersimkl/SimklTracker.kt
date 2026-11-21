@@ -46,6 +46,20 @@ class SimklTracker(
 
     val isConfigured: Boolean get() = TrackerKeys.SIMKL_CLIENT_ID.isNotBlank()
 
+    init {
+        // ROUND 165 (the device bug): the stored tokens SURVIVE process death
+        // (PreferenceStore) but BaseTracker seeds the in-memory login flow
+        // LoggedOut — so every cold start showed Simkl as unlinked and forced
+        // a pointless re-link. Restore the LoggedIn state from the stored
+        // tokens at construction.
+        if (preferences.isLinked) {
+            _loginState.value = com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn(
+                preferences.userName,
+            )
+            Logger.i(TAG) { "init — Simkl login restored from the stored tokens (user=$preferences.userName)" }
+        }
+    }
+
     // ── authentication ──
 
     override suspend fun isLoggedIn(): Boolean =
