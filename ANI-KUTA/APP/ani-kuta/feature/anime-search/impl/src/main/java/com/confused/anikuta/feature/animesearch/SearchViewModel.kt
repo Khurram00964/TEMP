@@ -959,7 +959,7 @@ class SearchViewModel(
             // results, then navigate on the best match. StateFlow.firstOrNull
             // waits for the FIRST MATCHING emission (the current Loading value
             // does not match, so it waits for the results to land).
-            _uiState.firstOrNull { state ->
+            val results = _uiState.firstOrNull { state ->
                 state is SearchUiState.ExtensionSuccess ||
                     state is SearchUiState.ExtensionEmpty ||
                     state is SearchUiState.ExtensionError

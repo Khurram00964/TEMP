@@ -1555,7 +1555,7 @@ private fun DataSourceResultsGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         if (recentsHeader != null) {
-            item(key = "recents-header", span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "recents-header", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 RecentSearchesCard(
                     recents = recentsHeader.recents,
                     onPick = recentsHeader.onPick,
@@ -1568,7 +1568,7 @@ private fun DataSourceResultsGrid(
             DataSourceResultCard(result, onResultTap, titleStyle)
         }
         if (loadingMore) {
-            item(key = "ds-load-more-footer", span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "ds-load-more-footer", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 LoadingMoreFooter()
             }
         }
