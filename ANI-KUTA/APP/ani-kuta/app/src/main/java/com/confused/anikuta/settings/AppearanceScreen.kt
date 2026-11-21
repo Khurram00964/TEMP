@@ -1,5 +1,6 @@
 package com.confused.anikuta.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,11 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.confused.anikuta.core.designsystem.theme.RobotoFamily
+import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +57,8 @@ import com.confused.anikuta.settings.search.rememberSettingsAnchorScroll
 @Composable
 fun AppearanceScreen(
     onOpenGeneral: () -> Unit,
+    // ROUND 165: the search page appearance settings.
+    onOpenSearchPage: () -> Unit = {},
     onOpenDetailsPage: () -> Unit,
     onOpenEpisodeSettings: () -> Unit,
     onOpenPlayerEpisodeSettings: () -> Unit = {},
@@ -95,6 +103,24 @@ fun AppearanceScreen(
                                 title = "General",
                                 subtitle = "Theme mode, palettes, and colors",
                                 onClick = onOpenGeneral,
+                            )
+                            androidx.compose.material3.ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = "Search page",
+                                        fontFamily = RobotoFamily,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = "Result card titles, more",
+                                        fontFamily = RobotoFamily,
+                                        fontSize = 12.sp,
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth().clickable { onOpenSearchPage() },
                             )
                         }
                     }

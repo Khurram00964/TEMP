@@ -145,6 +145,12 @@ fun SearchScreen(
     // re-derive on the Settings toggle).
     val searchPrefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
     val resultTitleStyle by searchPrefs.resultTitleStyleFlow.collectAsState()
+    // ROUND 168 (Phase G): the user's customization set — the rating badge,
+    // the details line, the grid density, the recents strip.
+    val showRating by searchPrefs.showRatingBadgeFlow.collectAsState()
+    val showDetails by searchPrefs.showDetailsLineFlow.collectAsState()
+    val gridColumns by searchPrefs.gridColumnsFlow.collectAsState()
+    val showRecentsPref by searchPrefs.showRecentsFlow.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val query by viewModel.query.collectAsState()
     val source by viewModel.source.collectAsState()
@@ -397,7 +403,7 @@ fun SearchScreen(
                             .verticalScroll(scrollState)
                             .padding(top = 0.dp, bottom = bottomBarClearance(110.dp)), // D-563: inset-aware
                     ) {
-                        if (recents.isNotEmpty()) {
+                        if (showRecentsPref && recents.isNotEmpty()) {
                             RecentSearchesCard(
                                 recents = recents,
                                 onPick = viewModel::onPickRecent,
@@ -519,7 +525,7 @@ fun SearchScreen(
                         // the grid's header (scrolls away with content; the top bar collapses
                         // to title + compact search bar). They hide only when the user
                         // actually searches (query non-blank → Loading).
-                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                        recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
                     )
@@ -540,10 +546,13 @@ fun SearchScreen(
                         loadingMore = state.loadingMore,
                         canLoadMore = state.hasMore,
                         onLoadMore = viewModel::loadMore,
-                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                        recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
                         titleStyle = resultTitleStyle,
+                        showRating = showRating,
+                        showDetails = showDetails,
+                        columnsOverride = gridColumns,
                     )
                 }
                 is SearchUiState.ExtensionSuccess -> {
@@ -565,7 +574,7 @@ fun SearchScreen(
                         loadingMore = state.loadingMore,
                         canLoadMore = state.hasMore,
                         onLoadMore = viewModel::loadMore,
-                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                        recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
                     )
@@ -594,7 +603,7 @@ fun SearchScreen(
                                 anime.year,
                             )
                         },
-                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                        recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
                     )
@@ -624,7 +633,7 @@ fun SearchScreen(
                                 anime.year,
                             )
                         },
-                        recentsHeader = if (query.isBlank() && recents.isNotEmpty()) {
+                        recentsHeader = if (showRecentsPref && query.isBlank() && recents.isNotEmpty()) {
                             RecentsHeaderData(recents, viewModel::onPickRecent, viewModel::onRemoveRecent, viewModel::onClearRecents)
                         } else null,
                     )
@@ -894,7 +903,7 @@ private fun ResultsGrid(
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Fixed(3),
+        columns = if (columnsOverride in 2..4) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -1127,7 +1136,7 @@ private fun ExtensionResultsGrid(
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Fixed(3),
+        columns = if (columnsOverride in 2..4) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -1544,6 +1553,10 @@ private fun DataSourceResultsGrid(
     recentsHeader: RecentsHeaderData? = null,
     titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle =
         com.confused.anikuta.core.preferences.ResultTitleStyle.OVERLAY,
+    // ROUND 168 (Phase G): the user's customization set.
+    showRating: Boolean = true,
+    showDetails: Boolean = true,
+    columnsOverride: Int = 0, // 0 = the adaptive default (3)
 ) {
     // ROUND 165: THE SHARED SKELETON — the same LazyGridState the AniList and
     // the extension grids use, so the top bar's collapse, the recents header
@@ -1553,7 +1566,7 @@ private fun DataSourceResultsGrid(
     ApproachBottomEffect(gridState, canLoadMore, onLoadMore)
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Fixed(3),
+        columns = if (columnsOverride in 2..4) GridCells.Fixed(columnsOverride) else GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
@@ -1575,7 +1588,7 @@ private fun DataSourceResultsGrid(
             }
         }
         items(results, key = { "${it.source.id}-${it.remoteId}" }) { result ->
-            DataSourceResultCard(result, onResultTap, titleStyle)
+            DataSourceResultCard(result, onResultTap, titleStyle, showRating, showDetails)
         }
         if (loadingMore) {
             item(key = "ds-load-more-footer", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -1590,6 +1603,8 @@ private fun DataSourceResultCard(
     result: DataSourceResult,
     onClick: (DataSourceResult) -> Unit,
     titleStyle: com.confused.anikuta.core.preferences.ResultTitleStyle,
+    showRating: Boolean = true,
+    showDetails: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -1602,8 +1617,8 @@ private fun DataSourceResultCard(
     // The meta line: the YEAR + the RATING only (the device order: the source
     // name "TMDB" was noise). The title is ONE line in both styles.
     val meta = buildString {
-        result.year?.let { append(it) }
-        result.rating?.let {
+        if (showDetails) result.year?.let { append(it) }
+        if (showRating) result.rating?.let {
             if (isNotEmpty()) append(" · ")
             append("%.1f".format(it))
         }

@@ -496,6 +496,10 @@ object AppIconKey : NavKey
 @Serializable
 object AppearanceGeneralKey : NavKey
 
+/** ROUND 168 (Phase G): the search page's appearance settings. */
+@Serializable
+object SearchPageSettingsKey : NavKey
+
 @Serializable
 object DetailsPageSettingsKey : NavKey
 
@@ -2124,6 +2128,8 @@ fun AppRoot() {
             )
             is AppearanceKey -> AppearanceScreen(
                 onOpenGeneral = { pushKey(AppearanceGeneralKey) },
+                // ROUND 168 (Phase G): the search page's appearance settings.
+                onOpenSearchPage = { pushKey(SearchPageSettingsKey) },
                 onOpenDetailsPage = { pushKey(DetailsPageSettingsKey) },
                 onOpenEpisodeSettings = { pushKey(EpisodeSettingsKey) },
                 // ROUND 102 (WS-G): the player page's episode-list page.
@@ -2141,6 +2147,11 @@ fun AppRoot() {
                 highlightAnchor = remember {
                     SettingsSearchNavigator.takeAnchor(SettingsSearchPage.APP_ICON)
                 },
+            )
+            is SearchPageSettingsKey -> com.confused.anikuta.settings.SearchPageSettingsScreen(
+                onBack = pop,
+                searchPreferences = org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.preferences.SearchPreferences>(),
             )
             is AppearanceGeneralKey -> AppearanceGeneralScreen(
                 onBack = pop,
