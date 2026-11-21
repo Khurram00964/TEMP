@@ -400,7 +400,7 @@ private fun fireOsShareChooser(
 // ════════════════════════════════════════════════════════════════════════════
 
 /** A small all-caps section label ABOVE each crimped card (the grouping rhythm). */
-@Composable
+/** A small all-caps section label ABOVE each crimped card (the grouping rhythm). */
 // ── ROUND 171: the source-row variant carrying the REAL logo (the device
 // order: the icons, not the generic discs).
 @Composable
@@ -433,6 +433,7 @@ private fun MenuDiscRowWithLogo(
     }
 }
 
+@Composable
 private fun MenuSectionLabel(text: String) {
     Text(
         text = text.uppercase(),

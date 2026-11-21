@@ -77,7 +77,7 @@ class DetailsViewModel(
     private val autoLinkService: AutoLinkService,
     private val autoLinkPreferences: AutoLinkPreferences,
     private val contentResolver: com.confused.anikuta.core.content.ContentResolver,
-    private val contentRepository: com.confused.anikuta.core.content.ContentRepository,
+    internal val contentRepository: com.confused.anikuta.core.content.ContentRepository,
     private val dataCacheRepository: com.confused.anikuta.core.datacache.DataCacheRepository,
     private val downloadManager: com.confused.anikuta.core.download.DownloadManager,
     // (internal — the tracking method cluster lives in DetailsViewModelTracking.kt
