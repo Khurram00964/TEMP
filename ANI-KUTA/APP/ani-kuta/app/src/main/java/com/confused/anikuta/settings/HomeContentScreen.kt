@@ -213,7 +213,7 @@ private val HomeContentKind.icon: ImageVector
     }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.ContentKindCell(
+private fun ContentKindCell(
     kind: HomeContentKind,
     enabled: Set<HomeContentKind>,
     homePreferences: HomePreferences,

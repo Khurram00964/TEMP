@@ -135,6 +135,7 @@ import com.confused.anikuta.settings.PermissionsScreen
 import com.confused.anikuta.settings.TorrentSettingsScreen
 import com.confused.anikuta.settings.search.SettingsSearchNavigator
 import com.confused.anikuta.settings.search.SettingsSearchPage
+import com.confused.anikuta.settings.HomeContentScreen
 import com.confused.anikuta.settings.SettingsScreen
 import com.confused.anikuta.settings.UpdateCategoriesScreen
 import com.confused.anikuta.settings.UpdatesSettingsScreen

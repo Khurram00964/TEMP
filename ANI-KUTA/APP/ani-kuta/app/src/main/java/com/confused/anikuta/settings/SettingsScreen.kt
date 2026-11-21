@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Security
@@ -343,6 +344,19 @@ fun SettingsScreen(
                             )
                         }
 
+                        // ── Home content (ROUND 164 STEP-3d) ──
+                        item {
+                            HubSection(
+                                activeAnchor = highlightAnchor,
+                                label = "Content",
+                                anchorId = "home_content",
+                                icon = Icons.Filled.Tv,
+                                title = "Home content",
+                                subtitle = "Choose what shows on your home page",
+                                onClick = onOpenHomeContent,
+                            )
+                        }
+
                         // ── ROUND 134 (D-816): Backup & restore ──
                         item {
                             HubSection(
@@ -377,17 +391,6 @@ fun SettingsScreen(
                             Column {
                                 SettingsSectionLabel("Player")
                                 SettingsHighlightTarget(anchorId = "player", activeAnchor = highlightAnchor) {
-                        item {
-                            HubSection(
-                                activeAnchor = highlightAnchor,
-                                label = "Content",
-                                anchorId = "home_content",
-                                icon = Icons.Filled.Tv,
-                                title = "Home content",
-                                subtitle = "Choose what shows on your home page",
-                                onClick = onOpenHomeContent,
-                            )
-                        }
                                     MoreListRow(
                                         icon = Icons.Filled.PlayCircle,
                                         title = "Player",
