@@ -108,9 +108,16 @@ data class SimklSearchItem(
 @Serializable
 data class SimklMediaItem(
     val title: String? = null,
+    // ROUND 170: BOTH shape families — the trending items carry `poster`
+    // (a simkl.in PATH) while the search items may carry `poster_url` (a
+    // full URL); the ids live at ids.simkl_id OR ids.simkl OR the
+    // top-level simkl_id depending on the endpoint.
     val poster: String? = null,
+    val poster_url: String? = null,
+    val simkl_id: Long? = null,
     val ids: SimklMediaIds? = null,
     val release_date: String? = null,
+    val year: Int? = null,
     val overview: String? = null,
     val total_episodes: Int? = null,
     val ratings: SimklRatings? = null,
@@ -119,6 +126,7 @@ data class SimklMediaItem(
 @Serializable
 data class SimklMediaIds(
     val simkl_id: Long? = null,
+    val simkl: Long? = null,
     val slug: String? = null,
 )
 

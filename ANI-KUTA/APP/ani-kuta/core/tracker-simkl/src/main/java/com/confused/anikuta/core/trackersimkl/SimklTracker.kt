@@ -244,10 +244,14 @@ class SimklTracker(
      * kind returns every Simkl category.
      */
     suspend fun searchItems(query: String): List<SimklMediaItem> = withContext(Dispatchers.IO) {
-        // ROUND 169: the search REQUIRES the user token (the live 401) — an
-        // unlinked account returns the honest empty.
+        // ROUND 170: the search REQUIRES the user token, and the kinds are
+        // PER-ENDPOINT (no /search/all — the v1.1.105 empty results came from
+        // that 404). The three kinds merge, deduped by id.
         val token = preferences.accessToken.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
-        api.searchAuthed("all", query, token)
+        val all = listOf("movie", "tv", "anime").flatMap { kind ->
+            runCatching { api.searchKind(kind, query, token) }.getOrDefault(emptyList())
+        }
+        all.distinctBy { it.ids?.simkl_id ?: it.ids?.simkl ?: it.simkl_id }
     }
 
     /** ROUND 168 (Phase E): the trending default (the blank-query grid fill). */

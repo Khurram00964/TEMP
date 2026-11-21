@@ -44,6 +44,8 @@ val detailsModule = module {
             trackingStateRepository = getOrNull(),
             // ROUND 168 (the tracker redo): the MAL tracker.
             malTracker = getOrNull(),
+            // ROUND 170: the Simkl tracker (the picker row + the dispatch).
+            simklTracker = getOrNull(),
         )
     }
 }

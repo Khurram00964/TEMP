@@ -2119,6 +2119,7 @@ fun DetailsScreen(
         // paths live in DetailsViewModelMultiTracker.kt).
         val activeTracker by viewModel.activeTrackerType.collectAsState()
         val isMal = activeTracker == com.confused.anikuta.core.trackerapi.TrackerType.MAL
+        val isSimkl = activeTracker == com.confused.anikuta.core.trackerapi.TrackerType.SIMKL
         com.confused.anikuta.core.designsystem.theme.AdaptiveAccentTheme(
             accentArgb = coverAccent?.toLong(),
         ) {
@@ -2131,20 +2132,38 @@ fun DetailsScreen(
             isTracked = isContentTracked,
             error = trackSheetError,
             isSaving = trackSheetSaving,
-            trackerName = if (isMal) "MyAnimeList" else "AniList",
+            trackerName = when (activeTracker) {
+                com.confused.anikuta.core.trackerapi.TrackerType.MAL -> "MyAnimeList"
+                com.confused.anikuta.core.trackerapi.TrackerType.SIMKL -> "Simkl"
+                else -> "AniList"
+            },
             onSave = { entry ->
-                if (isMal) viewModel.pushMalTrackEntry(entry, flipOptIn = false)
-                else viewModel.saveTrackEntry(entry)
+                when (activeTracker) {
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL -> viewModel.pushMalTrackEntry(entry, flipOptIn = false)
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL -> viewModel.pushSimklTrackEntry(entry, flipOptIn = false)
+                    else -> viewModel.saveTrackEntry(entry)
+                }
             },
             onStartTracking = { entry ->
-                if (isMal) viewModel.pushMalTrackEntry(entry, flipOptIn = true)
-                else viewModel.startTracking(entry)
+                when (activeTracker) {
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL -> viewModel.pushMalTrackEntry(entry, flipOptIn = true)
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL -> viewModel.pushSimklTrackEntry(entry, flipOptIn = true)
+                    else -> viewModel.startTracking(entry)
+                }
             },
             onRemoveTracking = {
-                if (isMal) viewModel.removeMalTracking() else viewModel.removeTracking()
+                when (activeTracker) {
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL -> viewModel.removeMalTracking()
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL -> viewModel.removeSimklTracking()
+                    else -> viewModel.removeTracking()
+                }
             },
             onDeleteFromAniList = {
-                if (isMal) viewModel.deleteFromMal() else viewModel.deleteFromAniList()
+                when (activeTracker) {
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL -> viewModel.deleteFromMal()
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL -> viewModel.deleteFromSimkl()
+                    else -> viewModel.deleteFromAniList()
+                }
             },
             onDismiss = viewModel::dismissTrackSheet,
         )
@@ -2156,9 +2175,11 @@ fun DetailsScreen(
     if (showTrackerPicker) {
         val malUser by viewModel.malLinkedUsername.collectAsState()
         val anilistUser by viewModel.anilistLinkedUsername.collectAsState()
+        val simklUser by viewModel.simklLinkedUsername.collectAsState()
         TrackerPickerSheet(
             anilistUsername = anilistUser,
             malUsername = malUser,
+            simklUsername = simklUser,
             onPick = viewModel::pickTracker,
             onDismiss = viewModel::dismissTrackerPicker,
         )
@@ -2177,6 +2198,22 @@ fun DetailsScreen(
             onSearch = viewModel::searchMalForLink,
             onPick = viewModel::pickMalAnime,
             onDismiss = viewModel::dismissMalLinkSheet,
+        )
+    }
+
+    // ── ROUND 170: the SIMKL LINK SHEET (the search → the pick → the mapping) ──
+    val showSimklLinkSheet by viewModel.showSimklLinkSheet.collectAsState()
+    if (showSimklLinkSheet) {
+        val simklSearching by viewModel.simklLinkSearching.collectAsState()
+        val simklResults by viewModel.simklLinkResults.collectAsState()
+        val seedTitle = (state as? DetailsState.Success)?.anime?.title.orEmpty()
+        SimklLinkSheet(
+            seedTitle = seedTitle,
+            isSearching = simklSearching,
+            results = simklResults,
+            onSearch = viewModel::searchSimklForLink,
+            onPick = viewModel::pickSimklItem,
+            onDismiss = viewModel::dismissSimklLinkSheet,
         )
     }
 

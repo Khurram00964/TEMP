@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -188,6 +189,14 @@ fun TrackSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+
+    // ROUND 170 (the device order): the tracking system's favicon at the
+    // sheet's top — the icon shows WHICH tracker drives the sheet.
+    val trackerLogoRes = when (trackerName) {
+        "MyAnimeList" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal
+        "Simkl" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl
+        else -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist
+    }
     val maxSheetHeight = screenHeight * 0.85f
     // ROUND 105 (WS-B): the side buttons' haptic layer — the sheet-level
     // context (the wheel and the picker cells keep their own).
@@ -244,6 +253,17 @@ fun TrackSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // ROUND 170 (the device order): the tracking system's favicon
+                // leads the top bar — WHICH tracker drives the sheet is
+                // visible at a glance.
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(trackerLogoRes),
+                    contentDescription = trackerName,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+                )
+                Spacer(Modifier.width(8.dp))
                 TrackingStatusChip(
                     isSaving = isSaving,
                     error = error,

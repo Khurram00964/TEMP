@@ -306,3 +306,50 @@ NEXT CYCLE (the ordered queue):
    Simkl library import exists? — the allItems reads exist).
 4. The TMDB/TVmaze real-logo assets (the Commons route blocked; the
    remaining favicons need proper sourcing).
+
+---
+
+## I. THE ROUND-170 ORDER (the v1.1.105 device report — THE SCOPE: only these)
+
+1. **🔴 THE DETAILS UNIFICATION (the user's biggest redirect):** the
+   MetadataDetailsScreen/VM/Key are DELETED — the taps open THE EXISTING
+   single details page (the AniList one the extensions use) with the data
+   TRANSLATED from the sources (the synthetic-AniListAnime parity — the
+   round-164 mechanism). The cover animations, the title placement, the
+   background art, the year/status, the genres, the synopsis — everything
+   identical. The 3-dot "link to data source" becomes **"Link to other"**:
+   the menu transforms into the sources list in THIS order: AniList →
+   MyAnimeList → Simkl → TMDB → TVmaze; after linking it shows the linked
+   source's name + "Unlink {source}". The DB manages the new sources via
+   the designed data axis.
+2. **🔴 THE SEARCH PAGE = ONE STABLE PAGE** — no per-source copies; the
+   grid layout IDENTICAL on all (the user: "they show exactly the same
+   data").
+3. **🔴 THE CARD FIXES:** the rating pill glitches on the non-AniList
+   sources (the pill rendered under the cover — the DS card's structure
+   differs from the AniList one → UNIFY into ONE card composable); the
+   release year at the TOP-LEFT OF THE TITLE (the overlay style) / at the
+   BOTTOM-LEFT OF THE COVER (the below style); the title moved DOWN a bit
+   (everything else unchanged); the BELOW-style space bug on AniList (the
+   title rendered ABOVE the covers).
+4. **🔴 THE TRACK LOGIC:** ONE TRACKER AT A TIME (the user's explicit
+   rule) — a tracked content's track action opens THAT tracker's sheet
+   directly; the picker only when untracked + >1 linked. The isTracked
+   flag dispatches by the tracker (the MAL "not tracking" bug). The Simkl
+   row joins the picker when linked. The picker rows show the username
+   ONLY below the name (no role text). The TrackSheet shows the tracking
+   system's favicon at its top.
+5. **🔴 THE SIMKL SEARCH:** no results immediately — the search response
+   shape ≠ the trending shape (the dual-shape DTO; the live verification
+   needs the user token — parse leniently for BOTH shapes).
+6. **🟠 THE APPEARANCE SEARCH-PAGE REDESIGN:** the proper sections, the
+   one-line descriptions (the RULE), the accent-highlighted headings, the
+   background/foreground separation — the UI references: the General page
+   + the Details Background page.
+7. **🟠 THE TRACKERS CARDS COMPACT:** the real tracker icons; NO
+   "Connected as", NO the role descriptions; the Populate Library button +
+   the delete icon colored.
+8. **🟠 THE PICKER ICONS:** TMDB/TVmaze/Simkl re-sourced (the AniList/MAL
+   ones work).
+9. **🟠 THE PER-SOURCE SEARCH CACHING:** the 2-page caches per source, the
+   refresh, the 12h auto — the unified system (NOT per-source copies).

@@ -2266,14 +2266,18 @@ private fun com.confused.anikuta.core.trackermal.MalAnime.toDataSourceResult(): 
 // path, the MM/DD/YYYY date, the simkl rating) — an id-less row is SKIPPED
 // (the grid key = source-remoteId; a -1 collision = the v1.1.104 crash).
 private fun com.confused.anikuta.core.trackersimkl.SimklMediaItem.toDataSourceResult(): DataSourceResult? {
-    val id = ids?.simkl_id?.toInt() ?: return null
+    // ROUND 170: every id path (the trending's ids.simkl_id, the search's
+    // ids.simkl / the top-level simkl_id) + every poster path (the trending's
+    // simkl.in path, the search's full URL).
+    val id = (ids?.simkl_id ?: ids?.simkl ?: simkl_id)?.toInt() ?: return null
+    val posterUrl = poster?.let { "https://simkl.in/posters/${it}_m.jpg" } ?: poster_url
     return DataSourceResult(
         source = DataSourceKind.SIMKL,
         remoteId = id,
         mediaType = "simkl",
         title = title.orEmpty(),
-        posterUrl = poster?.let { "https://simkl.in/posters/${it}_m.jpg" },
-        year = release_date?.takeLast(4)?.toIntOrNull(),
+        posterUrl = posterUrl,
+        year = release_date?.takeLast(4)?.toIntOrNull() ?: year,
         rating = ratings?.simkl?.rating,
         overview = overview,
     )

@@ -109,6 +109,10 @@ class DetailsViewModel(
     // ROUND 168 (the tracker redo): the MAL tracker — the >1-linked picker +
     // the sheet dispatch (anime = AniList + MAL per the user's split).
     internal val malTracker: com.confused.anikuta.core.trackermal.MalTracker? = null,
+    // ROUND 170 (the device order): the Simkl tracker joins the details'
+    // dispatch (the picker shows it when linked; the one-tracker rule
+    // opens its sheet for a tracked content).
+    internal val simklTracker: com.confused.anikuta.core.trackersimkl.SimklTracker? = null,
 ) : ViewModel() {
 
     companion object {
@@ -574,11 +578,23 @@ class DetailsViewModel(
     val malLinkResults: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.core.trackermal.MalAnime>> =
         _malLinkResults.asStateFlow()
 
+    // ROUND 170: the Simkl link sheet (the same search → the pick → the
+    // mapping flow; the results carry the display fields).
+    internal val _showSimklLinkSheet = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val showSimklLinkSheet: kotlinx.coroutines.flow.StateFlow<Boolean> = _showSimklLinkSheet.asStateFlow()
+    internal val _simklLinkSearching = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val simklLinkSearching: kotlinx.coroutines.flow.StateFlow<Boolean> = _simklLinkSearching.asStateFlow()
+    internal val _simklLinkResults = kotlinx.coroutines.flow.MutableStateFlow<List<com.confused.anikuta.core.trackersimkl.SimklMediaItem>>(emptyList())
+    val simklLinkResults: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.core.trackersimkl.SimklMediaItem>> =
+        _simklLinkResults.asStateFlow()
+
     // The linked usernames (the picker rows' subtitle).
     internal val _anilistLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
     val anilistLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _anilistLinkedUsername.asStateFlow()
     internal val _malLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
     val malLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _malLinkedUsername.asStateFlow()
+    internal val _simklLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
+    val simklLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _simklLinkedUsername.asStateFlow()
     init {
         // ROUND 168: the linked usernames mirror the trackers' login states
         // (the picker rows' subtitle; the trackers restore at construction,
@@ -595,6 +611,14 @@ class DetailsViewModel(
             viewModelScope.launch {
                 tracker.observeLoginState().collect { state ->
                     _malLinkedUsername.value =
+                        (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
+                }
+            }
+        }
+        simklTracker?.let { tracker ->
+            viewModelScope.launch {
+                tracker.observeLoginState().collect { state ->
+                    _simklLinkedUsername.value =
                         (state as? com.confused.anikuta.core.trackerapi.TrackerLoginState.LoggedIn)?.username.orEmpty()
                 }
             }
@@ -633,15 +657,19 @@ class DetailsViewModel(
      * every change live (Save → true; Remove from Tracking → false; the
      * trash-can delete → false).
      */
+    // ROUND 170 (the device bug): the tracking status DISPATCHES by the
+    // active tracker — the MAL path set MAL's flag while this flow read the
+    // ANILIST default → "Not tracking" after a successful MAL start.
     val isTracked: kotlinx.coroutines.flow.StateFlow<Boolean> =
-        _mainIdFlow
-            .flatMapLatest { mainId ->
-                if (mainId != null && trackingStateRepository != null) {
-                    trackingStateRepository.observeIsTracked(mainId)
-                } else {
-                    kotlinx.coroutines.flow.flowOf(false)
-                }
+        kotlinx.coroutines.flow.combine(_mainIdFlow, _activeTrackerType) { mainId, type ->
+            if (mainId == null) null else mainId to type
+        }.flatMapLatest { pair ->
+            if (pair != null && trackingStateRepository != null) {
+                trackingStateRepository.observeIsTracked(pair.first, pair.second)
+            } else {
+                kotlinx.coroutines.flow.flowOf(false)
             }
+        }
             .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), false)
 
     /**

@@ -116,17 +116,37 @@ class SimklApi(
         } ?: emptyList()
 
     /**
-     * ROUND 169: the USER-TOKEN search — the search endpoints REQUIRE a
-     * user access token (the live 401: "user_token_required"); the client id
-     * alone never worked. Null token → the honest empty (the UI shows the
-     * not-linked state).
+     * ROUND 170: the USER-TOKEN search — the search endpoints REQUIRE a user
+     * access token (the live 401: "user_token_required"), and ONLY
+     * /search/movie|tv|anime exist (NO /search/all — the v1.1.105 device
+     * report's empty results: the 'all' kind 404'd). The per-kind parse
+     * accepts BOTH shapes (the bare array OR the wrapped object).
      */
-    fun searchAuthed(kind: String, query: String, accessToken: String): List<SimklMediaItem> =
+    fun searchKind(kind: String, query: String, accessToken: String): List<SimklMediaItem> =
         get(url("/search/$kind", mapOf("q" to query)), accessToken)?.let { raw ->
-            runCatching {
-                json.decodeFromString(kotlinx.serialization.serializer<List<SimklMediaItem>>(), raw)
-            }.getOrNull()
+            parseMediaList(raw)
         } ?: emptyList()
+
+    /** The lenient parse: the bare array first, then the wrapped object. */
+    private fun parseMediaList(raw: String): List<SimklMediaItem> {
+        runCatching {
+            return json.decodeFromString(kotlinx.serialization.serializer<List<SimklMediaItem>>(), raw)
+        }
+        return runCatching {
+            val wrapped = json.decodeFromString(SimklSearchResponse.serializer(), raw)
+            val toMedia: (SimklSearchItem) -> SimklMediaItem? = { item ->
+                val id = item.simkl_id?.toLong() ?: item.ids?.simkl?.toLong()
+                id?.let {
+                    SimklMediaItem(
+                        title = item.title,
+                        poster_url = item.poster_url,
+                        simkl_id = it,
+                    )
+                }
+            }
+            (wrapped.movie + wrapped.tv + wrapped.anime).mapNotNull(toMedia)
+        }.getOrDefault(emptyList())
+    }
 
     // ── the sync family (all require the Bearer token) ──
 
