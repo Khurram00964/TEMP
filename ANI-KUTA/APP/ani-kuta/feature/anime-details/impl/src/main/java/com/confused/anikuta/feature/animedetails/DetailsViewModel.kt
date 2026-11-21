@@ -113,6 +113,10 @@ class DetailsViewModel(
     // dispatch (the picker shows it when linked; the one-tracker rule
     // opens its sheet for a tracked content).
     internal val simklTracker: com.confused.anikuta.core.trackersimkl.SimklTracker? = null,
+    // ROUND 171: the TMDB/TVmaze APIs — the unified link sheet's backends
+    // (the "Link to other" picks search + pick + the enrichment).
+    internal val tmdbApi: com.confused.anikuta.core.tmdb.TmdbApi? = null,
+    internal val tvmazeApi: com.confused.anikuta.core.tvmaze.TvmazeApi? = null,
 ) : ViewModel() {
 
     companion object {
@@ -587,6 +591,15 @@ class DetailsViewModel(
     internal val _simklLinkResults = kotlinx.coroutines.flow.MutableStateFlow<List<com.confused.anikuta.core.trackersimkl.SimklMediaItem>>(emptyList())
     val simklLinkResults: kotlinx.coroutines.flow.StateFlow<List<com.confused.anikuta.core.trackersimkl.SimklMediaItem>> =
         _simklLinkResults.asStateFlow()
+
+    // ── ROUND 171: THE UNIFIED LINK SHEET (ONE UI for every source) ──
+    internal val _showUnifiedLinkSheet = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val showUnifiedLinkSheet: kotlinx.coroutines.flow.StateFlow<String?> = _showUnifiedLinkSheet.asStateFlow()
+    internal val _unifiedLinkSearching = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val unifiedLinkSearching: kotlinx.coroutines.flow.StateFlow<Boolean> = _unifiedLinkSearching.asStateFlow()
+    internal val _unifiedLinkResults = kotlinx.coroutines.flow.MutableStateFlow<List<UnifiedLinkResult>>(emptyList())
+    val unifiedLinkResults: kotlinx.coroutines.flow.StateFlow<List<UnifiedLinkResult>> =
+        _unifiedLinkResults.asStateFlow()
 
     // The linked usernames (the picker rows' subtitle).
     internal val _anilistLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")

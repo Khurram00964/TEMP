@@ -172,8 +172,9 @@ fun DetailsViewModel.pickMalAnime(malId: Int, totalEpisodes: Int?) {
     _showMalLinkSheet.value = false
     _malLinkResults.value = emptyList()
 
+    // ROUND 171 (the device order): LINK ≠ TRACK — the pick stores the
+    // identity mapping ONLY; the tracking sheet never opens from a link.
     _activeTrackerType.value = TrackerType.MAL
-    _showTrackSheet.value = true
     _trackSheetError.value = null
     val seed = TrackEntry(
         contentKey = mid,
@@ -357,17 +358,6 @@ fun DetailsViewModel.openSimklTrackSheet() {
     }
 }
 
-/** ROUND 170: the link-sheet opens (the "Link to other" picks from the 3-dot menu). */
-fun DetailsViewModel.openMalLinkSheet() {
-    _showTrackSheet.value = false
-    _showMalLinkSheet.value = true
-}
-
-fun DetailsViewModel.openSimklLinkSheet() {
-    _showTrackSheet.value = false
-    _showSimklLinkSheet.value = true
-}
-
 /** The SimklLinkSheet's search (the display fields). */
 fun DetailsViewModel.searchSimklForLink(query: String) {
     val simkl = simklTracker ?: return
@@ -395,8 +385,8 @@ fun DetailsViewModel.pickSimklItem(simklId: Int) {
     _showSimklLinkSheet.value = false
     _simklLinkResults.value = emptyList()
 
+    // ROUND 171: LINK ≠ TRACK — the mapping stores only.
     _activeTrackerType.value = TrackerType.SIMKL
-    _showTrackSheet.value = true
     _trackSheetError.value = null
     val seed = TrackEntry(
         contentKey = mid,
@@ -520,5 +510,153 @@ fun DetailsViewModel.deleteFromSimkl() {
         _trackEntry.value = null
         _showTrackSheet.value = false
         Logger.i(TAG_MT) { "deleteFromSimkl — the mapping cleared for mainId=$mid" }
+    }
+}
+
+
+// ── ROUND 171: THE UNIFIED LINK FLOW — ONE sheet for MAL/Simkl/TMDB/TVmaze
+//    (the device order: the same UI layer, the different backends). The
+//    pick handlers: the MAL/Simkl mappings (the LINK ≠ TRACK separation);
+//    the TMDB/TVmaze picks enrich the page from that source's data (the
+//    "the data source displays the data" semantics).
+
+fun DetailsViewModel.openUnifiedLinkSheet(source: String) {
+    _showTrackSheet.value = false
+    _showUnifiedLinkSheet.value = source
+    _unifiedLinkResults.value = emptyList()
+}
+
+fun DetailsViewModel.dismissUnifiedLinkSheet() {
+    _showUnifiedLinkSheet.value = null
+    _unifiedLinkResults.value = emptyList()
+}
+
+fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
+    viewModelScope.launch {
+        _unifiedLinkSearching.value = true
+        val results: List<UnifiedLinkResult> = runCatching {
+            when (source) {
+                "mal" -> malTracker?.searchWithMeta(query).orEmpty().map { node ->
+                    UnifiedLinkResult(
+                        id = node.id,
+                        title = node.title ?: "—",
+                        posterUrl = node.main_picture?.medium ?: node.main_picture?.large,
+                        meta = node.num_episodes?.let { "$it episodes" },
+                    )
+                }
+                "simkl" -> simklTracker?.searchItems(query).orEmpty().mapNotNull { node ->
+                    val id = (node.ids?.simkl_id ?: node.ids?.simkl ?: node.simkl_id)?.toInt() ?: return@mapNotNull null
+                    UnifiedLinkResult(
+                        id = id,
+                        title = node.title ?: "—",
+                        posterUrl = node.poster?.let { "https://simkl.in/posters/" + it + "_m.jpg" } ?: node.poster_url,
+                        meta = node.release_date?.takeLast(4),
+                    )
+                }
+                "tmdb" -> tmdbApi?.search(query).orEmpty().map { item ->
+                    UnifiedLinkResult(
+                        id = item.id,
+                        title = item.title,
+                        posterUrl = item.posterUrl,
+                        meta = listOfNotNull(item.mediaType, item.year?.toString()).joinToString(" · "),
+                    )
+                }
+                "tvmaze" -> tvmazeApi?.search(query).orEmpty().map { show ->
+                    UnifiedLinkResult(
+                        id = show.id,
+                        title = show.title,
+                        posterUrl = show.posterUrl,
+                        meta = show.year?.toString(),
+                    )
+                }
+                else -> emptyList()
+            }
+        }.onFailure { e ->
+            Logger.w(TAG_MT) { "searchUnifiedLink failed ($source): " + (e.message ?: "") }
+        }.getOrDefault(emptyList())
+        _unifiedLinkResults.value = results
+        _unifiedLinkSearching.value = false
+    }
+}
+
+/**
+ * The unified pick: the MAL/Simkl mappings store (the LINK ≠ TRACK); the
+ * TMDB/TVmaze picks ENRICH the page (the source's data merges into the
+ * details state via the content_details' data axis).
+ */
+fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) {
+    _showUnifiedLinkSheet.value = null
+    _unifiedLinkResults.value = emptyList()
+    val mid = currentMainId ?: return
+    when (source) {
+        "mal" -> {
+            val repo = trackEntryRepository ?: return
+            viewModelScope.launch {
+                runCatching {
+                    repo.upsert(
+                        TrackEntry(
+                            contentKey = mid,
+                            trackerId = result.id,
+                            status = TrackStatus.PLAN_TO_WATCH,
+                            progress = 0,
+                            totalEpisodes = null,
+                            listId = null,
+                            startedAt = null,
+                            completedAt = null,
+                            updatedAt = System.currentTimeMillis(),
+                        ),
+                        TrackerType.MAL,
+                    )
+                }.onFailure { e -> Logger.w(TAG_MT) { "the MAL link store failed: " + (e.message ?: "") } }
+            }
+        }
+        "simkl" -> {
+            val repo = trackEntryRepository ?: return
+            viewModelScope.launch {
+                runCatching {
+                    repo.upsert(
+                        TrackEntry(
+                            contentKey = mid,
+                            trackerId = result.id,
+                            status = TrackStatus.PLAN_TO_WATCH,
+                            progress = 0,
+                            totalEpisodes = null,
+                            listId = null,
+                            startedAt = null,
+                            completedAt = null,
+                            updatedAt = System.currentTimeMillis(),
+                        ),
+                        TrackerType.SIMKL,
+                    )
+                }.onFailure { e -> Logger.w(TAG_MT) { "the Simkl link store failed: " + (e.message ?: "") } }
+            }
+        }
+        "tmdb", "tvmaze" -> {
+            // The ENRICHMENT v1: for the METADATA mainId (the kind: prefix)
+            // the picked entry's data merges into the data axis (the
+            // "the data source displays the data" semantics). The AniList/
+            // extension content's cross-source identity = the caching
+            // round's work (the data-axis wipe risk on those rows).
+            viewModelScope.launch {
+                runCatching {
+                    if (!mid.contains(":") || mid.substringBefore(":") in setOf("anilist", "cloudstream")) {
+                        Logger.i(TAG_MT) { "the $source identity pick on the native content — the cross-source mapping lands with the caching pass" }
+                        return@runCatching
+                    }
+                    val repo = contentRepository ?: return@runCatching
+                    val now = System.currentTimeMillis()
+                    repo.upsertContentDetails(
+                        com.confused.anikuta.core.content.ContentDetails(
+                            mainId = mid,
+                            dataSourceType = source,
+                            dataSourceRefId = result.id.toString(),
+                            dataCoverUrl = result.posterUrl,
+                            dataUpdatedAt = now,
+                        ),
+                    )
+                    Logger.i(TAG_MT) { "the $source identity linked: " + result.title }
+                }
+            }
+        }
     }
 }

@@ -157,6 +157,9 @@ fun DetailsActionMenu(
     // The Share page swap — internal so both menus share ONE anchor Box.
     // Reset when fully closed so the next open starts on the main page.
         var linkToOtherExpanded by remember { mutableStateOf(false) }
+    // ROUND 171: the expansion RESETS on the dismiss (the reopen shows
+    // "Link to other" again — the device order).
+    androidx.compose.runtime.LaunchedEffect(onDismissRequest) { linkToOtherExpanded = false }
     var sharePage by remember { mutableStateOf(false) }
     LaunchedEffect(expanded) {
         if (!expanded) sharePage = false
@@ -237,25 +240,27 @@ fun DetailsActionMenu(
                                 label = "AniList",
                                 onClick = { onDismissRequest(); onLinkAniList() },
                             )
-                            MenuDiscRow(
-                                icon = Icons.Filled.Link,
+                            // ROUND 171: the rows carry the SOURCE LOGOS
+                            // (the device order: the real marks).
+                            MenuDiscRowWithLogo(
                                 label = "MyAnimeList",
-                                onClick = { onDismissRequest(); onLinkMal() },
+                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
+                                onClick = { onLinkMal() },
                             )
-                            MenuDiscRow(
-                                icon = Icons.Filled.Link,
+                            MenuDiscRowWithLogo(
                                 label = "Simkl",
-                                onClick = { onDismissRequest(); onLinkSimkl() },
+                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl,
+                                onClick = { onLinkSimkl() },
                             )
-                            MenuDiscRow(
-                                icon = Icons.Filled.Link,
+                            MenuDiscRowWithLogo(
                                 label = "TMDB",
-                                onClick = { onDismissRequest(); onLinkTmdb() },
+                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb,
+                                onClick = { onLinkTmdb() },
                             )
-                            MenuDiscRow(
-                                icon = Icons.Filled.Link,
+                            MenuDiscRowWithLogo(
                                 label = "TVMaze",
-                                onClick = { onDismissRequest(); onLinkTvmaze() },
+                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze,
+                                onClick = { onLinkTvmaze() },
                             )
                         } else {
                             MenuDiscRow(
@@ -268,7 +273,9 @@ fun DetailsActionMenu(
                 }
             }
 
-            // ══ SECTION: ACTIONS ══
+            // ══ SECTION: ACTIONS ══ (hidden while the source list is
+            // expanded — the menu BECOMES the sources list)
+            if (!linkToOtherExpanded) {
             MenuSectionLabel("Actions")
             MenuSectionCard {
                 MenuDiscRow(
@@ -289,7 +296,10 @@ fun DetailsActionMenu(
                 }
             }
 
+            }
+
             // ══ SECTION: TRACKING — the state speaks through color ══
+            if (!linkToOtherExpanded) {
             MenuSectionLabel("Tracking")
             MenuSectionCard {
                 MenuTrackingRow(
@@ -300,6 +310,7 @@ fun DetailsActionMenu(
                     },
                 )
             }
+            } // ROUND 171: the linkToOtherExpanded gate's closer
         }
     }
 
@@ -390,6 +401,38 @@ private fun fireOsShareChooser(
 
 /** A small all-caps section label ABOVE each crimped card (the grouping rhythm). */
 @Composable
+// ── ROUND 171: the source-row variant carrying the REAL logo (the device
+// order: the icons, not the generic discs).
+@Composable
+private fun MenuDiscRowWithLogo(
+    label: String,
+    logoRes: Int,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(logoRes),
+            contentDescription = label,
+            modifier = Modifier.size(26.dp),
+        )
+        Text(
+            text = label,
+            fontFamily = RobotoFamily,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
 private fun MenuSectionLabel(text: String) {
     Text(
         text = text.uppercase(),

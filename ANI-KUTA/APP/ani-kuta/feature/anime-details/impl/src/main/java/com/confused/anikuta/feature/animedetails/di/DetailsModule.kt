@@ -46,6 +46,9 @@ val detailsModule = module {
             malTracker = getOrNull(),
             // ROUND 170: the Simkl tracker (the picker row + the dispatch).
             simklTracker = getOrNull(),
+            // ROUND 171: the unified link sheet's TMDB/TVmaze backends.
+            tmdbApi = getOrNull(),
+            tvmazeApi = getOrNull(),
         )
     }
 }

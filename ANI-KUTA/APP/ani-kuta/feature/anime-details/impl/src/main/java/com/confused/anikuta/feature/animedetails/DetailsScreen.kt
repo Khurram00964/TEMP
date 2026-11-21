@@ -139,9 +139,7 @@ import androidx.compose.material.icons.filled.StarBorder  // Phase 4
 fun DetailsScreen(
     detailsKey: AnimeDetailsKey,
     onBack: () -> Unit,
-    // ROUND 170: the 'Link to other' TMDB/TVmaze picks hand off to the
-    // search pre-set to that source (the title rides via the key's data).
-    onSearchForSource: (String) -> Unit = {},
+
     // ROUND 108 (D-713): the trailing coverUrl — the player rows' thumbnail
     // fallback (the details page's cover), riding the key like coverAccent.
     // 2026-11-21: the 17 positional params became the [WatchLaunchArgs] bundle
@@ -1296,10 +1294,10 @@ fun DetailsScreen(
                                         // search pre-set to that source (the
                                         // cross-source identity mapping lands
                                         // with the caching round).
-                                        onLinkMal = { viewModel.openMalLinkSheet() },
-                                        onLinkSimkl = { viewModel.openSimklLinkSheet() },
-                                        onLinkTmdb = { onSearchForSource("tmdb") },
-                                        onLinkTvmaze = { onSearchForSource("tvmaze") },
+                                        onLinkMal = { viewModel.openUnifiedLinkSheet("mal") },
+                                        onLinkSimkl = { viewModel.openUnifiedLinkSheet("simkl") },
+                                        onLinkTmdb = { viewModel.openUnifiedLinkSheet("tmdb") },
+                                        onLinkTvmaze = { viewModel.openUnifiedLinkSheet("tvmaze") },
                                         onUnlinkAniList = { viewModel.unlinkAniList() },
                                         buildShareLinks = {
                                             viewModel.buildShareContent()
@@ -2194,44 +2192,42 @@ fun DetailsScreen(
         val malUser by viewModel.malLinkedUsername.collectAsState()
         val anilistUser by viewModel.anilistLinkedUsername.collectAsState()
         val simklUser by viewModel.simklLinkedUsername.collectAsState()
+        val anilistLinked by viewModel.anilistTrackerLinked.collectAsState()
+        val malLinked by viewModel.malTrackerLinked.collectAsState()
+        val simklLinked by viewModel.simklTrackerLinked.collectAsState()
         TrackerPickerSheet(
             anilistUsername = anilistUser,
             malUsername = malUser,
             simklUsername = simklUser,
+            anilistLinked = anilistLinked,
+            malLinked = malLinked,
+            simklLinked = simklLinked,
             onPick = viewModel::pickTracker,
             onDismiss = viewModel::dismissTrackerPicker,
         )
     }
 
-    // ── ROUND 168 (the tracker redo): the MAL LINK SHEET (the search → the pick → the mapping) ──
-    val showMalLinkSheet by viewModel.showMalLinkSheet.collectAsState()
-    if (showMalLinkSheet) {
-        val malSearching by viewModel.malLinkSearching.collectAsState()
-        val malResults by viewModel.malLinkResults.collectAsState()
+    // ── ROUND 171: THE UNIFIED LINK SHEET (ONE UI for every source — the
+    // device order: the same design language, the different backends) ──
+    val showUnifiedLinkSheet by viewModel.showUnifiedLinkSheet.collectAsState()
+    if (showUnifiedLinkSheet != null) {
+        val linkSearching by viewModel.unifiedLinkSearching.collectAsState()
+        val linkResults by viewModel.unifiedLinkResults.collectAsState()
         val seedTitle = (state as? DetailsState.Success)?.anime?.title.orEmpty()
-        MalLinkSheet(
+        UnifiedLinkSheet(
+            sourceName = when (showUnifiedLinkSheet) {
+                "mal" -> "MyAnimeList"
+                "simkl" -> "Simkl"
+                "tmdb" -> "TMDB"
+                "tvmaze" -> "TVMaze"
+                else -> "Source"
+            },
             seedTitle = seedTitle,
-            isSearching = malSearching,
-            results = malResults,
-            onSearch = viewModel::searchMalForLink,
-            onPick = viewModel::pickMalAnime,
-            onDismiss = viewModel::dismissMalLinkSheet,
-        )
-    }
-
-    // ── ROUND 170: the SIMKL LINK SHEET (the search → the pick → the mapping) ──
-    val showSimklLinkSheet by viewModel.showSimklLinkSheet.collectAsState()
-    if (showSimklLinkSheet) {
-        val simklSearching by viewModel.simklLinkSearching.collectAsState()
-        val simklResults by viewModel.simklLinkResults.collectAsState()
-        val seedTitle = (state as? DetailsState.Success)?.anime?.title.orEmpty()
-        SimklLinkSheet(
-            seedTitle = seedTitle,
-            isSearching = simklSearching,
-            results = simklResults,
-            onSearch = viewModel::searchSimklForLink,
-            onPick = viewModel::pickSimklItem,
-            onDismiss = viewModel::dismissSimklLinkSheet,
+            isSearching = linkSearching,
+            results = linkResults,
+            onSearch = { query -> viewModel.searchUnifiedLink(showUnifiedLinkSheet!!, query) },
+            onPick = { pick -> viewModel.pickUnifiedLink(showUnifiedLinkSheet!!, pick) },
+            onDismiss = viewModel::dismissUnifiedLinkSheet,
         )
     }
 

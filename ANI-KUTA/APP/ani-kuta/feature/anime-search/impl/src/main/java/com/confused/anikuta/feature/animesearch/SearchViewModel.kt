@@ -70,72 +70,6 @@ class SearchViewModel(
     // provide the app-auth search + the trending defaults; the tracker
     // modules are registered singles).
     private val malTracker: com.confused.anikuta.core.trackermal.MalTracker,
-    private val simklTracker: com.confused.anikuta.core.trackersimkl.SimklTracker,
-    // ROUND 171: the metadata persistence — the tap saves the FULL result
-    // (the overview/year/rating/cover) into content_details' data axis
-    // BEFORE the details route reads it (the v1.1.106 device bug: the
-    // sparse rows never enriched, the descriptions blank).
-    private val metadataContentRepository: com.confused.anikuta.core.content.ContentRepository,
-) : ViewModel() {
-
-    companion object {
-        private const val TAG = "Anikuta:Feature:Search"
-        private const val KEY_RECENT_SEARCHES = "search_recent_anilist"
-        private const val KEY_SELECTED_SOURCE_ID = "search_selected_extension_source_id"
-
-        /** Session 3 (CloudStream execution): which ecosystem the EXTENSION mode browses. */
-        private const val KEY_SELECTED_SOURCE_KIND = "search_selected_source_kind"
-
-        /** The selected CloudStream provider name (MainAPI.name) when kind = cloudstream. */
-        private const val KEY_SELECTED_CS_PROVIDER = "search_selected_cs_provider"
-        private const val DEBOUNCE_MS = 350L
-        private const val MAX_RECENTS = 10
-
-        /**
-         * D-387 (round 25 — the phased browse): the per-row display cap while
-         * the progressive skeleton fills in — mirrors the repository's
-         * MAX_SECTION_ITEMS so a filling row never shows MORE cards than the
-         * canonical final result will.
-         */
-        private const val PROGRESSIVE_ROW_CAP = 20
-
-        /**
-         * Task 62 (round 22): the cross-section uniqueness window of the smart
-         * shuffle — the first N items of any randomized category must not
-         * appear in the first N of any other one (the device spec: "the first
-         * four of any of the categories will not be the same as any other").
-         */
-        private const val TOP_UNIQUE_ITEMS = 4
-
-        /** Persisted kind flag values (KEY_SELECTED_SOURCE_KIND). */
-        private const val KIND_ANIYOMI = "aniyomi"
-        private const val KIND_CLOUDSTREAM = "cloudstream"
-
-        /**
-         * Task 46: how long the CS-selection heal waits for the plugin
-         * manager's first load (activity-gated) before validating anyway.
-         * Generous vs. the manager's own 15s activity timeout so a normal
-         * cold start ALWAYS has the real provider list first.
-         */
-        private const val CS_LOAD_WAIT_MS = 20_000L
-
-        /**
-         * Task 47: once the manager reports loadedOnce, its `installed` list
-         * is final — the derived WhileSubscribed chain only needs a few
-         * dispatch hops to propagate it. A short post-load wait for a
-         * non-empty list is plenty; longer than this with an empty list means
-         * zero providers are actually loaded.
-         */
-        private const val CS_POST_LOAD_WAIT_MS = 3_000L
-
-        /** Task 47: the persisted top-tab values (KEY_SEARCH_SOURCE). */
-        private const val KEY_SEARCH_SOURCE = "search_selected_source"
-        private const val SOURCE_ANILIST = "anilist"
-        private const val SOURCE_EXTENSION = "extension"
-
-        /** ROUND 163 (STEP-3): the persisted data-source kind (KEY_SEARCH_DATASOURCE). */
-        private const val KEY_SEARCH_DATASOURCE = "search_data_source_kind"
-    }
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
@@ -2042,6 +1976,73 @@ class SearchViewModel(
 
     private fun persistRecents(list: List<String>) {
         preferenceStore.putString(KEY_RECENT_SEARCHES, list.joinToString("\n"))
+    }
+
+    private val simklTracker: com.confused.anikuta.core.trackersimkl.SimklTracker,
+    // ROUND 171: the metadata persistence — the tap saves the FULL result
+    // (the overview/year/rating/cover) into content_details' data axis
+    // BEFORE the details route reads it (the v1.1.106 device bug: the
+    // sparse rows never enriched, the descriptions blank).
+    private val metadataContentRepository: com.confused.anikuta.core.content.ContentRepository,
+) : ViewModel() {
+
+    companion object {
+        private const val TAG = "Anikuta:Feature:Search"
+        private const val KEY_RECENT_SEARCHES = "search_recent_anilist"
+        private const val KEY_SELECTED_SOURCE_ID = "search_selected_extension_source_id"
+
+        /** Session 3 (CloudStream execution): which ecosystem the EXTENSION mode browses. */
+        private const val KEY_SELECTED_SOURCE_KIND = "search_selected_source_kind"
+
+        /** The selected CloudStream provider name (MainAPI.name) when kind = cloudstream. */
+        private const val KEY_SELECTED_CS_PROVIDER = "search_selected_cs_provider"
+        private const val DEBOUNCE_MS = 350L
+        private const val MAX_RECENTS = 10
+
+        /**
+         * D-387 (round 25 — the phased browse): the per-row display cap while
+         * the progressive skeleton fills in — mirrors the repository's
+         * MAX_SECTION_ITEMS so a filling row never shows MORE cards than the
+         * canonical final result will.
+         */
+        private const val PROGRESSIVE_ROW_CAP = 20
+
+        /**
+         * Task 62 (round 22): the cross-section uniqueness window of the smart
+         * shuffle — the first N items of any randomized category must not
+         * appear in the first N of any other one (the device spec: "the first
+         * four of any of the categories will not be the same as any other").
+         */
+        private const val TOP_UNIQUE_ITEMS = 4
+
+        /** Persisted kind flag values (KEY_SELECTED_SOURCE_KIND). */
+        private const val KIND_ANIYOMI = "aniyomi"
+        private const val KIND_CLOUDSTREAM = "cloudstream"
+
+        /**
+         * Task 46: how long the CS-selection heal waits for the plugin
+         * manager's first load (activity-gated) before validating anyway.
+         * Generous vs. the manager's own 15s activity timeout so a normal
+         * cold start ALWAYS has the real provider list first.
+         */
+        private const val CS_LOAD_WAIT_MS = 20_000L
+
+        /**
+         * Task 47: once the manager reports loadedOnce, its `installed` list
+         * is final — the derived WhileSubscribed chain only needs a few
+         * dispatch hops to propagate it. A short post-load wait for a
+         * non-empty list is plenty; longer than this with an empty list means
+         * zero providers are actually loaded.
+         */
+        private const val CS_POST_LOAD_WAIT_MS = 3_000L
+
+        /** Task 47: the persisted top-tab values (KEY_SEARCH_SOURCE). */
+        private const val KEY_SEARCH_SOURCE = "search_selected_source"
+        private const val SOURCE_ANILIST = "anilist"
+        private const val SOURCE_EXTENSION = "extension"
+
+        /** ROUND 163 (STEP-3): the persisted data-source kind (KEY_SEARCH_DATASOURCE). */
+        private const val KEY_SEARCH_DATASOURCE = "search_data_source_kind"
     }
 }
 

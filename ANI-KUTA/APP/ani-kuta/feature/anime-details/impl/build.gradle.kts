@@ -39,6 +39,8 @@ dependencies {
     implementation(project(":core:tracker-api"))  // D-242: Tracker interface + TrackEntry/TrackStatus
     implementation(project(":core:tracker-mal"))  // ROUND 168: the MAL tracker (the >1-linked picker + the sheet dispatch)
     implementation(project(":core:tracker-simkl"))  // ROUND 170: the Simkl tracker (the picker row + the dispatch)
+    implementation(project(":core:tmdb"))  // ROUND 171: the unified link sheet's TMDB backend
+    implementation(project(":core:tvmaze"))  // ROUND 171: the unified link sheet's TVmaze backend
     implementation(project(":data:extension"))
     // Round 82 (D-575): the Link Source sheet's two-column source picker reads
     // the CloudStream plugin icons (CloudstreamContentRepository.sources) and
