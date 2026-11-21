@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -123,6 +124,9 @@ fun SearchScreen(
     // D-320: passes the full anime so the nav key can carry the cover/title
     // + the shared-element key (experimental cover transition).
     onNavigateToDetails: (AniListAnime) -> Unit,
+    // ROUND 169 (the device order): the metadata taps open the DETAILS PAGE
+    // of the tapped source (NOT the CS hand-off switch).
+    onNavigateToMetadataDetails: (DataSourceResult) -> Unit = {},
     // Session 3: +sourceKey — "cloudstream:<provider>" for CloudStream results
     // (null = aniyomi; MainActivity branches the details destination on it).
     // Task 47: +year — the search-time release year (CloudStream providers
@@ -537,11 +541,9 @@ fun SearchScreen(
                         results = state.results,
                         gridState = gridState,
                         onResultTap = { result ->
-                            // ROUND 165: NO dialog — the tap resolves on
-                            // CloudStream automatically and opens the details
-                            // page of the best match (no match = the CS search
-                            // results stay in this screen).
-                            viewModel.onDataSourceResultTap(result, onNavigateToExtensionAnime)
+                            // ROUND 169 (the device order): the tap opens the
+                            // DETAILS PAGE of the tapped source.
+                            onNavigateToMetadataDetails(result)
                         },
                         loadingMore = state.loadingMore,
                         canLoadMore = state.hasMore,
@@ -1226,7 +1228,13 @@ private fun ExtensionResultsGrid(
             }
         }
         items(distinctResults, key = { "${it.sourceKey ?: it.sourceId}:${it.url}" }) { anime ->
-            ExtensionResultCard(anime, onResultTap, resultTitleStyle, showDetails)
+            val prefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+            ExtensionResultCard(
+                anime,
+                onResultTap,
+                prefs.resultTitleStyleFlow.collectAsState().value,
+                prefs.showDetailsLineFlow.collectAsState().value,
+            )
         }
         // Task 61 (round 21): the load-more footer (full span).
         if (loadingMore) {
@@ -1374,7 +1382,13 @@ private fun ExtensionBrowseProgressiveList(
                                 key = { "${it.sourceKey ?: it.sourceId}:${it.url}" },
                             ) { anime ->
                                 Box(modifier = Modifier.width(110.dp)) {
-                                    ExtensionResultCard(anime, onResultTap, resultTitleStyle, showDetails)
+                                    val prefs = org.koin.compose.koinInject<com.confused.anikuta.core.preferences.SearchPreferences>()
+                                    ExtensionResultCard(
+                                        anime,
+                                        onResultTap,
+                                        prefs.resultTitleStyleFlow.collectAsState().value,
+                                        prefs.showDetailsLineFlow.collectAsState().value,
+                                    )
                                 }
                             }
                         }

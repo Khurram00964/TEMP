@@ -1672,6 +1672,22 @@ fun AppRoot() {
                 // the see-all's data-source pre-set land with their phases).
                 prefillQuery = (currentKey as AnimeSearchKey).prefillQuery,
                 prefillDataSource = (currentKey as AnimeSearchKey).prefillDataSource,
+                // ROUND 169 (the device order): the metadata taps open the
+                // details page of the tapped source.
+                onNavigateToMetadataDetails = { result ->
+                    pushKey(
+                        com.confused.anikuta.feature.animesearch.MetadataDetailsKey(
+                            source = result.source.id,
+                            remoteId = result.remoteId,
+                            title = result.title,
+                            posterUrl = result.posterUrl,
+                            year = result.year,
+                            rating = result.rating,
+                            overview = result.overview,
+                            mediaType = result.mediaType,
+                        ),
+                    )
+                },
                 onNavigateToDetails = { anime ->
                     navigateToDetails(
                         AnimeDetailsKey.AniList(
@@ -2148,6 +2164,22 @@ fun AppRoot() {
                     SettingsSearchNavigator.takeAnchor(SettingsSearchPage.APP_ICON)
                 },
             )
+            is com.confused.anikuta.feature.animesearch.MetadataDetailsKey -> {
+                val k = currentKey as com.confused.anikuta.feature.animesearch.MetadataDetailsKey
+                val vm: com.confused.anikuta.feature.animesearch.MetadataDetailsViewModel =
+                    org.koin.compose.viewmodel.koinViewModel()
+                androidx.compose.runtime.LaunchedEffect(k) { vm.load(k) }
+                com.confused.anikuta.feature.animesearch.MetadataDetailsScreen(
+                    onBack = pop,
+                    key = k,
+                    viewModel = vm,
+                    onWatchViaCs = { watchKey ->
+                        // The CS-first playback: the search screen stages the
+                        // title (the provider sheet auto-opens there).
+                        pushKey(AnimeSearchKey(prefillQuery = watchKey.title))
+                    },
+                )
+            }
             is SearchPageSettingsKey -> com.confused.anikuta.settings.SearchPageSettingsScreen(
                 onBack = pop,
                 searchPreferences = org.koin.core.context.GlobalContext.get()

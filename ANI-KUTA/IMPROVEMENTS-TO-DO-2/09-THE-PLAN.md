@@ -268,3 +268,41 @@ customization page). One CI cycle per phase. Routine A closes the round
 - Settings → Appearance gains the "Search page" row (the recovery's
   AppearanceScreen row — the round-165 placement, the user-approved).
 - The SearchScreen reads the prefs reactively (the PreferenceStore flows).
+
+---
+
+## H. THE ROUND-169 QUEUE (the v1.1.104 device report — the remaining items)
+
+DONE this round:
+1. 🚨 The details-page NPE (the declaration-order bug) — FIXED.
+2. 🚨 The Simkl duplicate-key crash — FIXED (the LIVE-VERIFIED shapes: the
+   search needs the user token; the trending ids at ids.simkl_id; the
+   simkl.in poster paths).
+3. The search universality (the blur on all sources, the universal title
+   placement, the rating pill top-right on every card, the grid 1-5, the
+   Appearance row's own section + icon, the animated search-bar swaps, the
+   real AniList/MAL/Simkl favicons).
+4. THE METADATA DETAILS PAGES: the taps open the details page OF the
+   tapped source (MetadataDetailsScreen + MetadataDetailsViewModel + the
+   MetadataDetailsKey), the DB LINKING via content_details' data axis
+   (data_source_type/data_source_ref_id — the schema's designed axis), the
+   Watch → the CS route, the Track → the serving tracker.
+
+NEXT CYCLE (the ordered queue):
+1. **THE PER-SOURCE SEARCH CACHING** (the user's order): the first TWO
+   pages of each source's results cached (the AniList/TMDB/TVmaze/MAL/
+   Simkl SEPARATE caches); the beyond-2-pages loads live; a REFRESH
+   action (the cache clears, the fresh data fetches); the automatic
+   12-hour refresh (the smooth background refresh). THE DESIGN: ride the
+   browse_cache table's expiry pattern (the round-163 design) — the rows
+   keyed (source_kind, cache_key) + expires_at; the store = a
+   SearchCacheStore in core:database (the dependency-free store, the
+   nowMs passed in); the VM reads cache-first, then fetches + writes.
+2. The metadata details' enrichment (the TMDB/TVmaze/MAL/Simkl DETAIL
+   endpoints for the full pages — the episodes, the cast; the v1 renders
+   the search-result data).
+3. The Trackers cards' linked-state polish (the user: "blank and simple,
+   unpleasant") + the Simkl Populate Library question (ask the user: the
+   Simkl library import exists? — the allItems reads exist).
+4. The TMDB/TVmaze real-logo assets (the Commons route blocked; the
+   remaining favicons need proper sourcing).
