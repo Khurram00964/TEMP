@@ -1160,21 +1160,16 @@ class DetailsViewModel(
             }
 
             val details = runCatching { contentRepository.getContentDetails(mainId) }.getOrNull()
-            val anime = com.confused.anikuta.core.anilist.model.AniListAnime(
-                id = packedId,
-                title = com.confused.anikuta.core.anilist.model.AnimeTitle(
-                    romaji = title,
-                    english = title,
-                ),
-                coverImage = com.confused.anikuta.core.anilist.model.CoverImage(
-                    large = details?.dataCoverUrl ?: coverUrl,
-                    extraLarge = details?.dataCoverUrl ?: coverUrl,
-                ),
-                averageScore = details?.dataScore?.toInt(),
-                episodes = details?.dataEpisodes?.toInt(),
+            val anime = com.confused.anikuta.core.common.model.UnifiedAnime(
+                title = title ?: "",
+                coverUrl = details?.dataCoverUrl ?: coverUrl,
                 description = details?.dataSynopsis,
-                seasonYear = details?.dataSeasonYear?.toInt(),
                 status = details?.dataStatus,
+                episodes = details?.dataEpisodes?.toInt(),
+                averageScore = details?.dataScore?.toInt(),
+                seasonYear = details?.dataSeasonYear?.toInt(),
+                anilistId = packedId,
+                entryMode = com.confused.anikuta.core.common.model.EntryMode.ANILIST,
             )
             _state.value = DetailsState.Success(anime)
             currentMainId = mainId

@@ -231,24 +231,29 @@ fun DetailsActionMenu(
                                 },
                             )
                         } else if (linkToOtherExpanded) {
-                            com.confused.anikuta.core.designsystem.component.MenuSectionLabel("Pick a source")
+                            MenuSectionLabel("Pick a source")
                             MenuDiscRow(
+                                icon = Icons.Filled.Link,
                                 label = "AniList",
                                 onClick = { onDismissRequest(); onLinkAniList() },
                             )
                             MenuDiscRow(
+                                icon = Icons.Filled.Link,
                                 label = "MyAnimeList",
                                 onClick = { onDismissRequest(); onLinkMal() },
                             )
                             MenuDiscRow(
+                                icon = Icons.Filled.Link,
                                 label = "Simkl",
                                 onClick = { onDismissRequest(); onLinkSimkl() },
                             )
                             MenuDiscRow(
+                                icon = Icons.Filled.Link,
                                 label = "TMDB",
                                 onClick = { onDismissRequest(); onLinkTmdb() },
                             )
                             MenuDiscRow(
+                                icon = Icons.Filled.Link,
                                 label = "TVMaze",
                                 onClick = { onDismissRequest(); onLinkTvmaze() },
                             )

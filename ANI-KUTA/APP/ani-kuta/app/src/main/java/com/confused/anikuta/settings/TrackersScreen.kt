@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -322,57 +323,97 @@ fun TrackersScreen(
 
 // ── AniList card ──
 
+// ════════════════════════════════════════════════════════════════════════
+//  ROUND 170 (the device order): THE COMPACT TRACKER CARD — one base for
+//  the three trackers. The icon leads; the name + the status chip in one
+//  row; NO "Connected as" line, NO role descriptions. The actions colored:
+//  the Populate button in the primary container, the delete icon in the
+//  error tint.
+// ════════════════════════════════════════════════════════════════════════
+
 @Composable
-private fun AniListCard(
-    loginState: TrackerLoginState,
-    populateState: PopulateState,
+private fun CompactTrackerCard(
+    name: String,
+    logoRes: Int?,
+    isConfigured: Boolean,
+    linked: Boolean,
+    username: String,
+    populateLabel: String? = null,
+    onPopulate: (() -> Unit)? = null,
     onLink: () -> Unit,
     onUnlink: () -> Unit,
-    onPopulate: () -> Unit,
-    onDismissResult: () -> Unit,
 ) {
-    val linked = loginState is TrackerLoginState.LoggedIn
-    val username = (loginState as? TrackerLoginState.LoggedIn)?.username ?: ""
-
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // ── Title row ──
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            RoundedCornerShape(10.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (logoRes != null) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(logoRes),
+                            contentDescription = name,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Text(
+                            text = name.first().toString(),
+                            fontFamily = RobotoFamily,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "AniList",
+                        text = name,
                         fontFamily = RobotoFamily,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    // ROUND 165 (the device order): the ROLE on the right side
-                    // reads at a glance — one line, no description paragraphs.
-                    Text(
-                        text = "Anime and manga",
-                        fontFamily = RobotoFamily,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (linked && username.isNotBlank()) {
+                        Text(
+                            text = username,
+                            fontFamily = RobotoFamily,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
-                // Status badge.
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (linked) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                    else MaterialTheme.colorScheme.outlineVariant,
+                    color = when {
+                        !isConfigured -> MaterialTheme.colorScheme.outlineVariant
+                        linked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else -> MaterialTheme.colorScheme.outlineVariant
+                    },
                 ) {
                     Text(
-                        text = if (linked) "Linked" else "Not linked",
+                        text = when {
+                            !isConfigured -> "Setup pending"
+                            linked -> "Linked"
+                            else -> "Not linked"
+                        },
                         fontFamily = RobotoFamily,
                         fontSize = 10.sp,
                         lineHeight = 14.sp,
@@ -386,122 +427,79 @@ private fun AniListCard(
                 }
             }
 
-            // ── Username (if linked) ──
-            if (linked) {
-                Text(
-                    text = "Connected as: $username",
-                    fontFamily = RobotoFamily,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // ── Action buttons ──
-            if (!linked) {
-                Button(
-                    onClick = onLink,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Link AniList", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // Populate Library button.
-                    OutlinedButton(
-                        onClick = onPopulate,
+            // ── The actions row: the Populate (the primary container) + the delete (the error tint) ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                when {
+                    !isConfigured -> {}
+                    !linked -> Button(
+                        onClick = onLink,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f),
-                        enabled = populateState !is PopulateState.Fetching,
-                    ) {
-                        if (populateState is PopulateState.Fetching) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        } else {
-                            Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                        }
-                        Spacer(Modifier.size(6.dp))
-                        Text("Populate Library", fontFamily = RobotoFamily, fontWeight = FontWeight.Bold)
-                    }
-                    // Unlink button.
-                    OutlinedButton(
-                        onClick = onUnlink,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
                         ),
                     ) {
-                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(6.dp))
+                        Text("Link", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
                     }
-                }
-            }
-
-            // ── Populate result ──
-            when (populateState) {
-                is PopulateState.Fetching -> {
-                    Text(
-                        text = "Fetching your AniList library...",
-                        fontFamily = RobotoFamily,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                is PopulateState.Done -> {
-                    val result = populateState.result
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        modifier = Modifier.fillMaxWidth().clickable { onDismissResult() },
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "Library populated!",
-                                fontFamily = RobotoFamily,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Spacer(Modifier.size(4.dp))
-                            result.split("\n").forEach { line ->
-                                if (line.isNotBlank()) {
-                                    Text(
-                                        text = line,
-                                        fontFamily = RobotoFamily,
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                    else -> {
+                        if (populateLabel != null && onPopulate != null) {
+                            androidx.compose.material3.FilledTonalButton(
+                                onClick = onPopulate,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
+                            ) {
+                                Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text(populateLabel, fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
                             }
+                            Spacer(Modifier.size(8.dp))
+                        }
+                        IconButton(onClick = onUnlink) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Unlink $name",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
                         }
                     }
                 }
-                is PopulateState.Error -> {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
-                        modifier = Modifier.fillMaxWidth().clickable { onDismissResult() },
-                    ) {
-                        Text(
-                            text = populateState.message,
-                            fontFamily = RobotoFamily,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(12.dp),
-                        )
-                    }
-                }
-                PopulateState.Idle -> {}
             }
         }
     }
+}
+
+
+@Composable
+private fun AniListCard(
+    isConfigured: Boolean,
+    loginState: TrackerLoginState,
+    populateState: PopulateState,
+    onLink: () -> Unit,
+    onUnlink: () -> Unit,
+    onPopulate: () -> Unit,
+    onDismissResult: () -> Unit,
+) {
+    val linked = loginState is TrackerLoginState.LoggedIn
+    val username = (loginState as? TrackerLoginState.LoggedIn)?.username ?: ""
+    CompactTrackerCard(
+        name = "AniList",
+        logoRes = R.drawable.ic_tracker_anilist,
+        isConfigured = isConfigured,
+        linked = linked,
+        username = username,
+        populateLabel = if (populateState == PopulateState.Fetching) "Fetching..." else "Populate Library",
+        onPopulate = if (populateState == PopulateState.Fetching) null else onPopulate,
+        onLink = onLink,
+        onUnlink = onUnlink,
+    )
 }
 
 // ── Populate state ──
@@ -638,108 +636,15 @@ private fun SimklCard(
 ) {
     val linked = loginState is TrackerLoginState.LoggedIn
     val username = (loginState as? TrackerLoginState.LoggedIn)?.username ?: ""
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // ── Title row (the AniList card's anatomy) ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Simkl",
-                        fontFamily = RobotoFamily,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "Movies and TV series",
-                        fontFamily = RobotoFamily,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = when {
-                        !isConfigured -> MaterialTheme.colorScheme.outlineVariant
-                        linked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        else -> MaterialTheme.colorScheme.outlineVariant
-                    },
-                ) {
-                    Text(
-                        text = when {
-                            !isConfigured -> "Setup pending"
-                            linked -> "Linked"
-                            else -> "Not linked"
-                        },
-                        fontFamily = RobotoFamily,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (linked) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                }
-            }
-
-            // ── Username (if linked) ──
-            if (linked) {
-                Text(
-                    text = "Connected as: $username",
-                    fontFamily = RobotoFamily,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // ── Action buttons ──
-            when {
-                !isConfigured -> Text(
-                    text = "Waiting on the Simkl app registration (the client id) — " +
-                        "the link button lights up as soon as it lands.",
-                    fontFamily = RobotoFamily,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                !linked -> Button(
-                    onClick = onLink,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Link Simkl", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
-                }
-                else -> Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    OutlinedButton(
-                        onClick = onUnlink,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error,
-                        ),
-                    ) {
-                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-        }
-    }
+    CompactTrackerCard(
+        name = "Simkl",
+        logoRes = R.drawable.ic_tracker_simkl,
+        isConfigured = isConfigured,
+        linked = linked,
+        username = username,
+        onLink = onLink,
+        onUnlink = onUnlink,
+    )
 }
 
 // ── MAL card (ROUND 168: the anime tracker redo — the Simkl card's anatomy,
@@ -753,106 +658,13 @@ private fun MalCard(
 ) {
     val linked = loginState is TrackerLoginState.LoggedIn
     val username = (loginState as? TrackerLoginState.LoggedIn)?.username ?: ""
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // ── Title row (the AniList card's anatomy) ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "MyAnimeList",
-                        fontFamily = RobotoFamily,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "Anime and manga",
-                        fontFamily = RobotoFamily,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = when {
-                        !isConfigured -> MaterialTheme.colorScheme.outlineVariant
-                        linked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        else -> MaterialTheme.colorScheme.outlineVariant
-                    },
-                ) {
-                    Text(
-                        text = when {
-                            !isConfigured -> "Setup pending"
-                            linked -> "Linked"
-                            else -> "Not linked"
-                        },
-                        fontFamily = RobotoFamily,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (linked) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                }
-            }
-
-            // ── Username (if linked) ──
-            if (linked) {
-                Text(
-                    text = "Connected as: $username",
-                    fontFamily = RobotoFamily,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // ── Action buttons ──
-            when {
-                !isConfigured -> Text(
-                    text = "Waiting on the MAL app registration (the client id) — " +
-                        "the link button lights up as soon as it lands.",
-                    fontFamily = RobotoFamily,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                !linked -> Button(
-                    onClick = onLink,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Link MyAnimeList", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
-                }
-                else -> Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    OutlinedButton(
-                        onClick = onUnlink,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error,
-                        ),
-                    ) {
-                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-        }
-    }
+    CompactTrackerCard(
+        name = "MyAnimeList",
+        logoRes = R.drawable.ic_tracker_mal,
+        isConfigured = isConfigured,
+        linked = linked,
+        username = username,
+        onLink = onLink,
+        onUnlink = onUnlink,
+    )
 }
