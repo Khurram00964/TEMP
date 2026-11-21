@@ -25,7 +25,7 @@ class ExtensionPriorityPreferences(private val store: PreferenceStore) {
     val enabledFlow: StateFlow<Boolean> = _enabled.asStateFlow()
 
     /** The Settings toggle write (the flow re-emits → the sort sites re-derive). */
-    fun setEnabled(value: Boolean) {
+    fun updateEnabled(value: Boolean) {
         enabled = value
         _enabled.value = value
     }
