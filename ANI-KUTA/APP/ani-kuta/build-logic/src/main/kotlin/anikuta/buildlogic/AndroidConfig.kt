@@ -544,8 +544,17 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10207
+    const val versionName = "1.1.107"
+    // ROUND 171 (v1.1.107): release/1.1.107 — cut from the round-171 main head
+    // (the v1.1.106 device-report orders: the METADATA ENRICHMENT (the
+    // TMDB/TVmaze detail fetches — the translation layer); the metadata
+    // content's EPISODES + AUTO-SEARCH + the extension-link RESTORE; the
+    // unified link sheet (ONE UI for the MAL/Simkl/TMDB/TVmaze flows); LINK
+    // ≠ TRACK (the pick stores the identity only); the Link-to-other menu
+    // (the source logos, the reset, the section hiding); the compact tracker
+    // cards + the WIDE unlink; the picker filtering; the user's icons
+    // deployed; the Simkl search fix — CI 44957874964 GREEN).
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
