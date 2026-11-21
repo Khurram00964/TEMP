@@ -115,7 +115,8 @@ fun TrackersScreen(
             // ── AniList tracker card ──
             item {
                 AniListCard(
-                    isConfigured = anilistTracker.isConfigured,
+                    // The AniList client id is baked in (48714) — always configured.
+                    isConfigured = true,
                     loginState = loginState,
                     populateState = populateState,
                     onLink = {
