@@ -913,7 +913,9 @@ class HomeViewModel(
         if (pools.isNotEmpty()) {
             val combined = pools.values.flatten()
             if (combined.isNotEmpty()) {
-                _fieldCovers.value = combined.shuffled().take(35)
+                _fieldCovers.value = combined.shuffled().take(35).map {
+                    HomeFieldCover(anilistId = it.id, url = it.coverUrl)
+                }
                 return
             }
         }
