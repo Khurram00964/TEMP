@@ -1,9 +1,5 @@
 package com.confused.anikuta.core.database
 
-import com.confused.anikuta.core.common.Logger
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
 /**
  * ROUND 165: the EXTENSION PRIORITY SYSTEM's tracker (the spec:
  * DOCUMENTATION/EXTENSION-PRIORITY-SYSTEM.md). Records the usage events per
@@ -24,6 +20,10 @@ import kotlinx.coroutines.withContext
  * KEYS:
  * - provider tier: "cs:<providerName>" | "aniyomi:<sourceId>"
  * - server tier:   "<providerKey>::<serverName>"
+ *
+ * THIS MODULE IS DEPENDENCY-FREE (no :core:common): no Logger (the callers
+ * log through the central Logger) and no System clock ([record] takes
+ * `nowMs` explicitly) — the DatabaseMaintenance precedent.
  *
  * The toggle lives in ExtensionPriorityPreferences (:core:preferences) — the
  * RECORDING always runs (the history survives the toggling); the SORT sites
@@ -57,19 +57,20 @@ class ExtensionUsageTracker(private val database: AnikutaDatabase) {
         )
     }
 
-    private val TAG = "Anikuta:Core:Usage"
-
     /** The event kinds (the caller-facing vocabulary). */
     enum class Event { SEARCH, OPEN, WATCH, RESOLVE, FAIL }
+
+    /** The outcome of one record call (the caller logs; failure-isolated). */
+    data class RecordResult(val recorded: Boolean)
 
     /**
      * Records one event against [key]. Transactional read-modify-write: the
      * concurrent events serialize on the DB transaction (no lost updates).
+     * Never throws — a failing record no-ops (the caller logs via Logger).
      */
-    suspend fun record(key: String, tier: String, event: Event) = withContext(Dispatchers.IO) {
+    suspend fun record(key: String, tier: String, event: Event, nowMs: Long): RecordResult = withContext(Dispatchers.IO) {
         runCatching {
             database.transaction {
-                val now = System.currentTimeMillis()
                 val existing = database.extensionUsageQueries.getUsage(key).executeAsOneOrNull()
                 var searches = existing?.searches?.toInt() ?: 0
                 var opens = existing?.opens?.toInt() ?: 0
@@ -94,8 +95,8 @@ class ExtensionUsageTracker(private val database: AnikutaDatabase) {
                         resolves = resolves.toLong(),
                         fails = fails.toLong(),
                         score = score.toLong(),
-                        last_used_at = now,
-                        updated_at = now,
+                        last_used_at = nowMs,
+                        updated_at = nowMs,
                     )
                 } else {
                     database.extensionUsageQueries.applyUsageDeltas(
@@ -106,34 +107,27 @@ class ExtensionUsageTracker(private val database: AnikutaDatabase) {
                         resolves = resolves.toLong(),
                         fails = fails.toLong(),
                         score = score.toLong(),
-                        last_used_at = now,
-                        updated_at = now,
+                        last_used_at = nowMs,
+                        updated_at = nowMs,
                     )
                 }
             }
-            Logger.d(TAG) { "record — $key <- $event" }
-        }.onFailure { e ->
-            Logger.w(TAG) { "record $key/$event failed: ${e.message}" }
-        }
-        Unit
+            RecordResult(recorded = true)
+        }.getOrElse { RecordResult(recorded = false) }
     }
 
     /** The score-ordered rows for a tier (the sort sites' read). */
     suspend fun rowsByTier(tier: String): List<Extension_usage> = withContext(Dispatchers.IO) {
         runCatching { database.extensionUsageQueries.getUsageByTier(tier).executeAsList() }
             .getOrDefault(emptyList())
-    }
 
     /** The score for one key (0 when absent). */
     suspend fun scoreFor(key: String): Int = withContext(Dispatchers.IO) {
         runCatching { database.extensionUsageQueries.getUsage(key).executeAsOneOrNull()?.score?.toInt() ?: 0 }
             .getOrDefault(0)
-    }
 
     /** The Settings' reset action — wipes the learned history. */
     suspend fun wipeAll() = withContext(Dispatchers.IO) {
         runCatching { database.extensionUsageQueries.wipeAllUsage() }
-            .onSuccess { Logger.i(TAG) { "wipeAll — the learned priorities reset" } }
-        Unit
     }
 }
