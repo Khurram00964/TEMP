@@ -25,7 +25,7 @@ class SearchPreferences(private val store: PreferenceStore) {
     private val _resultTitleStyle = MutableStateFlow(resultTitleStyle)
     val resultTitleStyleFlow: StateFlow<ResultTitleStyle> = _resultTitleStyle.asStateFlow()
 
-    fun setResultTitleStyle(style: ResultTitleStyle) {
+    fun updateResultTitleStyle(style: ResultTitleStyle) {
         resultTitleStyle = style
         _resultTitleStyle.value = style
     }

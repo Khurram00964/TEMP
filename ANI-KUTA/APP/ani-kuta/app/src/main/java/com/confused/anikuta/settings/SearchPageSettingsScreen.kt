@@ -97,7 +97,7 @@ fun SearchPageSettingsScreen(
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                     RoundedCornerShape(16.dp),
                                 )
-                                .clickable { searchPreferences.setResultTitleStyle(candidate) }
+                                .clickable { searchPreferences.updateResultTitleStyle(candidate) }
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
