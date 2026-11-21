@@ -544,8 +544,15 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10204
+    const val versionName = "1.1.104"
+    // ROUND 168 (v1.1.104): release/1.1.104 — cut from the round-168 main head
+    // (the boot hardening: the gated legacy onCreate + the IO warm-up; the DB v6
+    // chain; the Simkl port + the FULL MAL module; the >1-linked tracker picker
+    // + the MAL link sheet; the 5-source search (TMDB/TVmaze/MAL/Simkl) with the
+    // 5-row picker + the defaults; the Appearance search page (the title style,
+    // the rating badge, the details line, the grid density, the recents) —
+    // CI 44925963110 GREEN).
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
