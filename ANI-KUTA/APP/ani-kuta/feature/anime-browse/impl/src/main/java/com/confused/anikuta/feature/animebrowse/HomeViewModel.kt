@@ -508,18 +508,16 @@ class HomeViewModel(
 
     /** The TMDB discover by the genre NAME (the id resolves via the genre map). */
     private suspend fun discoverTmdb(mediaType: String, genreName: String): List<AniListAnime> {
-        if (!tmdbPreferencesEnabled) return emptyList()
-        val map = tmdbGenreMap ?: com.confused.anikuta.core.tmdb.TmdbApi().let {
-            // (the VM's cached map — the Api instance owns the fetch)
-            emptyMap()
-        }
+        if (!tmdbPreferences.enabled) return emptyList()
+        // ROUND 165 (the device bug): the map read was  —
+        // ALWAYS empty, so every movies/series mood pool returned nothing (the
+        // v1.1.102 device report). The map fetches lazily through the injected
+        // Api and caches for the VM lifetime.
+        val map = tmdbGenreMap ?: tmdbApi.genreNames().also { tmdbGenreMap = it }
         val id = map.entries.firstOrNull { it.value.equals(genreName, ignoreCase = true) }?.key
             ?: return emptyList()
         return tmdbApi.discoverByGenre(mediaType, id).map { it.toSyntheticAnime(genreName) }
     }
-
-    private val tmdbPreferencesEnabled: Boolean
-        get() = true
 
     /**
      * Partial-success Error policy (the round-148 shape, one discovery fetch):

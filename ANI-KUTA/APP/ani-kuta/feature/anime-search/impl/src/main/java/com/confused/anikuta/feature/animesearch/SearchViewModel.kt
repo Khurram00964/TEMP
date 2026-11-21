@@ -65,6 +65,9 @@ class SearchViewModel(
     private val tvmazeApi: com.confused.anikuta.core.tvmaze.TvmazeApi,
     private val tmdbPreferences: com.confused.anikuta.core.tmdb.TmdbPreferences,
     private val tvmazePreferences: com.confused.anikuta.core.tvmaze.TvmazePreferences,
+    // ROUND 165: the extension-priority system (the usage records + the sort).
+    private val usageTracker: com.confused.anikuta.core.database.ExtensionUsageTracker,
+    private val priorityPrefs: com.confused.anikuta.core.preferences.ExtensionPriorityPreferences,
 ) : ViewModel() {
 
     companion object {
@@ -316,7 +319,25 @@ class SearchViewModel(
      * NSFW still shows its flag data wherever a surface chooses to render it;
      * only the cross-page FILTERING is gone.)
      */
-    val csSources: StateFlow<List<CsProviderSource>> = cloudstreamRepository.sources
+    // ROUND 165: the priority-aware CS provider list — the score desc when
+    // the system is ON; the never-used providers fall back to the alphabetical
+    // order (the user's spec). The recording always runs.
+    val csSources: StateFlow<List<CsProviderSource>> = combine(
+        cloudstreamRepository.sources,
+        priorityPrefs.enabledFlow,
+    ) { sources, enabled ->
+        if (!enabled) return@combine sources
+        val scores = mutableMapOf<String, Int>()
+        for (source in sources) {
+            scores[source.providerName] = usageTracker.scoreFor(
+                com.confused.anikuta.core.database.ExtensionUsageTracker.providerKeyCs(source.providerName),
+            )
+        }
+        sources.sortedWith(
+            compareByDescending<CsProviderSource> { scores[it.providerName] ?: 0 }
+                .thenBy { it.providerName.lowercase() },
+        )
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -1168,6 +1189,14 @@ class SearchViewModel(
             _uiState.value = SearchUiState.ExtensionNotAvailable
             return
         }
+        // ROUND 165: the usage record (the priority system's SEARCH event).
+        viewModelScope.launch {
+            usageTracker.record(
+                com.confused.anikuta.core.database.ExtensionUsageTracker.providerKeyAniyomi(sourceId),
+                com.confused.anikuta.core.database.ExtensionUsageTracker.TIER_PROVIDER,
+                com.confused.anikuta.core.database.ExtensionUsageTracker.Event.SEARCH,
+            )
+        }
 
         val source = extensionManager.getSource(sourceId) as? AnimeCatalogueSource
         if (source == null) {
@@ -1643,6 +1672,14 @@ class SearchViewModel(
             _uiState.value = SearchUiState.ExtensionNotAvailable
             return
         }
+        // ROUND 165: the usage record (the priority system's SEARCH event).
+        viewModelScope.launch {
+            usageTracker.record(
+                com.confused.anikuta.core.database.ExtensionUsageTracker.providerKeyCs(providerName),
+                com.confused.anikuta.core.database.ExtensionUsageTracker.TIER_PROVIDER,
+                com.confused.anikuta.core.database.ExtensionUsageTracker.Event.SEARCH,
+            )
+        }
 
         showingDefaults = false
         val gen = beginRequest()
@@ -1750,6 +1787,9 @@ class SearchViewModel(
         val canPage = when (state) {
             is SearchUiState.Success -> !state.loadingMore && state.hasMore
             is SearchUiState.ExtensionSuccess -> !state.loadingMore && state.hasMore
+            // ROUND 165 (the device fix): the TMDB load-more never fired — the
+            // canPage gate had no DataSourceSuccess branch.
+            is SearchUiState.DataSourceSuccess -> !state.loadingMore && state.hasMore
             else -> false
         }
         if (!canPage) return

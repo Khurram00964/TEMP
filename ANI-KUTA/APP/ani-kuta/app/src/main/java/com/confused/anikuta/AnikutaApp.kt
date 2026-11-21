@@ -468,6 +468,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // (identity) in release builds.
             single<SqlDriver> { wrapDebugSqlDriver(DatabaseDriverFactory(get()).create()) }
             single<AnikutaDatabase> { AnikutaDatabase(get()) }
+            single { com.confused.anikuta.core.database.ExtensionUsageTracker(get()) } // ROUND 165: the priority tracker
 
             // Phase SC-2: bind ScheduleStore as ActualReleaseUpdater (breaks the circular
             // dependency between :core:updates + :core:schedule).
@@ -584,6 +585,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             // toggle — library | global).
             single { com.confused.anikuta.core.preferences.HomePreferences(get()) }
             single { com.confused.anikuta.core.preferences.SearchPreferences(get()) } // ROUND 165: the search-page appearance
+            single { com.confused.anikuta.core.preferences.ExtensionPriorityPreferences(get()) } // ROUND 165: the priority toggle
 
             // ViewModels (app-level)
             viewModelOf(::NotificationsSettingsViewModel)

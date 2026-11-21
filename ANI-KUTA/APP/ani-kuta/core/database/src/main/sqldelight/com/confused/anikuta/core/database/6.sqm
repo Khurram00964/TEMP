@@ -1,0 +1,31 @@
+-- Schema v6 → v7 (ROUND 165, the EXTENSION PRIORITY SYSTEM — see
+-- DOCUMENTATION/EXTENSION-PRIORITY-SYSTEM.md):
+--
+-- The usage table the learned-priority sorting reads. One row per
+-- provider/server key:
+--   provider tier: "cs:<providerName>" | "aniyomi:<sourceId>"
+--   server tier:   "<providerKey>::<serverName>"
+--
+-- The SCORE is denormalized (the sort reads the column, never recomputes per
+-- row): score = searches*1 + opens*2 + watches*5 + resolves*2 - fails*3,
+-- floored at 0 (the alphabetical tail is the natural bottom — a provider
+-- can't go negative). The counter columns carry the raw event counts (the
+-- merge-restore takes the MAX per counter on restore — the history merges,
+-- never regresses).
+--
+-- NO prune: the rows are naturally bounded by the installed extensions'
+-- providers/servers (the contract §7 note).
+CREATE TABLE extension_usage (
+    key TEXT NOT NULL PRIMARY KEY,
+    tier TEXT NOT NULL,                       -- 'provider' | 'server'
+    searches INTEGER NOT NULL DEFAULT 0,
+    opens INTEGER NOT NULL DEFAULT 0,
+    watches INTEGER NOT NULL DEFAULT 0,
+    resolves INTEGER NOT NULL DEFAULT 0,
+    fails INTEGER NOT NULL DEFAULT 0,
+    score INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_extension_usage_score ON extension_usage(score DESC);

@@ -131,21 +131,31 @@ class TvmazeApi(
      * excluded — /schedule/web covers them and is called for the same day).
      */
     suspend fun schedule(date: String): List<TvmazeShow> = withContext(Dispatchers.IO) {
-        val payload = get("$BASE/schedule?date=$date&country=US")
-        val episodes = payload?.let {
-            runCatching { json.parseToJsonElement(it).jsonArray }.getOrNull()
-        } ?: return@withContext emptyList()
+        // ROUND 165 (the empty-first-load fix): /schedule EXCLUDES the
+        // web-only series — /schedule/web covers them; BOTH merge so the
+        // default feed is complete.
         val seen = mutableSetOf<Int>()
-        episodes.mapNotNull { element ->
-            val obj = element.jsonObject
-            val show = (obj["_embedded"] as? JsonObject)?.get("show") as? JsonObject
-                ?: obj["show"] as? JsonObject
-                ?: return@mapNotNull null
-            val parsed = parseShow(show, embeddedNext = false) ?: return@mapNotNull null
-            // The schedule is PER-EPISODE rows — dedupe to one row per show.
-            if (!seen.add(parsed.id)) return@mapNotNull null
-            parsed
+        val shows = mutableListOf<TvmazeShow>()
+        for (path in listOf(
+            "$BASE/schedule?date=$date&country=US",
+            "$BASE/schedule/web?date=$date",
+        )) {
+            val payload = get(path)
+            val episodes = payload?.let {
+                runCatching { json.parseToJsonElement(it).jsonArray }.getOrNull()
+            } ?: continue
+            episodes.mapNotNull { element ->
+                val obj = element.jsonObject
+                val show = (obj["_embedded"] as? JsonObject)?.get("show") as? JsonObject
+                    ?: obj["show"] as? JsonObject
+                    ?: return@mapNotNull null
+                val parsed = parseShow(show, embeddedNext = false) ?: return@mapNotNull null
+                // The schedule is PER-EPISODE rows — dedupe to one row per show.
+                if (!seen.add(parsed.id)) return@mapNotNull null
+                shows += parsed
+            }
         }
+        shows
     }
 
     /** GET /shows/:id?embed=nextepisode — the detail/next-air read. */

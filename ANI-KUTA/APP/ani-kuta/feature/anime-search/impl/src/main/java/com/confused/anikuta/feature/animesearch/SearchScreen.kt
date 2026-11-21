@@ -229,6 +229,9 @@ fun SearchScreen(
                 is SearchUiState.Idle -> scrollState.value == 0
                 is SearchUiState.Success,
                 is SearchUiState.ExtensionSuccess,
+                // ROUND 165 (the device fix): the data-source grids ride the
+                // SAME gridState — the collapse works for TMDB/TVmaze too.
+                is SearchUiState.DataSourceSuccess,
                 -> gridState.firstVisibleItemIndex == 0 &&
                     gridState.firstVisibleItemScrollOffset == 0
                 is SearchUiState.ExtensionBrowseLoading,

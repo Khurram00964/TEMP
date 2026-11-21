@@ -1,0 +1,65 @@
+-- ──────────────────────────────────────────────────────────────────────────
+-- Extension usage (ROUND 165 — the EXTENSION PRIORITY SYSTEM)
+-- ──────────────────────────────────────────────────────────────────────────
+--
+-- The learned-usage ledger the priority sorting reads. One row per key:
+--   provider tier: "cs:<providerName>" | "aniyomi:<sourceId>"
+--   server tier:   "<providerKey>::<serverName>"
+--
+-- The SCORE is the denormalized sort key:
+--   searches*1 + opens*2 + watches*5 + resolves*2 - fails*3 (floor 0)
+-- recomputed by ExtensionUsageTracker on every event (a transactional
+-- read-modify-write — UPSERT is unavailable below SQLite 3.24).
+--
+-- Backup parity: the table rides BACKUP_TABLES; the merge-restore takes the
+-- MAX per counter on restore (the history merges, never regresses).
+
+CREATE TABLE IF NOT EXISTS extension_usage (
+    key TEXT NOT NULL PRIMARY KEY,
+    tier TEXT NOT NULL,                       -- 'provider' | 'server'
+    searches INTEGER NOT NULL DEFAULT 0,
+    opens INTEGER NOT NULL DEFAULT 0,
+    watches INTEGER NOT NULL DEFAULT 0,
+    resolves INTEGER NOT NULL DEFAULT 0,
+    fails INTEGER NOT NULL DEFAULT 0,
+    score INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_extension_usage_score ON extension_usage(score DESC);
+
+-- ── Queries ────────────────────────────────────────────────────────────────
+
+getUsage:
+SELECT * FROM extension_usage WHERE key = :key;
+
+getAllByScore:
+SELECT * FROM extension_usage ORDER BY score DESC, last_used_at DESC;
+
+getUsageByTier:
+SELECT * FROM extension_usage WHERE tier = :tier ORDER BY score DESC, last_used_at DESC;
+
+insertUsage:
+INSERT INTO extension_usage(
+    key, tier, searches, opens, watches, resolves, fails, score, last_used_at, updated_at
+) VALUES (
+    :key, :tier, :searches, :opens, :watches, :resolves, :fails, :score, :last_used_at, :updated_at
+);
+
+-- The counter deltas (the tracker's transactional read-modify-write applies
+-- these; the score recomputes in Kotlin where the weights live).
+applyUsageDeltas:
+UPDATE extension_usage SET
+    searches = searches + :searches,
+    opens = opens + :opens,
+    watches = watches + :watches,
+    resolves = resolves + :resolves,
+    fails = fails + :fails,
+    score = :score,
+    last_used_at = :last_used_at,
+    updated_at = :updated_at
+WHERE key = :key;
+
+wipeAllUsage:
+DELETE FROM extension_usage;
