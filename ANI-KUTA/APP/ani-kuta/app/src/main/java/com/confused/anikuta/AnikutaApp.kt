@@ -191,6 +191,27 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             modules(debugKoinModules())
         }
 
+        // ── ROUND 168 (PM-6 hardening): the FIRST DB open happens HERE, on IO ──
+        // The driver creation + the legacy migrateSchemaIfNeeded + any versioned
+        // migration used to run on WHATEVER thread resolved the database first —
+        // a main-thread ViewModel init during first composition meant the whole
+        // migration executed on the UI thread (the black-screen ANR signature of
+        // the update-over hang). Koin's singleton is created on this first get(),
+        // so every later consumer — on any thread — receives the ALREADY-WARMED
+        // driver and pays zero migration cost. The one real query forces the
+        // lazy AndroidSqliteDriver to actually open the file (the callbacks run).
+        appScope.launch(Dispatchers.IO) {
+            runCatching {
+                org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.database.AnikutaDatabase>()
+                    .appSettingsQueries.getAllSettings().executeAsList()
+            }.onSuccess {
+                Logger.i("AnikutaApp") { "Database warmed up (the first open off the main thread)" }
+            }.onFailure { t ->
+                Logger.e("AnikutaApp", t) { "Database warm-up failed: ${t.message}" }
+            }
+        }
+
         // Task 64 (round 24): initDebugIntegrations() (the Logger appender →
         // DebugLogBuffer composite wiring) is REMOVED with the console family.
         // The debug-bubble Koin modules above stay (its Screen/Database/Network/

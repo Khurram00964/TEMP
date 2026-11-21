@@ -165,3 +165,50 @@ The normalization items (D.1/3/4) run BETWEEN the redo items whenever a
 redo round touches one of those files anyway (one visit per file, no
 double churn). D.2 (WatchScreen) gets its design pass when the watch work
 queue reaches it.
+
+---
+
+## F. THE ROUND-168 ORDER (the user's, 2026-11-21 — this SUPERSEDES the E queue)
+
+The user's decisions:
+
+1. **Item 0 (the migration re-land) is SKIPPED as a standalone.** The user
+   will clean-install the next debug build (delete v1.1.103 completely,
+   install 1.1.104 fresh) — the downgrade path never runs. The DB stays
+   v4 on main UNLESS a feature needs the newer shapes (the Simkl port
+   brings 4/5/6.sqm + the paired .sq updates as PART of the tracker work —
+   fresh installs get the new schema; and since the devices then match v7,
+   BOTH install paths stay safe anyway).
+2. **The professional line keeps the migration discipline** — when the
+   release line ships 1.1.9 (over the installed 1.1.8), the DB migration
+   MUST run smoothly on update-over. That is the release-branch work at
+   1.1.9 time, not a debug-line blocker.
+3. **The first priority: the boot-path hardening (C.2 + C.3)** — the gated
+   legacy migrate + the async first-open, handled with proper care.
+4. **Then the trackers**: the Simkl port (the recovery branch's proven
+   shape, login-state restore included) + the FULL MAL module (the OAuth
+   PKCE-plain, the link flow, the Jikan search per the user's pointer,
+   api.myanimelist.net/v2 for the authenticated list ops).
+5. **Then the SEARCH PAGE** (04-THE-SEARCH-PAGE-SPEC.md is the contract,
+   extended by the user's round-168 adds):
+   - The search sources: AniList (current) + TMDB + TVmaze (the recovery
+     shape) + **MAL via Jikan** (new) + **Simkl** (new).
+   - The picker = the bottom-sheet menu from the source chip (the
+     extension-sources parity), the REAL logos (04-S-2), the instant apply,
+     the persistence.
+   - The ONE universal base for every source (04-S-1).
+   - **The details pages loadable from EVERY source** (the user's
+     round-168 add — extends 04-S-3's hand-off: metadata sources render a
+     real details surface + the CS-first hand-off for playback).
+   - **Settings → Appearance → the Search page** (04-S-5, the user
+     re-confirmed): the title placement (on-cover/below), the rating
+     badge, the details line, the grid density (the columns), the recents
+     toggle.
+6. **NOTHING ELSE this round** (the airs contract, the see-all catalogs,
+   the mood depth, the priority integration, the TVmaze airs, Bangumi —
+   all explicitly deferred by the user's "your task is only this").
+
+The phase order: A (boot) → B (DB + Simkl) → C (MAL) → D (tracker UI) →
+E (search sources + picker) → F (per-source details) → G (the
+customization page). One CI cycle per phase. Routine A closes the round
+(1.1.104/10204).

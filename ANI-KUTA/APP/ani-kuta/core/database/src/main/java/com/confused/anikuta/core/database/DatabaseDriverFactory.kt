@@ -147,8 +147,21 @@ class DatabaseDriverFactory(private val context: Context) {
                     db.execSQL("DROP INDEX IF EXISTS idx_library_item_main")
                     db.execSQL("DROP INDEX IF EXISTS idx_anilist_detail_anilist_id")
                     db.execSQL("DROP TABLE IF EXISTS content")
-                    // Recreate main_entry + content_details from the updated .sq file.
-                    onCreate(db)
+                    // ROUND 168 (PM-6 hardening): the onCreate(db) call — the FULL
+                    // schema exec (every CREATE TABLE/INDEX statement parsed on
+                    // every open) — is now gated. Its only job here is the D-198
+                    // rename (content → main_entry): a legacy install still has
+                    // the `content` table; every install that already went through
+                    // this block (or was created fresh) does NOT, and re-running
+                    // the full schema for it was pure waste on every single open
+                    // (the ANR-weight at boot the update-over hang rode on). The
+                    // hasColumn probe returns false on a missing table (the F2
+                    // fix), so the gate is safe both ways — the guarded probe
+                    // blocks below still cover every install that needs new
+                    // tables via their own onCreate calls.
+                    if (hasColumn(db, "content", "id")) {
+                        onCreate(db)
+                    }
 
                     // ── download_queue: check for main_id (D.0 migration) ──
                     if (!hasColumn(db, "download_queue", "main_id")) {
