@@ -70,6 +70,13 @@ class SearchViewModel(
     // provide the app-auth search + the trending defaults; the tracker
     // modules are registered singles).
     private val malTracker: com.confused.anikuta.core.trackermal.MalTracker,
+    private val simklTracker: com.confused.anikuta.core.trackersimkl.SimklTracker,
+    // ROUND 171: the metadata persistence — the tap saves the FULL result
+    // (the overview/year/rating/cover) into content_details' data axis
+    // BEFORE the details route reads it (the v1.1.106 device bug: the
+    // sparse rows never enriched, the descriptions blank).
+    private val metadataContentRepository: com.confused.anikuta.core.content.ContentRepository,
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
