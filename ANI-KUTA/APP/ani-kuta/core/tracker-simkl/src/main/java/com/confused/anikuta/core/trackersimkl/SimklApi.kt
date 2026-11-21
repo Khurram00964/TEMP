@@ -116,7 +116,7 @@ class SimklApi(
         } ?: emptyList()
 
     /**
-     * ROUND 169: the USER-TOKEN search — the /search/* endpoints REQUIRE a
+     * ROUND 169: the USER-TOKEN search — the search endpoints REQUIRE a
      * user access token (the live 401: "user_token_required"); the client id
      * alone never worked. Null token → the honest empty (the UI shows the
      * not-linked state).
