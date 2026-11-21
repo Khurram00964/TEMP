@@ -1278,10 +1278,17 @@ class DetailsViewModel(
                     }
                 }
             } else {
-                // The AUTO-SEARCH (the round-165 hand-off semantics): the first
-                // trusted CS provider searches the title; the best match links
-                // (LINK ≠ TRACK — the identity link only).
-                val providerSource = cloudstreamRepository.sources.value.firstOrNull()
+                // The AUTO-SEARCH (the round-165 hand-off semantics): the
+                // ExtensionManager's CS-bridged sources (the round-4 bridge:
+                // every trusted CS provider is published as an AnimeSource)
+                // search the title; the best match links (LINK ≠ TRACK — the
+                // identity link only). The details VM has no cloudstream
+                // repository — the manager IS the source of the providers.
+                // The CS-bridged providers live in the ExtensionManager's
+                // sources map (the round-4 bridge) — the first AnimeCatalogueSource.
+                val providerSource = extensionManager.sources.value.values
+                    .filterIsInstance<eu.kanade.tachiyomi.animesource.AnimeCatalogueSource>()
+                    .firstOrNull()
                 if (providerSource != null) {
                     runCatching {
                         val page = withContext(kotlinx.coroutines.Dispatchers.IO) {
