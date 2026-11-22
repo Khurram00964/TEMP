@@ -210,6 +210,9 @@ class DetailsViewModel(
      */
     private val _reverseAutoLinkState = MutableStateFlow<ReverseAutoLinkState>(ReverseAutoLinkState.Idle)
     val reverseAutoLinkState: StateFlow<ReverseAutoLinkState> = _reverseAutoLinkState.asStateFlow()
+    // ROUND 173 (N1): the in-flight reverse search — the cancel button's
+    // target (the cancellation kills the suspending getSearchAnime calls).
+    private var reverseSearchJob: kotlinx.coroutines.Job? = null
 
     /** AniList search state for the manual link sheet. */
     private val _anilistSearchState = MutableStateFlow<AniListSearchState>(AniListSearchState.Idle)
@@ -597,6 +600,11 @@ class DetailsViewModel(
     val showUnifiedLinkSheet: kotlinx.coroutines.flow.StateFlow<String?> = _showUnifiedLinkSheet.asStateFlow()
     internal val _unifiedLinkSearching = kotlinx.coroutines.flow.MutableStateFlow(false)
     val unifiedLinkSearching: kotlinx.coroutines.flow.StateFlow<Boolean> = _unifiedLinkSearching.asStateFlow()
+    // ROUND 173 (F5): the unified search's ERROR message — the failures
+    // surface IN the sheet (the message + the Search again button) instead
+    // of collapsing to a silent 'No results'.
+    internal val _unifiedLinkError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val unifiedLinkError: kotlinx.coroutines.flow.StateFlow<String?> = _unifiedLinkError.asStateFlow()
     internal val _unifiedLinkResults = kotlinx.coroutines.flow.MutableStateFlow<List<UnifiedLinkResult>>(emptyList())
     val unifiedLinkResults: kotlinx.coroutines.flow.StateFlow<List<UnifiedLinkResult>> =
         _unifiedLinkResults.asStateFlow()
@@ -1020,11 +1028,13 @@ class DetailsViewModel(
         if (ext == null) {
             // AniList-only
             _state.value = DetailsState.Success(al!!.copy(dataSourcePriority = priority))
+            refreshLinkedIdentities() // ROUND 173 (F3)
             return
         }
         if (al == null) {
             // Extension-only
             _state.value = DetailsState.Success(ext.copy(dataSourcePriority = priority))
+            refreshLinkedIdentities() // ROUND 173 (F3)
             return
         }
         // Both exist — merge by priority.
@@ -1060,6 +1070,11 @@ class DetailsViewModel(
         )
         _state.value = DetailsState.Success(merged)
         Logger.d(TAG) { "remergeBases: priority=$priority, merged ${merged.displayName}" }
+        // ROUND 173 (F3): the linked-identities refresh rides EVERY display
+        // emit — the v1.1.108 bug: only the metadata path refreshed them, so
+        // the library entries showed NO Unlink rows (F3.1) until an unrelated
+        // pick happened to re-run the read.
+        refreshLinkedIdentities()
     }
 
     /**
@@ -1184,6 +1199,18 @@ class DetailsViewModel(
             _linkedIdentities.value = linked
             Logger.d(TAG) { "linked identities for $mid: $linked" }
         }
+    }
+
+    /**
+     * ROUND 173 (N1): the search card's CANCEL — kills the in-flight
+     * reverse search cleanly (the suspending getSearchAnime calls abort;
+     * the state returns to Idle so the card leaves).
+     */
+    fun cancelReverseSearch() {
+        reverseSearchJob?.cancel()
+        reverseSearchJob = null
+        _reverseAutoLinkState.value = ReverseAutoLinkState.Idle
+        Logger.i(TAG) { "the reverse search cancelled by the user" }
     }
 
     // ── Load from AniList (existing flow) ──
@@ -1330,6 +1357,32 @@ class DetailsViewModel(
                             runCatching { contentRepository.upsertContentDetails(it) }
                         }
                     }
+                    // ROUND 173 (D1-driven, F5): the MAL enrichment — the
+                    // data-limited MAL pages' fix (no synopsis/genres ever
+                    // landed; the detail fetch was missing entirely).
+                    "mal" -> malTracker?.detail(refId)?.let { d ->
+                        details = details?.copy(
+                            dataSynopsis = d.synopsis,
+                            dataCoverUrl = d.main_picture?.large ?: d.main_picture?.medium
+                                ?: details?.dataCoverUrl,
+                            dataSeasonYear = d.start_season?.year?.toLong(),
+                            dataEpisodes = d.num_episodes?.toLong(),
+                            dataScore = d.mean?.let { (it * 10).toInt().toLong() },
+                            dataStatus = when (d.status) {
+                                "currently_airing" -> "RELEASING"
+                                "finished_airing" -> "FINISHED"
+                                "not_yet_aired" -> "NOT_YET_RELEASED"
+                                else -> details?.dataStatus
+                            },
+                            dataGenres = (d.genres.map { it.name } + d.themes.map { it.name })
+                                .distinct()
+                                .joinToString(","),
+                            dataUpdatedAt = System.currentTimeMillis(),
+                        )
+                        details?.let {
+                            runCatching { contentRepository.upsertContentDetails(it) }
+                        }
+                    }
                 }
                 Logger.i(TAG) { "metadata enriched ($fineType:$refId)" }
             }
@@ -1377,13 +1430,20 @@ class DetailsViewModel(
                 // flag honors the metadata ids (the negative packed ids).
                 val reverse = reverseAutoLinkService
                 if (reverse != null && !autoLinkPreferences.isUserUnlinked(packedId)) {
-                    _reverseAutoLinkState.value = ReverseAutoLinkState.Searching
+                    _reverseAutoLinkState.value = ReverseAutoLinkState.Searching()
                     val reverseGen = loadGeneration
-                    viewModelScope.launch {
+                    reverseSearchJob = viewModelScope.launch {
                         val result = try {
                             reverse.attemptReverseAutoLink(
                                 anilistTitle = anime.title,
                                 anilistYear = anime.seasonYear,
+                                // ROUND 173 (N1): the live per-source status.
+                                onSourceStart = { name ->
+                                    if (reverseGen == loadGeneration) {
+                                        _reverseAutoLinkState.value =
+                                            ReverseAutoLinkState.Searching(name)
+                                    }
+                                },
                             )
                         } catch (e: Exception) {
                             if (reverseGen != loadGeneration) return@launch
@@ -1606,15 +1666,22 @@ class DetailsViewModel(
                     if (anime != null) {
                         Logger.i(TAG) { "D-225: Reverse auto-link — no source linked, searching extensions..." }
                         // D-225c: Show the popup immediately so the user sees "Searching…".
-                        _reverseAutoLinkState.value = ReverseAutoLinkState.Searching
+                        _reverseAutoLinkState.value = ReverseAutoLinkState.Searching()
                         // D-227: Capture gen so the reverse-auto-link result can be
                         // discarded if the user navigated away during the search.
                         val reverseGen = loadGeneration
-                        viewModelScope.launch {
+                        reverseSearchJob = viewModelScope.launch {
                             try {
                                 val result = reverseAutoLinkService.attemptReverseAutoLink(
                                     anilistTitle = anime.displayName,
                                     anilistYear = anime.seasonYear,
+                                    // ROUND 173 (N1): the live per-source status.
+                                    onSourceStart = { name ->
+                                        if (reverseGen == loadGeneration) {
+                                            _reverseAutoLinkState.value =
+                                                ReverseAutoLinkState.Searching(name)
+                                        }
+                                    },
                                 )
                                 // D-227: Discard if the user navigated away.
                                 if (reverseGen != loadGeneration) {

@@ -818,6 +818,26 @@ class SearchViewModel(
     // 1 for the one-shot feeds (TVmaze, Simkl).
     private fun cacheKeyFor(source: DataSourceKind) = "search:defaults:" + source.id
 
+    // ── ROUND 173 (F1): the refresh-failure notice — the screen renders it
+    // as a short toast. The classification per the user's spec: the network
+    // failures → "Refresh failed due to network error"; anything else →
+    // "Refresh failed". One-shot: the screen clears it after showing.
+    internal val _refreshNotice = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val refreshNotice: kotlinx.coroutines.flow.StateFlow<String?> = _refreshNotice.asStateFlow()
+
+    private fun setRefreshNotice(e: Exception) {
+        _refreshNotice.value = if (e is java.io.IOException) {
+            "Refresh failed due to network error"
+        } else {
+            "Refresh failed"
+        }
+    }
+
+    /** F1: the screen clears the notice after the toast shows (one-shot). */
+    fun clearRefreshNotice() {
+        _refreshNotice.value = null
+    }
+
     private fun clearDefaultsCache(source: DataSourceKind) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -933,6 +953,7 @@ class SearchViewModel(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Logger.e(TAG, e) { "Data-source search failed for '$q': ${e.message}" }
+                setRefreshNotice(e) // ROUND 173 (F1/F5): the surfaced reason
                 if (_query.value.isBlank()) return@launch
                 if (!isCurrent(gen)) return@launch
                 _uiState.value = SearchUiState.Error
@@ -1003,6 +1024,7 @@ class SearchViewModel(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Logger.w(TAG) { "TMDB defaults refresh failed: ${e.message}" }
+            setRefreshNotice(e) // ROUND 173 (F1)
             // The served cache stays.
         }
     }
@@ -1051,6 +1073,7 @@ class SearchViewModel(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Logger.w(TAG) { "TVmaze defaults refresh failed: ${e.message}" }
+            setRefreshNotice(e) // ROUND 173 (F1)
             // The served cache stays.
         }
     }
@@ -1111,6 +1134,7 @@ class SearchViewModel(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Logger.w(TAG) { "MAL defaults refresh failed: ${e.message}" }
+            setRefreshNotice(e) // ROUND 173 (F1)
             // The served cache stays.
         }
     }
@@ -1157,6 +1181,7 @@ class SearchViewModel(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Logger.w(TAG) { "Simkl defaults refresh failed: ${e.message}" }
+            setRefreshNotice(e) // ROUND 173 (F1)
             // The served cache stays.
         }
     }
@@ -1312,6 +1337,7 @@ class SearchViewModel(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Logger.e(TAG, e) { "Trending load failed: ${e.message}" }
+                setRefreshNotice(e) // ROUND 173 (F1): the failure feedback
                 if (_query.value.isNotBlank()) return@launch
                 if (!isCurrent(gen)) return@launch
                 // D-278: if cache already served (showingDefaults), keep it —

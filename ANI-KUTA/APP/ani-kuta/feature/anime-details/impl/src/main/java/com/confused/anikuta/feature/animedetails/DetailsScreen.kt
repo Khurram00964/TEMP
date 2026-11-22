@@ -2170,6 +2170,10 @@ fun DetailsScreen(
                 com.confused.anikuta.core.trackerapi.TrackerType.SIMKL -> "Simkl"
                 else -> "AniList"
             },
+            // ROUND 173 (N3): the content identity — the cover + the title
+            // in the sheet (the display cover = the merged anime's).
+            contentTitle = (state as? DetailsState.Success)?.anime?.displayName ?: "",
+            contentCoverUrl = (state as? DetailsState.Success)?.anime?.coverUrl,
             onSave = { entry ->
                 when (activeTracker) {
                     com.confused.anikuta.core.trackerapi.TrackerType.MAL -> viewModel.pushMalTrackEntry(entry, flipOptIn = false)
@@ -2230,6 +2234,7 @@ fun DetailsScreen(
     if (showUnifiedLinkSheet != null) {
         val linkSearching by viewModel.unifiedLinkSearching.collectAsState()
         val linkResults by viewModel.unifiedLinkResults.collectAsState()
+        val linkError by viewModel.unifiedLinkError.collectAsState()
         val seedTitle = (state as? DetailsState.Success)?.anime?.title.orEmpty()
         UnifiedLinkSheet(
             sourceName = when (showUnifiedLinkSheet) {
@@ -2251,6 +2256,7 @@ fun DetailsScreen(
             seedTitle = seedTitle,
             isSearching = linkSearching,
             results = linkResults,
+            errorText = linkError,
             onSearch = { query -> viewModel.searchUnifiedLink(showUnifiedLinkSheet!!, query) },
             onPick = { pick -> viewModel.pickUnifiedLink(showUnifiedLinkSheet!!, pick) },
             onDismiss = viewModel::dismissUnifiedLinkSheet,
@@ -3038,6 +3044,19 @@ private fun EpisodesSection(
                 // reverse auto-link is Idle (feature off / not applicable) or Error.
                 when (reverseAutoLinkState) {
                     is ReverseAutoLinkState.Searching -> {
+                        // ROUND 173 (N1): the LIVE status — the extension
+                        // CURRENTLY being searched + the elapsed timer + the
+                        // cancel button. The timer survives the per-source
+                        // state updates (the branch stays composed); it dies
+                        // when the branch leaves (Matched/NoMatch/Idle).
+                        val searchingState = reverseAutoLinkState as ReverseAutoLinkState.Searching
+                        var elapsedSec by remember { mutableIntStateOf(0) }
+                        LaunchedEffect(Unit) {
+                            while (true) {
+                                kotlinx.coroutines.delay(1000)
+                                elapsedSec++
+                            }
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3060,12 +3079,35 @@ private fun EpisodesSection(
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "Looking for a matching source\nfor this anime.",
+                                    text = if (searchingState.sourceName.isNotBlank()) {
+                                        searchingState.sourceName
+                                    } else {
+                                        "Looking for a matching source\nfor this anime."
+                                    },
                                     fontFamily = RobotoFamily,
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center,
                                 )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "$elapsedSec s",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                androidx.compose.material3.TextButton(
+                                    onClick = { viewModel.cancelReverseSearch() },
+                                ) {
+                                    Text(
+                                        text = "Cancel",
+                                        fontFamily = RobotoFamily,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
                             }
                         }
                     }

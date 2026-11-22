@@ -543,18 +543,21 @@ fun DetailsViewModel.openUnifiedLinkSheet(source: String, fromTracking: Boolean 
     _unifiedLinkFromTracking.value = fromTracking
     _showUnifiedLinkSheet.value = source
     _unifiedLinkResults.value = emptyList()
+    _unifiedLinkError.value = null // ROUND 173 (F5): every open starts clean
 }
 
 fun DetailsViewModel.dismissUnifiedLinkSheet() {
     _showUnifiedLinkSheet.value = null
     _unifiedLinkResults.value = emptyList()
     _unifiedLinkFromTracking.value = false
+    _unifiedLinkError.value = null
 }
 
 fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
     viewModelScope.launch {
         _unifiedLinkSearching.value = true
-        val results: List<UnifiedLinkResult> = runCatching {
+        _unifiedLinkError.value = null // ROUND 173 (F5): each attempt starts clean
+        val results: List<UnifiedLinkResult> = try {
             when (source) {
                 // ROUND 172: the AniList backend joins — ONE sheet for ALL 5
                 // sources. The ratings normalize to the 10-scale for the
@@ -607,9 +610,16 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
                 }
                 else -> emptyList()
             }
-        }.onFailure { e ->
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // ROUND 173 (F5): the surfaced reason — SimklRequestException/
+            // MalRequestException (the strict getters) carry the real why;
+            // the sheet renders it with the Search again button.
             Logger.w(TAG_MT) { "searchUnifiedLink failed ($source): " + (e.message ?: "") }
-        }.getOrDefault(emptyList())
+            _unifiedLinkError.value = e.message ?: "The search failed — try again"
+            emptyList()
+        }
         _unifiedLinkResults.value = results
         _unifiedLinkSearching.value = false
     }

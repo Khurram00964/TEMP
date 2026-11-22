@@ -38,6 +38,34 @@ class SimklApi(
         return if (extra.isEmpty()) base else "$base&$extra"
     }
 
+    /**
+     * ROUND 173 (F3.6/F5): the STRICT get — throws SimklRequestException
+     * carrying the HTTP code on failure (the surfacing base: the callers'
+     * runCatching → the UI's error state shows WHY, not a silent empty).
+     */
+    private fun getStrict(url: String, accessToken: String?): String {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .apply { accessToken?.let { header("Authorization", "Bearer $it") } }
+            .header("User-Agent", "$APP_NAME/$APP_VERSION (Android)")
+            .build()
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Logger.w(TAG) { "GET ${response.request.url.encodedPath} — HTTP ${response.code}: ${raw.take(200)}" }
+                throw SimklRequestException(
+                    when (response.code) {
+                        401 -> "Simkl rejected the request (401) — re-link Simkl in Settings → Trackers"
+                        404 -> "Simkl has no such endpoint/entry (404)"
+                        else -> "Simkl HTTP ${response.code}"
+                    },
+                )
+            }
+            return raw
+        }
+    }
+
     private fun get(url: String, accessToken: String?): String? {
         val request = Request.Builder()
             .url(url)
@@ -108,12 +136,31 @@ class SimklApi(
      * source's grid fill; Phase E). ROUND 169: the LIVE-VERIFIED shape —
      * the ids at ids.simkl_id, the poster as a simkl.in path.
      */
-    fun trending(kind: String): List<SimklMediaItem> =
-        get(url("/$kind/trending"), null)?.let { raw ->
-            runCatching {
-                json.decodeFromString(kotlinx.serialization.serializer<List<SimklMediaItem>>(), raw)
-            }.getOrNull()
-        } ?: emptyList()
+    /**
+     * ROUND 173 (F3.6): the token param JOINS — Simkl requires the user
+     * token on EVERY request (the live 401 "user_token_required"); the
+     * v1.1.108 shape attached NONE so the live trending always returned
+     * empty (the device saw the Cycle-G CACHE). Strict: the failures THROW.
+     */
+    fun trending(kind: String, accessToken: String): List<SimklMediaItem> {
+        val raw = getStrict(url("/$kind/trending"), accessToken)
+        return runCatching {
+            json.decodeFromString(kotlinx.serialization.serializer<List<SimklMediaItem>>(), raw)
+        }.getOrElse { throw SimklRequestException("Simkl trending parse failed: ${it.message}") }
+    }
+
+    /**
+     * ROUND 173 (F4): the NATIVE-ID probe — GET /{kind}/{id}. 200/302 =
+     * the id exists in THAT category (OkHttp follows the canonical
+     * redirect), the non-2xx = not in it. Lets the sync/fetch treat the
+     * link-sheet picks' SIMKL ids directly (the anilist/tmdb ladder never
+     * resolves them).
+     */
+    fun lookupId(kind: String, id: Int, accessToken: String): Boolean =
+        runCatching {
+            getStrict(url("/$kind/$id"), accessToken)
+            true
+        }.getOrDefault(false)
 
     /**
      * ROUND 170: the USER-TOKEN search — the search endpoints REQUIRE a user
@@ -123,9 +170,7 @@ class SimklApi(
      * accepts BOTH shapes (the bare array OR the wrapped object).
      */
     fun searchKind(kind: String, query: String, accessToken: String): List<SimklMediaItem> =
-        get(url("/search/$kind", mapOf("q" to query)), accessToken)?.let { raw ->
-            parseMediaList(raw)
-        } ?: emptyList()
+        parseMediaList(getStrict(url("/search/$kind", mapOf("q" to query)), accessToken))
 
     /** The lenient parse: the bare array first, then the wrapped object. */
     private fun parseMediaList(raw: String): List<SimklMediaItem> {
@@ -200,3 +245,10 @@ class SimklApi(
             }.getOrNull()
         } ?: emptyList()
 }
+
+/**
+ * ROUND 173 (F3.6/F5): the Simkl request failure with the WHY — the
+ * search/sync flows rethrow this so the UI surfaces the real reason
+ * (the v1.1.108 bug: every failure collapsed to a silent empty list).
+ */
+class SimklRequestException(message: String) : java.io.IOException(message)

@@ -170,6 +170,15 @@ class MalTracker(
         }
 
     /**
+     * ROUND 173 (D1-driven): the FULL detail for the enrichment pass (the
+     * synopsis/genres/year/episodes/status merge — the data-limited MAL
+     * pages' fix). The failures THROW (the surfaced reason).
+     */
+    suspend fun detail(id: Int): MalDetail = withContext(Dispatchers.IO) {
+        api.detail(id)
+    }
+
+    /**
      * ROUND 168 (Phase D): the REAL remote delete — the trash-can path (the
      * AniListTracker.deleteEntry contract). False when not linked or the
      * write fails.

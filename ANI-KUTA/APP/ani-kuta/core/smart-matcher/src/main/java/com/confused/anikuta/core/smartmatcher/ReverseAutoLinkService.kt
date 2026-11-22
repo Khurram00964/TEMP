@@ -54,6 +54,10 @@ class ReverseAutoLinkService(
     suspend fun attemptReverseAutoLink(
         anilistTitle: String,
         anilistYear: Int?,
+        // ROUND 173 (N1): the LIVE status — fired before EACH source's
+        // search with that source's name (the UI's 'Searching {name}…'
+        // card; the cancellation propagates through the suspending search).
+        onSourceStart: (String) -> Unit = {},
     ): ReverseAutoLinkResult = withContext(Dispatchers.IO) {
         // D-225b: Check the REVERSE auto-link toggle (separate from forward auto-link).
         if (!preferences.reverseAutoLinkEnabled) {
@@ -111,6 +115,7 @@ class ReverseAutoLinkService(
         for (source in searchSources) {
             try {
                 Logger.d(TAG) { "Searching source: ${source.name} (id=${source.id})" }
+                onSourceStart(source.name) // ROUND 173 (N1): the live status
 
                 val page = source.getSearchAnime(1, anilistTitle, AnimeFilterList())
                 val results = page.animes

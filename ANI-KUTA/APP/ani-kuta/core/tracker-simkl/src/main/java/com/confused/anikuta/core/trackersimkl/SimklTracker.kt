@@ -108,13 +108,29 @@ class SimklTracker(
     override suspend fun syncEntry(entry: TrackEntry): Boolean = withContext(Dispatchers.IO) {
         if (!ensureFreshToken()) return@withContext false
         val token = preferences.accessToken
+        // ROUND 173 (F4): the SIMKL-NATIVE-FIRST probe — the v1.1.108 bug:
+        // the link-sheet picks store SIMKL ids, but the resolution ladder
+        // tried ONLY anilist/tmdb → "unresolved" → EVERY unified-sheet
+        // Simkl sync aborted ("Couldn't reach Simkl"). Probe /{kind}/{id}
+        // first (200 = the owning kind), then the legacy ladder.
+        val nativeKind = listOf("tv", "anime", "movie").firstOrNull { kind ->
+            api.lookupId(kind, entry.trackerId, token)
+        }
         val resolution = resolveEntry(entry.trackerId)
-            ?: run {
+        val simklId: Long
+        val type: String
+        if (nativeKind != null) {
+            simklId = entry.trackerId.toLong()
+            type = nativeKind
+        } else {
+            val r = resolution ?: run {
                 Logger.w(TAG) { "syncEntry — id ${entry.trackerId} unresolved on Simkl" }
                 return@withContext false
             }
-        val simklId = resolution.simkl ?: return@withContext false
-        val isMovie = resolution.type == "movie"
+            simklId = r.simkl ?: return@withContext false
+            type = r.type
+        }
+        val isMovie = type == "movie"
         val ids = mapOf("simkl" to jsonNumber(simklId))
 
         // 1. The watch status (add-to-list; movies skip watching/hold).
@@ -122,7 +138,7 @@ class SimklTracker(
         val item = SimklSyncItem(ids = ids, to = status)
         val body = when {
             isMovie -> SimklSyncBody(movies = listOf(item))
-            resolution.type == "anime" -> SimklSyncBody(anime = listOf(item))
+            type == "anime" -> SimklSyncBody(anime = listOf(item))
             else -> SimklSyncBody(shows = listOf(item))
         }
         val statusOk = api.addToList(body, token)
@@ -164,7 +180,7 @@ class SimklTracker(
             api.addRatings(
                 when {
                     isMovie -> SimklSyncBody(movies = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
-                    resolution.type == "anime" -> SimklSyncBody(anime = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
+                    type == "anime" -> SimklSyncBody(anime = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
                     else -> SimklSyncBody(shows = listOf(SimklSyncItem(ids = ids, rating = toSimklScore(it))))
                 },
                 token,
@@ -182,16 +198,35 @@ class SimklTracker(
 
     override suspend fun fetchEntry(trackerId: Int): TrackEntry? = withContext(Dispatchers.IO) {
         if (!ensureFreshToken()) return@withContext null
-        val resolution = resolveEntry(trackerId) ?: return@withContext null
-        val simklId = resolution.simkl ?: return@withContext null
-        val kinds = when (resolution.type) {
-            "movie" -> listOf("movie")
-            "anime" -> listOf("anime")
-            else -> listOf("tv")
+        // ROUND 173 (F4): the SIMKL-NATIVE-FIRST probe — the link-sheet
+        // picks store SIMKL ids; the anilist/tmdb ladder never resolves
+        // them. /{kind}/{id} 200s for the owning kind → use the id
+        // directly with THAT type; the ladder stays for the legacy
+        // anilist/tmdb trackerIds.
+        val token = preferences.accessToken
+        val nativeKind = listOf("tv", "anime", "movie").firstOrNull { kind ->
+            api.lookupId(kind, trackerId, token)
+        }
+        val resolution = resolveEntry(trackerId)
+        val simklId: Long
+        val kinds: List<String>
+        if (nativeKind != null) {
+            simklId = trackerId.toLong()
+            kinds = listOf(nativeKind)
+        } else {
+            val r = resolution ?: return@withContext null
+            simklId = r.simkl ?: return@withContext null
+            kinds = when (r.type) {
+                "movie" -> listOf("movie")
+                "anime" -> listOf("anime")
+                else -> listOf("tv")
+            }
         }
         // The list state reads scan the library sections for the id (Simkl has
         // no single-item "my state" endpoint; three bounded reads beat one
         // unbounded guess).
+        val nativeIsMovie = nativeKind == "movie" ||
+            (nativeKind == null && resolution?.type == "movie")
         for (kind in kinds) {
             for (status in listOf("watching", "plantowatch", "completed", "hold", "dropped")) {
                 val items = api.allItems(kind, status, preferences.accessToken)
@@ -203,7 +238,7 @@ class SimklTracker(
                         status = mapFromSimkl(hit.status ?: status),
                         score = hit.user_rating?.times(10),
                         progress = hit.seasons.maxOfOrNull { season -> season.episodes.maxOfOrNull { it.number } ?: 0 }
-                            ?: if (resolution.type == "movie") 1 else 0,
+                            ?: if (nativeIsMovie) 1 else 0,
                         totalEpisodes = null,
                         listId = null,
                         startedAt = null,
@@ -247,16 +282,32 @@ class SimklTracker(
         // ROUND 170: the search REQUIRES the user token, and the kinds are
         // PER-ENDPOINT (no /search/all — the v1.1.105 empty results came from
         // that 404). The three kinds merge, deduped by id.
-        val token = preferences.accessToken.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
+        // ROUND 173 (F3.6/F5): the token REFRESHES first (the v1.1.108 bug:
+        // the raw token was read WITHOUT ensureFreshToken — an expired token
+        // silently emptied every search on both surfaces) and the failures
+        // THROW (SimklRequestException) so the UI surfaces the real reason —
+        // the silent empties die.
+        if (!ensureFreshToken()) {
+            throw SimklRequestException("Simkl is not connected — link it in Settings → Trackers")
+        }
+        val token = preferences.accessToken
         val all = listOf("movie", "tv", "anime").flatMap { kind ->
-            runCatching { api.searchKind(kind, query, token) }.getOrDefault(emptyList())
+            api.searchKind(kind, query, token)
         }
         all.distinctBy { it.ids?.simkl_id ?: it.ids?.simkl ?: it.simkl_id }
     }
 
-    /** ROUND 168 (Phase E): the trending default (the blank-query grid fill). */
+    /**
+     * ROUND 168 (Phase E): the trending default (the blank-query grid fill).
+     * ROUND 173 (F3.6): the token REFRESHES + ATTACHES — the v1.1.108 shape
+     * attached NONE (the live 401 on EVERY trending call; the device saw the
+     * Cycle-G cache, masking it). The failures THROW (the surfaced reason).
+     */
     suspend fun trendingItems(kind: String): List<SimklMediaItem> = withContext(Dispatchers.IO) {
-        api.trending(kind)
+        if (!ensureFreshToken()) {
+            throw SimklRequestException("Simkl is not connected — link it in Settings → Trackers")
+        }
+        api.trending(kind, preferences.accessToken)
     }
 
     // ── internals ──

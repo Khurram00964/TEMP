@@ -37,6 +37,35 @@ class MalApi(
 
     // ── low-level ──
 
+    /**
+     * ROUND 173 (F5): the STRICT get — throws MalRequestException carrying
+     * the HTTP code (the surfacing base: the v1.1.108 shape swallowed every
+     * failure into a silent empty list).
+     */
+    private fun getStrict(path: String, query: String, accessToken: String?): String {
+        val request = Request.Builder()
+            .url("$BASE$path?$query")
+            .get()
+            .header("X-MAL-CLIENT-ID", TrackerKeys.MAL_CLIENT_ID)
+            .apply { accessToken?.let { header("Authorization", "Bearer $it") } }
+            .header("User-Agent", "ANI-KUTA/$APP_VERSION (Android)")
+            .build()
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Logger.w(TAG) { "GET $path — HTTP ${response.code}: ${raw.take(200)}" }
+                throw MalRequestException(
+                    when (response.code) {
+                        401, 403 -> "MAL rejected the client id (${response.code})"
+                        429 -> "MAL rate limit hit — try again in a moment"
+                        else -> "MAL HTTP ${response.code}"
+                    },
+                )
+            }
+            return raw
+        }
+    }
+
     private fun get(path: String, query: String, accessToken: String?): String? {
         val request = Request.Builder()
             .url("$BASE$path?$query")
@@ -114,10 +143,12 @@ class MalApi(
         val fields = "id,title,main_picture,num_episodes,mean,start_season"
         val q = java.net.URLEncoder.encode(query, "UTF-8")
         val offsetPart = if (offset > 0) "&offset=$offset" else ""
-        val raw = get("/anime", "q=$q&limit=$limit$offsetPart&fields=$fields", null) ?: return emptyList()
-        return runCatching {
+        val raw = getStrict("/anime", "q=$q&limit=$limit$offsetPart&fields=$fields", null)
+        return try {
             json.decodeFromString(MalSearchResponse.serializer(), raw).data.map { it.node }
-        }.getOrDefault(emptyList())
+        } catch (e: Exception) {
+            throw MalRequestException("MAL search parse failed: ${e.message}")
+        }
     }
 
     /**
@@ -128,11 +159,31 @@ class MalApi(
     fun topAnime(limit: Int = 20, offset: Int = 0): List<MalAnime> {
         val fields = "id,title,main_picture,num_episodes,mean,start_season"
         val offsetPart = if (offset > 0) "&offset=$offset" else ""
-        val raw = get("/anime/ranking", "ranking_type=bypopularity&limit=$limit$offsetPart&fields=$fields", null)
-            ?: return emptyList()
-        return runCatching {
+        val raw = getStrict("/anime/ranking", "ranking_type=bypopularity&limit=$limit$offsetPart&fields=$fields", null)
+        return try {
             json.decodeFromString(MalRankingResponse.serializer(), raw).data.map { it.node }
-        }.getOrDefault(emptyList())
+        } catch (e: Exception) {
+            throw MalRequestException("MAL ranking parse failed: ${e.message}")
+        }
+    }
+
+    /**
+     * ROUND 173 (D1-driven, F5): the FULL detail — the data-limited MAL
+     * pages' root cause was that NO detail fetch existed (the search rows
+     * carry 7 of ~25 fields; the enrichment had no mal branch). The live
+     * survey (MAL 22319) verified the field set: the synopsis, the genres,
+     * the studios, the themes, the rank/popularity, the broadcast, the
+     * background, the related. The display-relevant subset rides MalDetail.
+     */
+    fun detail(id: Int): MalDetail {
+        val fields = "id,title,main_picture,synopsis,mean,rank,popularity,num_episodes,start_season," +
+            "status,genres,themes,studios,average_episode_duration,rating,background,alternative_titles"
+        val raw = getStrict("/anime/$id", "fields=$fields", null)
+        return try {
+            json.decodeFromString(MalDetail.serializer(), raw)
+        } catch (e: Exception) {
+            throw MalRequestException("MAL detail parse failed: ${e.message}")
+        }
     }
 
     // ── the list-status family (all user-token) ──
@@ -173,3 +224,10 @@ class MalApi(
     fun deleteListStatus(id: Int, accessToken: String): Boolean =
         delete("/anime/$id/my_list_status", accessToken)
 }
+
+/**
+ * ROUND 173 (F5): the MAL request failure with the WHY — the search/ranking/
+ * detail flows rethrow so the UI surfaces the real reason (the v1.1.108
+ * bug: every failure collapsed to a silent empty list).
+ */
+class MalRequestException(message: String) : java.io.IOException(message)

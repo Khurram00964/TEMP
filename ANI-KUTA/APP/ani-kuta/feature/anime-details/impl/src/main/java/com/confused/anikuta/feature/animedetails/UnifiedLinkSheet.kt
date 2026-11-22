@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -77,6 +79,7 @@ fun UnifiedLinkSheet(
     seedTitle: String,
     isSearching: Boolean,
     results: List<UnifiedLinkResult>,
+    errorText: String? = null,
     onSearch: (String) -> Unit,
     onPick: (UnifiedLinkResult) -> Unit,
     onDismiss: () -> Unit,
@@ -160,6 +163,24 @@ fun UnifiedLinkSheet(
                 singleLine = true,
                 placeholder = { Text("Search $sourceName…", fontFamily = RobotoFamily, fontSize = 13.sp) },
                 textStyle = androidx.compose.ui.text.TextStyle(fontFamily = RobotoFamily, fontSize = 14.sp),
+                // ROUND 173 (F5): the keyboard's Search action — the re-search
+                // affordance (the v1.1.108 sheet had NO way to re-submit).
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { if (query.isNotBlank()) onSearch(query) },
+                ),
+                trailingIcon = {
+                    androidx.compose.material3.IconButton(onClick = { if (query.isNotBlank()) onSearch(query) }) {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.material.icons.Icons.Filled.Search,
+                            contentDescription = "Search again",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
@@ -175,6 +196,44 @@ fun UnifiedLinkSheet(
                 modifier = Modifier.padding(start = 6.dp, bottom = 6.dp),
             )
             when {
+                // ROUND 173 (F5): the surfaced failure — the real reason +
+                // the Search again button (the silent 'No results' dies).
+                !errorText.isNullOrBlank() -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(40.dp),
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = errorText,
+                            fontFamily = RobotoFamily,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.clickable { if (query.isNotBlank()) onSearch(query) },
+                        ) {
+                            Text(
+                                text = "Search again",
+                                fontFamily = RobotoFamily,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
                 isSearching -> {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),

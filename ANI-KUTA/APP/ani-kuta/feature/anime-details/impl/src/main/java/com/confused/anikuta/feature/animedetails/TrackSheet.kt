@@ -179,6 +179,12 @@ fun TrackSheet(
     // sheet drives AniList OR MyAnimeList (the 3-dot picker decides); the
     // strings swap with it (the layout is untouched).
     trackerName: String = "AniList",
+    // ROUND 173 (N3): the CONTENT identity — the cover + the title render
+    // under the top bar (the user's order: "show the SOURCE's cover image +
+    // the title properly"). The display cover = the merged anime's (the
+    // AniList cover when AniList drives).
+    contentTitle: String = "",
+    contentCoverUrl: String? = null,
     onSave: (TrackEntry) -> Unit,
     // ── ROUND 103 (WS-2): the opt-in path — Start Tracking (the round-102
     // Save's full contract: the opt-in flip + the sync). ──
@@ -279,6 +285,43 @@ fun TrackSheet(
                 }
             }
 
+            // ── ROUND 173 (N3): the CONTENT identity row — the cover + the
+            // title (the user's order). The crimped-card wash; the title
+            // falls back to blank gracefully. ──
+            if (contentTitle.isNotBlank() || contentCoverUrl != null) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    contentCoverUrl?.let { url ->
+                        coil3.compose.AsyncImage(
+                            model = url,
+                            contentDescription = contentTitle,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .width(42.dp)
+                                .height(58.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(
+                        text = contentTitle,
+                        fontFamily = com.confused.anikuta.core.designsystem.theme.RobotoFamily,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
             if (!isLoggedIn) {
                 NotLoggedInState()
                 Spacer(Modifier.height(24.dp))
@@ -289,6 +332,12 @@ fun TrackSheet(
             // state passes episode list size as fallback), use a large default
             // so the picker shows enough episodes.
             val effectiveTotal = totalEpisodes ?: (draft.progress.coerceAtLeast(100))
+            // ROUND 173 (N3): the NOT-IN-LIBRARY display — the user's order:
+            // a series absent from the tracker's library must NOT read
+            // 'Watching'. The Status cell shows 'None' until a real entry
+            // exists (trackEntry == null); picking a status / saving still
+            // syncs WATCHING as the default (the opt-in semantics).
+            val notInLibrary = trackEntry == null
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -296,7 +345,7 @@ fun TrackSheet(
             ) {
                 PickerCell(
                     label = "Status",
-                    value = draft.status.displayLabel(),
+                    value = if (notInLibrary) "None" else draft.status.displayLabel(),
                     isExpanded = expandedPicker == ExpandedPicker.STATUS,
                     onClick = {
                         expandedPicker = if (expandedPicker == ExpandedPicker.STATUS) null else ExpandedPicker.STATUS

@@ -36,6 +36,47 @@ data class MalMyListStatus(
 @Serializable
 data class MalStartSeason(
     val year: Int? = null,
+    val season: String? = null,
+)
+
+/**
+ * ROUND 173 (D1-driven): the FULL MAL detail — the display-relevant subset
+ * of the live-verified field set (MAL 22319). The enrichment merges this
+ * into content_details' data axis (the synopsis/genres/year/episodes/
+ * status/score the details page renders).
+ */
+@Serializable
+data class MalDetail(
+    val id: Int,
+    val title: String? = null,
+    val main_picture: MalMainPicture? = null,
+    val synopsis: String? = null,
+    val mean: Float? = null,
+    val rank: Int? = null,
+    val popularity: Int? = null,
+    val num_episodes: Int? = null,
+    val start_season: MalStartSeason? = null,
+    val status: String? = null,
+    val genres: List<MalGenre> = emptyList(),
+    val themes: List<MalGenre> = emptyList(),
+    val studios: List<MalGenre> = emptyList(),
+    val average_episode_duration: Int? = null,
+    val rating: String? = null,
+    val background: String? = null,
+    val alternative_titles: MalAlternativeTitles? = null,
+)
+
+@Serializable
+data class MalGenre(
+    val id: Int,
+    val name: String,
+)
+
+@Serializable
+data class MalAlternativeTitles(
+    val synonyms: List<String> = emptyList(),
+    val en: String? = null,
+    val ja: String? = null,
 )
 
 @Serializable

@@ -415,3 +415,62 @@ pagination = the explicit orders. The rest = the fixes.
    the real user flow — the search page's source menu first, then the
    cards, then the details, then the menu, then the links, then the
    tracking, then the settings.
+
+---
+
+## K. THE ROUND-173 ORDER (the v1.1.108 device report — the identity round)
+
+CONFIRMED (do not regress): the pagination (all 5), the caching (all 5 +
+offline), the metadata details, the visible auto-link, the trackers cards.
+Deferred by the user: the search-page refresh animations/polish.
+
+**THE FIXES:**
+1. **F1** the refresh-failure toast: "Refresh failed due to network error"
+   / "Refresh failed" — all 5 sources + the AniList default feed. The
+   cache-stays behavior KEPT.
+2. **F2 🚨 THE TMDB AUTO-LINK IDENTITY LOSS** — the extension auto-links →
+   the TMDB identity vanishes + the library save doesn't survive the
+   reopen from TMDB. THE SUBAGENT AUDIT runs first (the user's order);
+   the full identity model: the data axis + the extension axis + the
+   library row + the saved-link key + the reverse map + the reopen
+   resolution for the kind-prefixed mainIds.
+3. **F3** the menu state machine: the Unlink rows show for EVERY linked
+   source in the default state (the stale/incorrect linkedIdentities
+   computation); the re-link pick = the explicit "Replace" semantics; the
+   phantom MAL unlink (the cross-content track_entry leak investigation);
+   the placement folds into N2's redesign.
+4. **F3.6+F4 THE SIMKL CLUSTER (live-verified):** EVERY Simkl request
+   requires the user token (the live 401s) — trendingItems NEVER attached
+   it (always empty live; the §1 confirm was the CACHE serving); search
+   Items reads the token WITHOUT ensureFreshToken and swallows every
+   failure; syncEntry resolves the trackerId as anilist/tmdb but the
+   link sheet stores SIMKL-NATIVE ids → "unresolved" → the sync aborts
+   (F4's "Couldn't reach Simkl"). FIX: the token everywhere + the
+   SIMKL-NATIVE-FIRST probe (/{kind}/{id} live: 302 = exists) + the
+   error surfacing.
+5. **F5** the MAL search: the error surfacing (the silent empties die),
+   the re-search affordance, the live endpoint check (the app-auth works
+   unlinked — the query the website handles should resolve; the
+   fields=string covers the display), the details display format review.
+
+**THE NEW ORDERS:**
+6. **N1** the live extension-search status: WHICH extension + the elapsed
+   timer + the cancel button — the whole details auto-search flow, every
+   source.
+7. **N2 THE MULTI-LINK MODEL** (the user approved): several sources linked
+   simultaneously + the top-level data-source picker; the SUBAGENT AUDIT
+   report before building; the DB evaluation: a dedicated content_identity
+   table (main_id, source_kind, source_ref_id, ...) vs stretching the
+   current axes — a NEW SCHEMA if needed ("we most definitely build them").
+8. **N3** the tracking UI polish: the cover + the title in the tracking
+   sheet; the not-in-library status = None (NOT "Watching"); the MAL link
+   sheet in the three-dot-menu design language + the re-search button.
+9. **D1 THE RAW-DATA SURVEY** (the in-chat deliverable): one real series ×
+   5 sources, LIVE-queried (Tokyo Ghoul: AniList 20605, TMDB 61374,
+   TVmaze 1440, MAL 22319; the Simkl = the token-gated shapes + the live
+   401 proofs) — the raw → shown → keep/drop/translate tables. THE KEY
+   FINDING: the MAL rows fetch 7 of ~25 fields — no synopsis/genres/
+   studios/themes detail fetch exists (the data-limited pages' root
+   cause); the TMDB detail skips the cast/tagline/runtime/networks.
+10. **D2+D3** the UI-reuse principle + the state-reset/generation/identity
+    rules documented; D4 the DB coherence audit rides N2's schema.

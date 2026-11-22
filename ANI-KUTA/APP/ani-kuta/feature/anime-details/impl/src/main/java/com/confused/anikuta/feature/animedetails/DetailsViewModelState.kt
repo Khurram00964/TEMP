@@ -84,7 +84,14 @@ sealed interface AutoLinkState {
  */
 sealed interface ReverseAutoLinkState {
     data object Idle : ReverseAutoLinkState
-    data object Searching : ReverseAutoLinkState
+
+    /**
+     * ROUND 173 (N1): the LIVE search status — the sourceName carries the
+     * extension CURRENTLY being searched (the ReverseAutoLinkService's
+     * per-source callback; blank = the pre-search beat). The elapsed
+     * timer + the cancel button render from this state on the screen.
+     */
+    data class Searching(val sourceName: String = "") : ReverseAutoLinkState
     data class Matched(
         val sourceName: String,
         val animeTitle: String,

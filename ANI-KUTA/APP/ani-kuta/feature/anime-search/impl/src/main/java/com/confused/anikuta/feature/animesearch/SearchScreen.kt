@@ -292,6 +292,17 @@ fun SearchScreen(
 
     // ROUND 163 (STEP-3): the DATA-SOURCE picker + the metadata results state.
     var showDataSourcePicker by remember { mutableStateOf(false) }
+
+    // ── ROUND 173 (F1): the refresh-failure toast — one-shot consumption
+    // (the VM sets the message; the screen shows it and clears). ──
+    val refreshNotice by viewModel.refreshNotice.collectAsState()
+    val toastContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(refreshNotice) {
+        refreshNotice?.let { msg ->
+            android.widget.Toast.makeText(toastContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearRefreshNotice()
+        }
+    }
     val dataSourceKind by viewModel.dataSource.collectAsState()
     val tmdbEnabled by viewModel.tmdbEnabled.collectAsState()
     val tvmazeEnabled by viewModel.tvmazeEnabled.collectAsState()
