@@ -909,7 +909,9 @@ class ContentRepository(
      * main_id). NULL when no content holds this (kind, ref).
      */
     fun lookupIdentityMain(kind: String, refId: String): String? =
-        contentQueries.lookupIdentityMain(kind, refId).executeAsOneOrNull()?.main_id
+        // ROUND 173: the single-column SELECT returns the String? directly
+        // (no row-type accessor).
+        contentQueries.lookupIdentityMain(kind, refId).executeAsOneOrNull()
 
     /** Insert-or-update ONE identity link (per mainId+kind). */
     fun upsertIdentity(identity: ContentIdentity) {
