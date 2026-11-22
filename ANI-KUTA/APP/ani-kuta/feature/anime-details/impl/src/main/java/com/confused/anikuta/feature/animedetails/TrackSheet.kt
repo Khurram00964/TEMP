@@ -320,6 +320,9 @@ fun TrackSheet(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
+                // ROUND 174 (T3.2): the breathing room between the identity
+                // row and the stats row (the v1.1.109 sheet crammed them).
+                Spacer(Modifier.height(12.dp))
             }
 
             if (!isLoggedIn) {
@@ -332,12 +335,14 @@ fun TrackSheet(
             // state passes episode list size as fallback), use a large default
             // so the picker shows enough episodes.
             val effectiveTotal = totalEpisodes ?: (draft.progress.coerceAtLeast(100))
-            // ROUND 173 (N3): the NOT-IN-LIBRARY display — the user's order:
-            // a series absent from the tracker's library must NOT read
-            // 'Watching'. The Status cell shows 'None' until a real entry
-            // exists (trackEntry == null); picking a status / saving still
-            // syncs WATCHING as the default (the opt-in semantics).
-            val notInLibrary = trackEntry == null
+            // ROUND 174 (T3 — the user's rule re-verified): the NOT-IN-LIBRARY
+            // display keys on the TRACKING OPT-IN (isTracked — the
+            // content_tracking_state flag), NOT the mapping's existence: the
+            // link-sheet pick SEEDS a PLAN_TO_WATCH mapping before any real
+            // library entry exists, so the mapping check displayed the seeded
+            // status. Only a REAL opt-in shows its true status; everything
+            // else reads 'None'.
+            val notInLibrary = !isTracked
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -826,11 +826,22 @@ class SearchViewModel(
     val refreshNotice: kotlinx.coroutines.flow.StateFlow<String?> = _refreshNotice.asStateFlow()
 
     private fun setRefreshNotice(e: Exception) {
-        _refreshNotice.value = if (e is java.io.IOException) {
+        val msg = if (e is java.io.IOException) {
             "Refresh failed due to network error"
         } else {
             "Refresh failed"
         }
+        // ROUND 174 (T1.3): the notice rides the app's ONE themed in-app
+        // toast system (the round-106 AppToast, host-rendered at
+        // MainActivity's root — context-free, callable from any thread). The
+        // v1.1.109 shape rendered the OS Toast (the user's verdict: UGLY)
+        // and the metadata sources' races lost it. The flow stays too — the
+        // screen keys the spinner's dismissal on it (the completion signal).
+        _refreshNotice.value = msg
+        com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+            msg,
+            com.confused.anikuta.core.designsystem.component.toast.AppToastTone.ERROR,
+        )
     }
 
     /** F1: the screen clears the notice after the toast shows (one-shot). */

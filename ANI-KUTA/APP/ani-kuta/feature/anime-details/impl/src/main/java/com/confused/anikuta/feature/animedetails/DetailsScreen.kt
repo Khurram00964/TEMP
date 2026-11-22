@@ -470,6 +470,11 @@ fun DetailsScreen(
     val isMetadataEntry by viewModel.isMetadataEntry.collectAsState()
     val linkedIdentities by viewModel.linkedIdentities.collectAsState()
 
+    // ROUND 174 (T2.5): the PENDING UNLINK — the menu's Unlink rows set
+    // this; the confirm dialog fires the real call (the destructive action
+    // never fires immediately — the TrackSheet's confirm pattern).
+    var pendingUnlink by remember { mutableStateOf<String?>(null) }
+
     // ── ROUND 102 (WS-B): the three-dot menu is an ANCHORED DropdownMenu ──
     // again (expanding from the button itself — the user's round-102 spec;
     // the round-101 bottom sheet is retired). Its content composes through
@@ -1308,14 +1313,14 @@ fun DetailsScreen(
                                         onLinkSimkl = { viewModel.openUnifiedLinkSheet("simkl") },
                                         onLinkTmdb = { viewModel.openUnifiedLinkSheet("tmdb") },
                                         onLinkTvmaze = { viewModel.openUnifiedLinkSheet("tvmaze") },
-                                        onUnlinkAniList = {
-                                            if (isMetadataEntry) viewModel.unlinkAniListFromMetadata()
-                                            else viewModel.unlinkAniList()
-                                        },
-                                        onUnlinkMal = { viewModel.unlinkUnifiedIdentity("mal") },
-                                        onUnlinkSimkl = { viewModel.unlinkUnifiedIdentity("simkl") },
-                                        onUnlinkTmdb = { viewModel.unlinkUnifiedIdentity("tmdb") },
-                                        onUnlinkTvmaze = { viewModel.unlinkUnifiedIdentity("tvmaze") },
+                                        // ROUND 174 (T2.5): the CONFIRM step —
+                                        // the rows arm the pending state; the
+                                        // dialog fires the real call.
+                                        onUnlinkAniList = { pendingUnlink = "anilist" },
+                                        onUnlinkMal = { pendingUnlink = "mal" },
+                                        onUnlinkSimkl = { pendingUnlink = "simkl" },
+                                        onUnlinkTmdb = { pendingUnlink = "tmdb" },
+                                        onUnlinkTvmaze = { pendingUnlink = "tvmaze" },
                                         buildShareLinks = {
                                             viewModel.buildShareContent()
                                                 ?.let {
@@ -2262,6 +2267,60 @@ fun DetailsScreen(
             onSearch = { query -> viewModel.searchUnifiedLink(showUnifiedLinkSheet!!, query) },
             onPick = { pick -> viewModel.pickUnifiedLink(showUnifiedLinkSheet!!, pick) },
             onDismiss = viewModel::dismissUnifiedLinkSheet,
+        )
+    }
+
+    // ── ROUND 174 (T2.5): the UNLINK CONFIRMATION — the destructive step
+    // gets the explicit confirm (the user's order). The dialog routes by
+    // the same content-kind logic the menu rows did. ──
+    pendingUnlink?.let { source ->
+        val unlinkName = when (source) {
+            "anilist" -> "AniList"
+            "mal" -> "MyAnimeList"
+            "simkl" -> "Simkl"
+            "tmdb" -> "TMDB"
+            else -> "TVMaze"
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingUnlink = null },
+            title = {
+                Text(
+                    text = "Unlink $unlinkName?",
+                    fontFamily = RobotoFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            },
+            text = {
+                Text(
+                    text = "This removes the $unlinkName link from this content. " +
+                        "Your data at $unlinkName is not touched.",
+                    fontFamily = RobotoFamily,
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        when (source) {
+                            "anilist" ->
+                                if (isMetadataEntry) viewModel.unlinkAniListFromMetadata()
+                                else viewModel.unlinkAniList()
+                            else -> viewModel.unlinkUnifiedIdentity(source)
+                        }
+                        pendingUnlink = null
+                    },
+                ) {
+                    Text(
+                        text = "Unlink",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingUnlink = null }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 

@@ -526,3 +526,48 @@ verified root causes:**
   ALL the linked sources shown in the menu), the AnimeDetailsKey.Main(mainId)
   route, the contentId freezing onto main_id, the switchDataSource →
   display_rank.
+
+---
+
+## M. THE ROUND-174 ORDER (the v1.1.109 device report — THE FINAL-ATTEMPT ROUND)
+
+**THE META-ORDER (the user):** plan end-to-end BEFORE any code; audit the
+logics/workflows first (the subagent pattern reused); error handling +
+management + DISPLAY at every layer; document everything; logical tests.
+THE THEME: no half-sync systems that fix themselves silently — the async-
+relay UX is the core failure class of 172-173.
+
+**THE FIXES:**
+1. **T1 THE PULL-REFRESH UX:** (a) the OFFLINE spinner NEVER dismisses —
+   the dismissal keys on a uiState CHANGE and the cache-stays failure emits
+   NO new state → a completion SIGNAL replaces the state-change signal +
+   the network-failure fast-path (the bounded ~10s wait); (b) the OS Toast
+   RETIRES — the in-app notice system (the TrackingNotice pattern) for
+   EVERY transient message on all 5 sources + the AniList feed; (c) the
+   colorful jumping-dots animation (the pull-refresh + the load-more, the
+   shared component, the bounded lifetime).
+2. **T2 THE MENU/DISPLAY IDENTITY LAYER:** the chips show the ACTUAL
+   identities (TMDB | Extension | …) as tappable N-way switches (the
+   2-slot pair retired — THE HEADLINE BUILD); the section-collapse on the
+   reopen (the flag gaps); the blank extension name (the restore's empty
+   LinkedSource name re-derives from the ExtensionManager); the unlink
+   CONFIRMATION everywhere; the view-switch affordance after every link.
+3. **T3 THE TRACKING SHEET:** the 'None' status keys on the TRACKING OPT-IN
+   (isTracked), NOT the mapping existence (the link-sheet pick seeds
+   PLAN_TO_WATCH → the v1.1.109 display lied again); the title-row spacing;
+   the link-sheet redesign pass to the menu-vocabulary quality bar.
+4. **T4 🚨 THE PROGRESS-SYNC RELAY:** the optimistic local update + the
+   sync indicator + the success/failure notices; the failure KEEPS the
+   user's value (never the silent clobber); the menu-open re-fetch MERGES
+   (the newer-local protection) instead of overwriting; every silent-loss
+   point in the relay chains dies.
+5. **T5 THE IDENTITY-READ GAP:** refreshLinkedIdentities reads
+   content_identity ONLY — the mal/simkl mappings live in track_entry →
+   INVISIBLE in the menu while driving the tracking opens. FIX: the union
+   read (+ evaluate the mapping migration). The stale-mapping hygiene: the
+   Unlink rows cover everything visible.
+
+**THE PROCESS:** the subagent audit FIRST (the relay chains + the menu
+state machine); 09-M/L documented; the DB tests run explicitly on the
+identity changes; the release after CI green (1.1.1NN, Routine A) + the
+LOGICAL checklist (no confirmed-items re-listing).

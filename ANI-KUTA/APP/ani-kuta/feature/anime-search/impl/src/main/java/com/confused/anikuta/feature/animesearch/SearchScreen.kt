@@ -293,14 +293,30 @@ fun SearchScreen(
     // ROUND 163 (STEP-3): the DATA-SOURCE picker + the metadata results state.
     var showDataSourcePicker by remember { mutableStateOf(false) }
 
-    // ── ROUND 173 (F1): the refresh-failure toast — one-shot consumption
-    // (the VM sets the message; the screen shows it and clears). ──
+    // ── ROUND 174 (T1.2/T1.3): the refresh completion signals —
+    // (a) the FAILURE notice (the VM also fires the themed AppToast — the
+    // OS Toast retired) DISMISSES the spinner (the v1.1.109 bug: the
+    // cache-stays failure emitted NO state change → the pull indicator
+    // spun forever offline); (b) the BOUNDED WAIT — 10s with nothing
+    // landing forces the dismissal + the notice (the network stacks can
+    // hang well past the user's patience).
     val refreshNotice by viewModel.refreshNotice.collectAsState()
-    val toastContext = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.runtime.LaunchedEffect(refreshNotice) {
-        refreshNotice?.let { msg ->
-            android.widget.Toast.makeText(toastContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+        if (refreshNotice != null) {
+            pullRefreshing = false
             viewModel.clearRefreshNotice()
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(pullRefreshing) {
+        if (pullRefreshing) {
+            kotlinx.coroutines.delay(10_000)
+            if (pullRefreshing) {
+                pullRefreshing = false
+                com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                    "No response — check your connection",
+                    com.confused.anikuta.core.designsystem.component.toast.AppToastTone.ERROR,
+                )
+            }
         }
     }
     val dataSourceKind by viewModel.dataSource.collectAsState()
@@ -374,6 +390,17 @@ fun SearchScreen(
                 viewModel.refreshCurrent()
             },
             state = ptrState,
+            // ROUND 174 (T1.4): the user's animation order — the colorful
+            // jumping dots replace the default indicator (one loading
+            // language with the load-more footer).
+            indicator = {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    com.confused.anikuta.core.designsystem.component.JumpingDotsIndicator()
+                }
+            },
             modifier = Modifier.fillMaxSize(),
         ) {
         Box(modifier = Modifier.fillMaxSize().nestedScroll(topBarRevealConnection)) {
@@ -912,10 +939,10 @@ private fun LoadingMoreFooter() {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(18.dp),
-            strokeWidth = 2.dp,
-            color = MaterialTheme.colorScheme.primary,
+        // ROUND 174 (T1.4): the jumping dots — the ONE loading language.
+        com.confused.anikuta.core.designsystem.component.JumpingDotsIndicator(
+            dotSize = 8.dp,
+            jumpHeight = 8.dp,
         )
         Spacer(Modifier.width(10.dp))
         Text(

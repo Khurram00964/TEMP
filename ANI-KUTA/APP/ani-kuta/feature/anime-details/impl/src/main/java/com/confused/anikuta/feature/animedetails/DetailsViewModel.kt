@@ -1211,6 +1211,24 @@ class DetailsViewModel(
             val rows = runCatching { contentRepository.identitiesForContent(mid) }
                 .getOrDefault(emptyList())
             rows.forEach { linked.add(it.sourceKind) }
+            // ROUND 174 (T5 — THE UNION READ): the mal/simkl TRACKING
+            // mappings live in track_entry and were NEVER migrated into
+            // content_identity (the v7 seeding covered only the tmdb/tvmaze
+            // kinds) — the v1.1.109 refresh dropped this read, so those
+            // mappings DROVE the tracking opens while being INVISIBLE in
+            // the menu. The identity read UNIONS both stores (the mapping
+            // migration is the follow-up).
+            val mappingRepo = trackEntryRepository
+            if (mappingRepo != null) {
+                for (type in listOf(
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL,
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL,
+                )) {
+                    if (runCatching { mappingRepo.get(mid, type) }.getOrNull() != null) {
+                        linked.add(type.id)
+                    }
+                }
+            }
             // The live-AniList fallback: the state's positive anilistId (the
             // pre-migration rows + the in-session merges).
             if (stateAnime?.anilistId?.takeIf { it > 0 } != null) linked.add("anilist")
@@ -1334,7 +1352,17 @@ class DetailsViewModel(
                 if (parts.size == 2) {
                     val sourceId = parts[0].toLongOrNull()
                     if (sourceId != null) {
-                        _linkedSource.value = LinkedSource(sourceId, "", parts[1])
+                        _linkedSource.value = LinkedSource(
+                            sourceId,
+                            // ROUND 174 (T2.3): the NAME re-derives from the
+                            // ExtensionManager — the v1.1.109 restore passed
+                            // an EMPTY name, so the episodes-header source
+                            // label went blank on every reopen until a
+                            // re-link. The ExtensionManager's sources map
+                            // holds the display names.
+                            extensionManager.getSource(sourceId)?.name ?: "",
+                            parts[1],
+                        )
                         Logger.i(TAG) { "metadata content's saved source link restored: $mainId" }
                     }
                 }
