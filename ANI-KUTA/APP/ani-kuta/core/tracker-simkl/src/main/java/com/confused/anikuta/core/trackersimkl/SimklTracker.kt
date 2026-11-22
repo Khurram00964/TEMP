@@ -128,7 +128,9 @@ class SimklTracker(
                 return@withContext false
             }
             simklId = r.simkl ?: return@withContext false
-            type = r.type
+            // The legacy ladder's type is nullable (the redirect may not say);
+            // 'tv' was the implicit default in the old == comparisons.
+            type = r.type ?: "tv"
         }
         val isMovie = type == "movie"
         val ids = mapOf("simkl" to jsonNumber(simklId))
