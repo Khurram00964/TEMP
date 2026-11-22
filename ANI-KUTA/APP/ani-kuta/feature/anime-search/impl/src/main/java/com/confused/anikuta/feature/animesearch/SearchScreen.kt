@@ -410,6 +410,7 @@ fun SearchScreen(
                     ) {
                         com.confused.anikuta.core.designsystem.component.RefreshCapsuleIndicator(
                             dragFraction = if (pullRefreshing) 1f else dragFraction,
+                            refreshing = pullRefreshing,
                         )
                     }
                 }
@@ -952,9 +953,9 @@ private fun LoadingMoreFooter() {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // ROUND 175 (F4): the CAPSULE — the one loading language with the
-        // pull indicator.
-        com.confused.anikuta.core.designsystem.component.RefreshCapsuleIndicator()
+        // ROUND 176: the resting capsule (the same language, always
+        // refreshing).
+        com.confused.anikuta.core.designsystem.component.LoadingCapsuleIndicator()
         Spacer(Modifier.width(10.dp))
         Text(
             text = "Loading more…",

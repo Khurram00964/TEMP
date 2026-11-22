@@ -991,12 +991,33 @@ class SearchViewModel(
      * ROUND 172: cache-first (the cached pages 1+2 render instantly) + the
      * background refresh (both pages refetch + the row rewrites).
      */
-    private fun loadTmdbDefaults(): Job = viewModelScope.launch {
+    private fun loadTmdbDefaults(force: Boolean = false): Job = viewModelScope.launch {
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
         if (_query.value.isBlank()) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.TMDB)) }.getOrNull()
+            }
+            // ROUND 176 (THE 12-HOUR GATE): the fresh cache + no explicit
+            // refresh → serve + STOP (no network attempt — the offline
+            // entry stays silent; the user's round-169 order: the auto
+            // refresh only every 12 hours). The stale cache (or force —
+            // the manual pull) proceeds to the network refresh.
+            val cacheIsFresh = cached != null &&
+                System.currentTimeMillis() - cached.fetchedAt < SEARCH_DEFAULTS_TTL_MS
+            if (cacheIsFresh && !force) {
+                val cachedOnly = runCatching { decodeDefaultsCache(cached!!.dataJson) }
+                    .getOrDefault(emptyList())
+                if (cachedOnly.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    showingDefaults = true
+                    // The paging kinds (TMDB/MAL) keep their load-more; the
+                    // one-shot feeds (TVmaze/Simkl) end-cap honestly.
+                    _uiState.value = SearchUiState.DataSourceSuccess(
+                        results = cachedOnly,
+                        hasMore = cachedOnly.size >= 40,
+                    )
+                    return@launch
+                }
             }
             if (cached != null && _query.value.isBlank()) {
                 val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
@@ -1045,12 +1066,33 @@ class SearchViewModel(
      * ROUND 172: cache-first (one page — the API is one-shot) + the
      * background refresh.
      */
-    private fun loadTvmazeDefaults(): Job = viewModelScope.launch {
+    private fun loadTvmazeDefaults(force: Boolean = false): Job = viewModelScope.launch {
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
         if (_query.value.isBlank()) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.TVMAZE)) }.getOrNull()
+            }
+            // ROUND 176 (THE 12-HOUR GATE): the fresh cache + no explicit
+            // refresh → serve + STOP (no network attempt — the offline
+            // entry stays silent; the user's round-169 order: the auto
+            // refresh only every 12 hours). The stale cache (or force —
+            // the manual pull) proceeds to the network refresh.
+            val cacheIsFresh = cached != null &&
+                System.currentTimeMillis() - cached.fetchedAt < SEARCH_DEFAULTS_TTL_MS
+            if (cacheIsFresh && !force) {
+                val cachedOnly = runCatching { decodeDefaultsCache(cached!!.dataJson) }
+                    .getOrDefault(emptyList())
+                if (cachedOnly.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    showingDefaults = true
+                    // The paging kinds (TMDB/MAL) keep their load-more; the
+                    // one-shot feeds (TVmaze/Simkl) end-cap honestly.
+                    _uiState.value = SearchUiState.DataSourceSuccess(
+                        results = cachedOnly,
+                        hasMore = cachedOnly.size >= 40,
+                    )
+                    return@launch
+                }
             }
             if (cached != null && _query.value.isBlank()) {
                 val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
@@ -1095,12 +1137,33 @@ class SearchViewModel(
      * instantly) + the background refresh (both pages refetch via the
      * offset).
      */
-    private fun loadMalDefaults(): Job = viewModelScope.launch {
+    private fun loadMalDefaults(force: Boolean = false): Job = viewModelScope.launch {
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
         if (_query.value.isBlank()) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.MAL)) }.getOrNull()
+            }
+            // ROUND 176 (THE 12-HOUR GATE): the fresh cache + no explicit
+            // refresh → serve + STOP (no network attempt — the offline
+            // entry stays silent; the user's round-169 order: the auto
+            // refresh only every 12 hours). The stale cache (or force —
+            // the manual pull) proceeds to the network refresh.
+            val cacheIsFresh = cached != null &&
+                System.currentTimeMillis() - cached.fetchedAt < SEARCH_DEFAULTS_TTL_MS
+            if (cacheIsFresh && !force) {
+                val cachedOnly = runCatching { decodeDefaultsCache(cached!!.dataJson) }
+                    .getOrDefault(emptyList())
+                if (cachedOnly.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    showingDefaults = true
+                    // The paging kinds (TMDB/MAL) keep their load-more; the
+                    // one-shot feeds (TVmaze/Simkl) end-cap honestly.
+                    _uiState.value = SearchUiState.DataSourceSuccess(
+                        results = cachedOnly,
+                        hasMore = cachedOnly.size >= 40,
+                    )
+                    return@launch
+                }
             }
             if (cached != null && _query.value.isBlank()) {
                 val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
@@ -1155,12 +1218,33 @@ class SearchViewModel(
      * feed. ROUND 172: cache-first (one page — the API is one-shot) + the
      * background refresh.
      */
-    private fun loadSimklDefaults(): Job = viewModelScope.launch {
+    private fun loadSimklDefaults(force: Boolean = false): Job = viewModelScope.launch {
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
         if (_query.value.isBlank()) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.SIMKL)) }.getOrNull()
+            }
+            // ROUND 176 (THE 12-HOUR GATE): the fresh cache + no explicit
+            // refresh → serve + STOP (no network attempt — the offline
+            // entry stays silent; the user's round-169 order: the auto
+            // refresh only every 12 hours). The stale cache (or force —
+            // the manual pull) proceeds to the network refresh.
+            val cacheIsFresh = cached != null &&
+                System.currentTimeMillis() - cached.fetchedAt < SEARCH_DEFAULTS_TTL_MS
+            if (cacheIsFresh && !force) {
+                val cachedOnly = runCatching { decodeDefaultsCache(cached!!.dataJson) }
+                    .getOrDefault(emptyList())
+                if (cachedOnly.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    showingDefaults = true
+                    // The paging kinds (TMDB/MAL) keep their load-more; the
+                    // one-shot feeds (TVmaze/Simkl) end-cap honestly.
+                    _uiState.value = SearchUiState.DataSourceSuccess(
+                        results = cachedOnly,
+                        hasMore = cachedOnly.size >= 40,
+                    )
+                    return@launch
+                }
             }
             if (cached != null && _query.value.isBlank()) {
                 val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
@@ -1290,7 +1374,7 @@ class SearchViewModel(
      *   (success → Success(fresh)) / (fail + cache was shown → keep cache) /
      *   (fail + no cache → Idle).
      */
-    private fun loadTrending(): Job {
+    private fun loadTrending(force: Boolean = false): Job {
         val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
         return viewModelScope.launch {
@@ -1298,6 +1382,31 @@ class SearchViewModel(
             if (_query.value.isBlank()) {
                 val cachedTrending = withContext(Dispatchers.IO) {
                     dataCacheRepository.getBrowseCache(BrowseCacheCodec.SECTION_TRENDING)
+                }
+                // ROUND 176 (THE 12-HOUR GATE): the fresh cache + no explicit
+                // refresh → serve + STOP (the offline entry stays silent —
+                // the v1.1.111 report: the error notice fired on the entry
+                // because the auto-refresh ran unconditionally).
+                val cacheIsFresh = cachedTrending != null &&
+                    System.currentTimeMillis() - cachedTrending.fetchedAt < SEARCH_DEFAULTS_TTL_MS
+                if (cacheIsFresh && !force) {
+                    val cachedResults = try {
+                        BrowseCacheCodec.decode(cachedTrending!!.dataJson)
+                    } catch (parseErr: Exception) {
+                        Logger.w(TAG) { "Trending cache parse failed: ${parseErr.message}" }
+                        emptyList()
+                    }
+                    if (cachedResults.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                        Logger.i(TAG) { "Serving ${cachedResults.size} cached trending as default (fresh — no refresh)" }
+                        showingDefaults = true
+                        pagingMode = PagingMode.ANILIST_TRENDING
+                        lastLoadedPage = 1
+                        _uiState.value = SearchUiState.Success(
+                            results = cachedResults,
+                            hasMore = cachedResults.size >= 30,
+                        )
+                        return@launch
+                    }
                 }
                 if (cachedTrending != null && _query.value.isBlank()) {
                     val cachedResults = try {
@@ -2245,11 +2354,13 @@ class SearchViewModel(
                     // rewrites the row on success) — a failed refresh NEVER
                     // downgrades a cached state, on ANY source.
                     when (_dataSource.value) {
-                        DataSourceKind.TMDB -> defaultsJob = loadTmdbDefaults()
-                        DataSourceKind.TVMAZE -> defaultsJob = loadTvmazeDefaults()
-                        DataSourceKind.MAL -> defaultsJob = loadMalDefaults()
-                        DataSourceKind.SIMKL -> defaultsJob = loadSimklDefaults()
-                        DataSourceKind.ANILIST -> loadTrending()
+                        // ROUND 176: the manual pull FORCES the network
+                        // refresh (the 12-hour gate is for the AUTO paths).
+                        DataSourceKind.TMDB -> defaultsJob = loadTmdbDefaults(force = true)
+                        DataSourceKind.TVMAZE -> defaultsJob = loadTvmazeDefaults(force = true)
+                        DataSourceKind.MAL -> defaultsJob = loadMalDefaults(force = true)
+                        DataSourceKind.SIMKL -> defaultsJob = loadSimklDefaults(force = true)
+                        DataSourceKind.ANILIST -> loadTrending(force = true)
                     }
                 }
             }

@@ -1,11 +1,24 @@
 package com.confused.anikuta.core.designsystem.component
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,39 +33,58 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.offset
 import com.confused.anikuta.core.common.HapticHelper
+import kotlinx.coroutines.delay
 
 // ════════════════════════════════════════════════════════════════════════════
-//  ROUND 175 (F3+F4 — the user's order): THE REFRESH CAPSULE — the app's ONE
-//  loading-activity language, upgraded from the bare dots:
-//  • THE CAPSULE — the AppToast pill's anatomy (the elevated surface, the
-//    22dp shape, the border) hosting the jumping dots — "the three bare dots
-//    floating over the content look unfinished".
-//  • THE FOLLOW — the capsule springs toward the drag distance (the M3
-//    default indicator's lost behavior: "the drag shows nothing until
-//    release"); the threshold crossing fires the HapticHelper stage haptic.
-//  • ONE COMPONENT for the pull indicator AND the load-more footer
-//    (dragFraction = 1f = the resting/refreshing position).
+//  ROUND 176 (the user's EXACT model — this replaces the round-175 shape):
+//  THE PULL INDICATOR'S THREE STATES:
+//  • THE SMALL DRAG — ONE dot cycling the three colors, growing with the
+//    drag ("when they are smaller… only a single dot switching between the
+//    three colors… when it fully becomes the biggest one… it will refresh").
+//  • THE FULL DRAG (the threshold reached) — THREE dots in a row, STATIC
+//    ("they won't be having any animation").
+//  • THE LIFT (the refresh active) — the three dots JUMPING ("the animation
+//    would only start after I have lifted my finger").
+//  THE THRESHOLD CROSSING fires the vibration (the details page's
+//  HapticHelper pattern — the user's explicit order).
 // ════════════════════════════════════════════════════════════════════════════
+
+/** The pull's refresh threshold — the same fraction M3 treats as committed. */
+private const val PULL_THRESHOLD = 0.92f
 
 /**
- * The capsule-hosted jumping dots — the app's loading indicator.
+ * The capsule-hosted pull/refresh indicator.
  *
- * @param dragFraction 0..1 — the pull's drag progress (the capsule follows
- *   it with a bouncy spring, the threshold haptic fires on the crossing);
- *   the resting/refreshing position is 1f (the load-more passes nothing).
- * @param visible false collapses the capsule (the caller's gate).
+ * @param dragFraction 0..1 — the pull's live progress (the caller reads the
+ *   M3 state's distanceFraction); 1f while refreshing.
+ * @param refreshing true = the lift happened (the three dots jumping).
  */
 @Composable
 fun RefreshCapsuleIndicator(
     modifier: Modifier = Modifier,
     dragFraction: Float = 1f,
+    refreshing: Boolean = true,
 ) {
-    // The bouncy follow — the release springs the capsule into its resting
-    // spot while the dots jump (the F3 order).
+    val context = LocalContext.current
+    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    // THE THRESHOLD VIBRATION — fires once per upward crossing (the user's
+    // "implement a vibration here, just like the details page").
+    var hapticFired by remember { mutableStateOf(false) }
+    LaunchedEffect(dragFraction, refreshing) {
+        if (!refreshing && dragFraction >= PULL_THRESHOLD && !hapticFired) {
+            HapticHelper.stageCross(context)
+            hapticFired = true
+        }
+        if (dragFraction < 0.5f) hapticFired = false
+    }
+
+    // The capsule's follow — the bouncy spring toward the drag distance (the
+    // resting spot = the full pull).
     val eased by animateFloatAsState(
         targetValue = dragFraction.coerceIn(0f, 1f),
         animationSpec = spring(
@@ -62,20 +94,6 @@ fun RefreshCapsuleIndicator(
         label = "capsuleFollow",
     )
 
-    // The threshold haptic — the edge fires ONCE per crossing (the M3
-    // default's snap, restored).
-    val context = LocalContext.current
-    var hapticFired by remember { mutableStateOf(false) }
-    LaunchedEffect(dragFraction) {
-        if (dragFraction >= 0.95f && !hapticFired) {
-            HapticHelper.stageCross(context)
-            hapticFired = true
-        }
-        if (dragFraction < 0.5f) hapticFired = false
-    }
-
-    // The capsule — the AppToast pill's anatomy (the user's reference).
-    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = if (darkTheme) {
@@ -90,14 +108,78 @@ fun RefreshCapsuleIndicator(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
         ),
         modifier = modifier
-            .offset { IntOffset(0, (eased * 20.dp.roundToPx()).toInt()) }
-            .scale(0.55f + 0.45f * eased),
+            .offset { IntOffset(0, (eased * 16.dp.roundToPx()).toInt()) }
+            .scale(if (refreshing) 1f else 0.6f + 0.4f * eased),
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
-            JumpingDotsIndicator(dotSize = 8.dp, jumpHeight = 8.dp)
+            when {
+                // ── THE LIFT (the refresh active): the three dots JUMPING ──
+                refreshing -> JumpingDotsIndicator(dotSize = 8.dp, jumpHeight = 8.dp)
+
+                // ── THE FULL DRAG: the three dots STATIC in a row ──
+                dragFraction >= PULL_THRESHOLD -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val colors = dotColors()
+                        colors.forEachIndexed { index, color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(color, CircleShape),
+                            )
+                            if (index < colors.lastIndex) Spacer(Modifier.width(6.dp))
+                        }
+                    }
+                }
+
+                // ── THE SMALL DRAG: ONE dot cycling the colors, growing ──
+                else -> {
+                    val cycleTransition = rememberInfiniteTransition(label = "cycle")
+                    val cycle by cycleTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 3f,
+                        animationSpec = infiniteRepeatable(
+                            animation = keyframes {
+                                durationMillis = 1400
+                                0f at 0 using LinearEasing
+                                3f at 1400 using LinearEasing
+                            },
+                            repeatMode = RepeatMode.Restart,
+                        ),
+                        label = "cycleFloat",
+                    )
+                    val colors = dotColors()
+                    val activeColor = colors[(cycle.toInt()).coerceIn(0, 2)]
+                    val grow = (dragFraction / PULL_THRESHOLD).coerceIn(0.25f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .scale(0.5f + 0.5f * grow)
+                            .background(activeColor, CircleShape),
+                    )
+                }
+            }
         }
+    }
+}
+
+/** The three cycling colors (the scheme's primary/secondary/tertiary). */
+@Composable
+private fun dotColors(): List<androidx.compose.ui.graphics.Color> = listOf(
+    MaterialTheme.colorScheme.primary,
+    MaterialTheme.colorScheme.secondary,
+    MaterialTheme.colorScheme.tertiary,
+)
+
+/** The load-more's resting capsule (the same language, always refreshing). */
+@Composable
+fun LoadingCapsuleIndicator(modifier: Modifier = Modifier, dotSize: Dp = 8.dp) {
+    Row(
+        modifier = modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        JumpingDotsIndicator(dotSize = dotSize, jumpHeight = 8.dp)
     }
 }
