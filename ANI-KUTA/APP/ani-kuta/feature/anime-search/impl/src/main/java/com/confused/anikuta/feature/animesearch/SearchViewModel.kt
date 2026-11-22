@@ -992,9 +992,15 @@ class SearchViewModel(
      * background refresh (both pages refetch + the row rewrites).
      */
     private fun loadTmdbDefaults(force: Boolean = false): Job = viewModelScope.launch {
+        // ROUND 176 (THE FLICKER FIX): the FORCE refresh is SILENT when the
+        // page already shows this mode's content — no Loading emission, no
+        // legacy cache serve (the v1.1.111 report: the content changed for a
+        // while then reverted). The fresh data lands when it lands; the
+        // failure paths keep the state + fire the notice.
         val gen = beginRequest()
-        _uiState.value = SearchUiState.Loading
-        if (_query.value.isBlank()) {
+        val silentRefresh = force && _uiState.value is SearchUiState.DataSourceSuccess
+        if (!silentRefresh) _uiState.value = SearchUiState.Loading
+        if (_query.value.isBlank() && !silentRefresh) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.TMDB)) }.getOrNull()
             }
@@ -1067,9 +1073,15 @@ class SearchViewModel(
      * background refresh.
      */
     private fun loadTvmazeDefaults(force: Boolean = false): Job = viewModelScope.launch {
+        // ROUND 176 (THE FLICKER FIX): the FORCE refresh is SILENT when the
+        // page already shows this mode's content — no Loading emission, no
+        // legacy cache serve (the v1.1.111 report: the content changed for a
+        // while then reverted). The fresh data lands when it lands; the
+        // failure paths keep the state + fire the notice.
         val gen = beginRequest()
-        _uiState.value = SearchUiState.Loading
-        if (_query.value.isBlank()) {
+        val silentRefresh = force && _uiState.value is SearchUiState.DataSourceSuccess
+        if (!silentRefresh) _uiState.value = SearchUiState.Loading
+        if (_query.value.isBlank() && !silentRefresh) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.TVMAZE)) }.getOrNull()
             }
@@ -1138,9 +1150,15 @@ class SearchViewModel(
      * offset).
      */
     private fun loadMalDefaults(force: Boolean = false): Job = viewModelScope.launch {
+        // ROUND 176 (THE FLICKER FIX): the FORCE refresh is SILENT when the
+        // page already shows this mode's content — no Loading emission, no
+        // legacy cache serve (the v1.1.111 report: the content changed for a
+        // while then reverted). The fresh data lands when it lands; the
+        // failure paths keep the state + fire the notice.
         val gen = beginRequest()
-        _uiState.value = SearchUiState.Loading
-        if (_query.value.isBlank()) {
+        val silentRefresh = force && _uiState.value is SearchUiState.DataSourceSuccess
+        if (!silentRefresh) _uiState.value = SearchUiState.Loading
+        if (_query.value.isBlank() && !silentRefresh) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.MAL)) }.getOrNull()
             }
@@ -1219,9 +1237,15 @@ class SearchViewModel(
      * background refresh.
      */
     private fun loadSimklDefaults(force: Boolean = false): Job = viewModelScope.launch {
+        // ROUND 176 (THE FLICKER FIX): the FORCE refresh is SILENT when the
+        // page already shows this mode's content — no Loading emission, no
+        // legacy cache serve (the v1.1.111 report: the content changed for a
+        // while then reverted). The fresh data lands when it lands; the
+        // failure paths keep the state + fire the notice.
         val gen = beginRequest()
-        _uiState.value = SearchUiState.Loading
-        if (_query.value.isBlank()) {
+        val silentRefresh = force && _uiState.value is SearchUiState.DataSourceSuccess
+        if (!silentRefresh) _uiState.value = SearchUiState.Loading
+        if (_query.value.isBlank() && !silentRefresh) {
             val cached = withContext(Dispatchers.IO) {
                 runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.SIMKL)) }.getOrNull()
             }
@@ -1376,7 +1400,14 @@ class SearchViewModel(
      */
     private fun loadTrending(force: Boolean = false): Job {
         val gen = beginRequest()
+        // ROUND 176 (THE FLICKER FIX): the force refresh is SILENT when the
+        // page already shows the AniList content — no Loading emission, no
+        // legacy cache serve (the 3-emission flicker: Loading → the OLD
+        // cache → the fresh = "changed then reverted").
+        val silentRefresh = force && _uiState.value is SearchUiState.Success
+        if (!silentRefresh) {
         _uiState.value = SearchUiState.Loading
+        }
         return viewModelScope.launch {
             // D-278: serve the cached trending payload first (instant, offline).
             if (_query.value.isBlank()) {
@@ -1408,7 +1439,7 @@ class SearchViewModel(
                         return@launch
                     }
                 }
-                if (cachedTrending != null && _query.value.isBlank()) {
+                if (!silentRefresh && cachedTrending != null && _query.value.isBlank()) { // ROUND 176: the silent force skips the legacy serve                if (cachedTrending != null && _query.value.isBlank()) {
                     val cachedResults = try {
                         BrowseCacheCodec.decode(cachedTrending.dataJson)
                     } catch (parseErr: Exception) {
@@ -1444,6 +1475,18 @@ class SearchViewModel(
                     // NO cached fallback already showing (D-278).
                     if (!showingDefaults) _uiState.value = SearchUiState.Idle
                 } else {
+                    // ROUND 176: the fresh results WRITE the cache row — the
+                    // fetchedAt advances so the 12h gate reads a fresh
+                    // timestamp after a manual pull (the audit's gap: the
+                    // search page never wrote the trending row).
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            dataCacheRepository.upsertBrowseCache(
+                                BrowseCacheCodec.SECTION_TRENDING,
+                                BrowseCacheCodec.encode(results),
+                            )
+                        }
+                    }
                     showingDefaults = true
                     // Task 61 (round 21): record the paging context (page 1;
                     // a full page means "probably more").
@@ -2332,7 +2375,13 @@ class SearchViewModel(
      * is successful"), then the fresh (randomized) sections land; for the
      * other modes this is just the page-1 reload.
      */
+    private var refreshJob: kotlinx.coroutines.Job? = null
+
     fun refreshCurrent() {
+        // ROUND 176: the in-flight guard — the pull indicator's re-arm (the
+        // first-emission dismissal) permitted a second onRefresh that
+        // restarted the whole chain (the audit's genuine revert path).
+        if (refreshJob?.isActive == true) return
         when (_source.value) {
             SearchSource.ANILIST -> {
                 if (_query.value.isNotBlank()) {
