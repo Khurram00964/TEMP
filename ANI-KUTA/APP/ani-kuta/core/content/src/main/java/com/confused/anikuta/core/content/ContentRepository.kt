@@ -883,27 +883,26 @@ class ContentRepository(
     // multi-link identity set (the axes in content_details remain the
     // write-through cache for the library batch loader). ──
 
-    private fun rowToIdentity(it: com.confused.anikuta.core.database.GetIdentitiesForContent): ContentIdentity =
-        ContentIdentity(
-            mainId = it.main_id,
-            sourceKind = it.source_kind,
-            sourceRefId = it.source_ref_id,
-            displayTitle = it.display_title,
-            coverUrl = it.cover_url,
-            synopsis = it.synopsis,
-            score = it.score?.toInt(),
-            episodes = it.episodes?.toInt(),
-            status = it.status,
-            genres = it.genres,
-            year = it.year?.toInt(),
-            displayRank = it.display_rank.toInt(),
-            createdAt = it.created_at,
-            updatedAt = it.updated_at,
-        )
-
     /** All identity links of a content, the display-ranked order. */
     fun identitiesForContent(mainId: String): List<ContentIdentity> =
-        contentQueries.getIdentitiesForContent(mainId).executeAsList().map { rowToIdentity(it) }
+        contentQueries.getIdentitiesForContent(mainId).executeAsList().map {
+            ContentIdentity(
+                mainId = it.main_id,
+                sourceKind = it.source_kind,
+                sourceRefId = it.source_ref_id,
+                displayTitle = it.display_title,
+                coverUrl = it.cover_url,
+                synopsis = it.synopsis,
+                score = it.score?.toInt(),
+                episodes = it.episodes?.toInt(),
+                status = it.status,
+                genres = it.genres,
+                year = it.year?.toInt(),
+                displayRank = it.display_rank.toInt(),
+                createdAt = it.created_at,
+                updatedAt = it.updated_at,
+            )
+        }
 
     /**
      * The reverse lookup — the reopen resolution (the packed id → the
