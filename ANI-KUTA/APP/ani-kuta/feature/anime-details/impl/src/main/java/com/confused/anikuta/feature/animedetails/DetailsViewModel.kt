@@ -1066,7 +1066,7 @@ class DetailsViewModel(
     // "TMDB data source vanishes" bug. As a real base it participates in
     // every merge (the identity fields survive; the display follows the
     // priority).
-    private var metadataBase: com.confused.anikuta.core.common.model.UnifiedAnime? = null
+        internal var metadataBase: com.confused.anikuta.core.common.model.UnifiedAnime? = null // ROUND 175 (F6.2): the MultiTracker's own-kind unlink clears it
 
     /**
      * Re-merge [extensionBase] + [anilistBase] with the given [priority].
@@ -1081,7 +1081,7 @@ class DetailsViewModel(
      * Identity fields (sourceId, sourceName, animeUrl, anilistId, entryMode) are
      * always preserved from whichever base has them — they're NOT subject to priority.
      */
-    private fun remergeBases(priority: com.confused.anikuta.core.common.model.DataSourcePriority) {
+    internal fun remergeBases(priority: com.confused.anikuta.core.common.model.DataSourcePriority) { // ROUND 175 (F6.2): the MultiTracker's unlink rebuild calls it
         val ext = extensionBase
         val al = anilistBase
         val meta = metadataBase
@@ -1358,10 +1358,10 @@ class DetailsViewModel(
                     "simkl" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl
                     "tmdb" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb
                     "tvmaze" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze
-                    "aniyomi", "cloudstream" -> {
-                        val srcId = row.sourceRefId.substringBefore(":").toLongOrNull()
-                        srcId?.let { extensionManager.getSource(it)?.icon }?.takeIf { it != 0 }
-                    }
+                    // The AnimeSource interface exposes no icon through
+                    // ExtensionManager.getSource — the fallback glyph renders
+                    // until the per-source icon lands.
+                    "aniyomi", "cloudstream" -> null
                     else -> null
                 }
                 Triple(row.sourceKind, label, iconRes)
@@ -3195,7 +3195,8 @@ class DetailsViewModel(
                 metadataBase = metadataBase?.copy(
                     description = it.dataSynopsis ?: metadataBase?.description,
                     coverUrl = it.dataCoverUrl ?: metadataBase?.coverUrl,
-                    genres = it.dataGenres?.split(",")?.filter { g -> g.isNotBlank() } ?: metadataBase?.genres,
+                    genres = it.dataGenres?.split(",")?.filter { g -> g.isNotBlank() }
+                        ?: (metadataBase?.genres ?: emptyList()),
                     status = it.dataStatus ?: metadataBase?.status,
                     episodes = it.dataEpisodes?.toInt() ?: metadataBase?.episodes,
                     averageScore = it.dataScore?.toInt() ?: metadataBase?.averageScore,
