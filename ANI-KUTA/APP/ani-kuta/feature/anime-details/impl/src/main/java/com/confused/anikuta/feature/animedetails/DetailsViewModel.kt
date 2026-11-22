@@ -3454,6 +3454,20 @@ class DetailsViewModel(
         anilistBase = null
         currentAnimeId = 0
         remergeBases(com.confused.anikuta.core.common.model.DataSourcePriority.EXTENSION)
+        // ROUND 102 (WS-C): the title follows the now-extension-only display —
+        // the Library row reads main_entry.title, and the unlink already
+        // flipped display_source to 'extension' inside contentResolver.unlinkAniList.
+        val unlinkedTitle = (_state.value as? DetailsState.Success)?.anime?.displayName
+        if (mainId != null && !unlinkedTitle.isNullOrBlank()) {
+            try {
+                contentRepository.updateMainEntryTitle(mainId, unlinkedTitle)
+            } catch (e: Exception) {
+                Logger.w(TAG) { "unlinkAniList: title follow failed (non-fatal): ${e.message}" }
+            }
+        }
+        _autoLinkState.value = AutoLinkState.Idle
+        _episodeMetadata.value = emptyMap() // Clear AniList-sourced metadata.
+    }
 
     /**
      * ROUND 172: the METADATA row's AniList unlink — the extension-entry
@@ -3481,20 +3495,6 @@ class DetailsViewModel(
         }
         val packedId = -(remoteId * 8 + kindIndex).toInt()
         loadMetadataContent(packedId, anime?.displayName, anime?.coverUrl)
-    }
-        // ROUND 102 (WS-C): the title follows the now-extension-only display —
-        // the Library row reads main_entry.title, and the unlink already
-        // flipped display_source to 'extension' inside contentResolver.unlinkAniList.
-        val unlinkedTitle = (_state.value as? DetailsState.Success)?.anime?.displayName
-        if (mainId != null && !unlinkedTitle.isNullOrBlank()) {
-            try {
-                contentRepository.updateMainEntryTitle(mainId, unlinkedTitle)
-            } catch (e: Exception) {
-                Logger.w(TAG) { "unlinkAniList: title follow failed (non-fatal): ${e.message}" }
-            }
-        }
-        _autoLinkState.value = AutoLinkState.Idle
-        _episodeMetadata.value = emptyMap() // Clear AniList-sourced metadata.
     }
 
     /**

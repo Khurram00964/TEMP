@@ -637,7 +637,7 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
     val mid = currentMainId ?: return
     when (source) {
         "anilist" -> {
-            val anime = (_state.value as? DetailsState.Success)?.anime
+            val anime = (state.value as? DetailsState.Success)?.anime
             if (anime?.sourceId != null && anime.animeUrl != null) {
                 linkAniListEntry(result.id)
                 refreshLinkedIdentities()

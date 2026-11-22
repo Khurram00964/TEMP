@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":core:tracker-simkl"))  // ROUND 168 (Phase E): the Simkl search source
     implementation(project(":core:common"))
     implementation(project(":core:data-cache"))  // D-278: offline trending fallback (browse_cache)
+    implementation(libs.kotlinx.serialization.json)  // ROUND 172: the per-source defaults cache DTO (browse_cache's JSON rows)
     implementation(project(":core:navigation-api"))
     implementation(project(":core:preferences"))
     implementation(project(":core:source-api"))
