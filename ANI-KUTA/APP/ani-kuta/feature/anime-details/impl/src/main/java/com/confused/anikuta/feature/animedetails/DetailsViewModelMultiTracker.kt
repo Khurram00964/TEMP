@@ -145,9 +145,20 @@ fun DetailsViewModel.openMalTrackSheet() {
             val remote = mal.fetchEntry(cached.trackerId)
             if (remote != null) {
                 val entry = remote.copy(contentKey = mid)
-                repo.upsert(entry, TrackerType.MAL)
-                _trackEntry.value = entry
-                Logger.i(TAG_MT) { "openMalTrackSheet — fetched from MAL: $entry" }
+                // ROUND 174 (T4 — the fetch merge): the local-differs case
+                // wins (the user's pending input; the bridge re-relays).
+                val local = _trackEntry.value
+                if (local != null && local.progress != entry.progress) {
+                    Logger.w(TAG_MT) {
+                        "openMalTrackSheet — the fetch disagreed with the local progress " +
+                            "(${entry.progress} vs ${local.progress}); the local keeps"
+                    }
+                    _trackEntry.value = local
+                } else {
+                    repo.upsert(entry, TrackerType.MAL)
+                    _trackEntry.value = entry
+                    Logger.i(TAG_MT) { "openMalTrackSheet — fetched from MAL: $entry" }
+                }
             }
         }.onFailure { e ->
             Logger.w(TAG_MT) { "openMalTrackSheet — fetchEntry failed (using cached): ${e.message}" }
@@ -363,8 +374,18 @@ fun DetailsViewModel.openSimklTrackSheet() {
             val remote = simkl.fetchEntry(cached.trackerId)
             if (remote != null) {
                 val entry = remote.copy(contentKey = mid)
-                repo.upsert(entry, TrackerType.SIMKL)
-                _trackEntry.value = entry
+                // ROUND 174 (T4 — the fetch merge): the same local-wins rule.
+                val local = _trackEntry.value
+                if (local != null && local.progress != entry.progress) {
+                    Logger.w(TAG_MT) {
+                        "openSimklTrackSheet — the fetch disagreed with the local progress " +
+                            "(${entry.progress} vs ${local.progress}); the local keeps"
+                    }
+                    _trackEntry.value = local
+                } else {
+                    repo.upsert(entry, TrackerType.SIMKL)
+                    _trackEntry.value = entry
+                }
             }
         }.onFailure { e ->
             Logger.w(TAG_MT) { "openSimklTrackSheet — fetchEntry failed (using cached): ${e.message}" }

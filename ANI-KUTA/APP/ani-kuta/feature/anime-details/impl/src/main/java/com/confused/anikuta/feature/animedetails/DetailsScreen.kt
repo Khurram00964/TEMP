@@ -469,6 +469,10 @@ fun DetailsScreen(
     // other" too) + the per-source Unlink rows render from the set. ──
     val isMetadataEntry by viewModel.isMetadataEntry.collectAsState()
     val linkedIdentities by viewModel.linkedIdentities.collectAsState()
+    // ROUND 174 (T2): the N-way switch's state — the chips + the selected
+    // kind (which identity drives the display).
+    val identityChips by viewModel.identityChips.collectAsState()
+    val displaySourceKind by viewModel.displaySourceKind.collectAsState()
 
     // ROUND 174 (T2.5): the PENDING UNLINK — the menu's Unlink rows set
     // this; the confirm dialog fires the real call (the destructive action
@@ -1268,13 +1272,12 @@ fun DetailsScreen(
                                         expanded = menuOpen,
                                         onDismissRequest = onMenuDismiss,
                                         contentTitle = anime.displayName,
-                                        // D-134: the selector shows when BOTH
-                                        // anilistId + sourceId exist.
-                                        hasBothDataSources = anime.anilistId != null && anime.sourceId != null,
-                                        currentDataSourcePriority = anime.dataSourcePriority
-                                            ?: com.confused.anikuta.core.common.model.DataSourcePriority.EXTENSION,
-                                        onSwitchDataSource = { priority -> viewModel.switchDataSource(priority) },
-                                        extensionSourceName = sourceName,
+                                        // ROUND 174 (T2): the N-WAY SWITCH —
+                                        // the chips are the ACTUAL identities;
+                                        // tapping one drives the display.
+                                        displayChips = identityChips,
+                                        selectedDisplayKind = displaySourceKind,
+                                        onSelectDisplaySource = { viewModel.selectDisplaySource(it) },
                                         onViewInWebView = {
                                             // The app's internal WebView
                                             // (D-209 activity — cookies shared
@@ -1504,7 +1507,10 @@ fun DetailsScreen(
                                 // ROUND 173 (N1): the search card's cancel.
                                 onCancelSearch = { viewModel.cancelReverseSearch() },
                                 onOpenCloudflareWebView = onOpenCloudflareWebView,
-                                onUnlinkSource = { viewModel.unlinkSource() },
+                                // ROUND 174 (T2.5): the confirm step — the
+                                // destructive unlink arms the dialog (the
+                                // audit's un-confirmed second surface).
+                                onUnlinkSource = { pendingUnlink = "extension" },
                                 onEpisodeClick = { ep -> onEpisodeClick(ep, false) },
                                 downloadStates = downloadStates,
                                 onDownloadEpisode = { episode ->
@@ -1811,7 +1817,7 @@ fun DetailsScreen(
                             // Unlink button at the bottom.
                             item {
                                 TextButton(
-                                    onClick = { viewModel.unlinkSource() },
+                                    onClick = { pendingUnlink = "extension" },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                                 ) {
                                     Text(
@@ -2279,6 +2285,7 @@ fun DetailsScreen(
             "mal" -> "MyAnimeList"
             "simkl" -> "Simkl"
             "tmdb" -> "TMDB"
+            "extension" -> "the extension source"
             else -> "TVMaze"
         }
         androidx.compose.material3.AlertDialog(
@@ -2304,6 +2311,7 @@ fun DetailsScreen(
                             "anilist" ->
                                 if (isMetadataEntry) viewModel.unlinkAniListFromMetadata()
                                 else viewModel.unlinkAniList()
+                            "extension" -> viewModel.unlinkSource()
                             else -> viewModel.unlinkUnifiedIdentity(source)
                         }
                         pendingUnlink = null

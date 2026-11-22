@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":core:database"))
     implementation(project(":core:content"))
     implementation(project(":core:activity-tracker"))
+    implementation(project(":core:designsystem"))  // ROUND 174 (T4): the relay's themed AppToast notices
     // ROUND 102 (WS-E — the tracking contract): the TrackingWatchSyncBridge
     // observes the watch_progress table through the store — the reactive
     // reconciler that finally carries the player's episode completions to

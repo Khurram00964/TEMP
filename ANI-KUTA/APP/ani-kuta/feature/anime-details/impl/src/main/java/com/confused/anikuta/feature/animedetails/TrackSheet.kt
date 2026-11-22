@@ -227,7 +227,11 @@ fun TrackSheet(
     // ── THE DRAFT: seeded from the (cached → remote-fetched) entry; re-seeds
     // when the open's background fetch lands. Every picker below edits THIS —
     // nothing persists until Save / Start Tracking. ──
-    var draft by remember(trackEntry) {
+    // ROUND 174 (T4): the draft seeds ONCE per open — the v1.1.109 shape
+    // keyed on trackEntry, so the open's background fetch landing MID-EDIT
+    // re-seeded the sheet and erased the user's in-flight edits (the audit's
+    // clobber mode 1).
+    var draft by remember {
         mutableStateOf(
             trackEntry ?: TrackEntry(
                 contentKey = "",

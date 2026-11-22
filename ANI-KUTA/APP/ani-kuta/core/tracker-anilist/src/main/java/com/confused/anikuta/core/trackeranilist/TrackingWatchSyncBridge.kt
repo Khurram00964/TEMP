@@ -124,10 +124,22 @@ class TrackingWatchSyncBridge(
             for (mainId in trackedMainIds) {
                 val computed = highestByMainId[mainId] ?: continue
 
-                // No AniList link → nothing to relay (the link is the
-                // data-source axis; the tracking flag alone is not enough).
                 val details = contentRepository.getContentDetails(mainId)
-                val anilistId = details?.anilistId ?: continue
+                // ROUND 174 (T4 — THE AUDIT'S CHAIN #1): the gate was the
+                // ANILIST COLUMN for EVERY tracker — a MAL/Simkl-tracked
+                // row without an anilist data axis (a pure metadata row, an
+                // ext-only row) was skipped SILENTLY forever. THE MAPPING IS
+                // THE ID: each tracker's track_entry row carries ITS OWN
+                // trackerId; the anilist axis is consulted only for AniList.
+                val mapping = trackEntryRepository.get(mainId, tracker.type)
+                val trackerId: Int = when (tracker.type) {
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL,
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL,
+                    -> mapping?.trackerId ?: continue // no mapping → nothing to relay to THAT tracker
+                    else -> mapping?.trackerId
+                        ?: details?.anilistId?.takeIf { it > 0 }
+                        ?: continue
+                }
 
                 // The comparison against what AniList last confirmed. The
                 // cache row is written ONLY after a successful sync (or a
@@ -151,7 +163,10 @@ class TrackingWatchSyncBridge(
                 val cachedCompletedAt = cached?.completedAt
                 val entry = (cached ?: TrackEntry(
                     contentKey = mainId,
-                    trackerId = anilistId,
+                    // ROUND 174 (T4 — chain #2): the tracker's OWN mapping id
+                    // (the audit: the fallback pushed the ANILIST id to
+                    // MAL/Simkl — a wrong show / a guaranteed 404).
+                    trackerId = trackerId,
                 )).copy(
                     status = status,
                     progress = computed,
@@ -184,9 +199,25 @@ class TrackingWatchSyncBridge(
                     // the comparison (and thus the retry) work: the confirmed
                     // value becomes the new baseline.
                     trackEntryRepository.upsert(entry, tracker.type)
+                    // ROUND 174 (T4 — chain #3): the DEAD CHANNEL WIRED —
+                    // the success is CONFIRMED to the user (the app's themed
+                    // notice; the eventual consistency becomes visible).
+                    com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                        "Synced to ${tracker.displayName} — episode $computed",
+                        com.confused.anikuta.core.designsystem.component.toast.AppToastTone.SUCCESS,
+                    )
                     Logger.i(TAG) {
                         "relayed $mainId → ${tracker.displayName}: progress=$computed, status=$status"
                     }
+                } else {
+                    // ROUND 174 (T4): the failure SURFACES (the audit: a
+                    // log-only failure was indistinguishable from broken).
+                    // The user's marks stay local (never reverted); the next
+                    // write / the startup sweep retries automatically.
+                    com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                        "${tracker.displayName} sync failed — your progress is saved and will retry",
+                        com.confused.anikuta.core.designsystem.component.toast.AppToastTone.ERROR,
+                    )
                 }
             }
         }

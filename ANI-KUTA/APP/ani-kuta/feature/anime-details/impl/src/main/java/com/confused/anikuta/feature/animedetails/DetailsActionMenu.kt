@@ -4,6 +4,8 @@ import android.content.Intent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -111,11 +113,12 @@ fun DetailsActionMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     contentTitle: String,
-    // ── Data source section ──
-    hasBothDataSources: Boolean,
-    currentDataSourcePriority: DataSourcePriority,
-    onSwitchDataSource: (DataSourcePriority) -> Unit,
-    extensionSourceName: String? = null,
+    // ── Data source section (ROUND 174: THE N-WAY SWITCH — the chips are
+    // the ACTUAL linked identities from content_identity; the 2-slot
+    // AniList|Extension pair retired) ──
+    displayChips: List<Pair<String, String>>,
+    selectedDisplayKind: String?,
+    onSelectDisplaySource: (String) -> Unit,
     // ── Actions ──
     onViewInWebView: () -> Unit,
     canViewInWebView: Boolean,
@@ -202,37 +205,34 @@ fun DetailsActionMenu(
             // ══ SECTION: DATA SOURCE — the chip row + the link/unlink rows ══
             // (shows when there is a choice to make OR a list to link/unlink;
             // the METADATA rows offer it too — ROUND 172)
-            if (hasBothDataSources || isExtensionEntry || isMetadataEntry) {
+            if (displayChips.isNotEmpty() || isExtensionEntry || isMetadataEntry) {
                 MenuSectionLabel("Data source")
                 MenuSectionCard {
-                    if (hasBothDataSources) {
-                        // The round-101 segmented pair, side by side: LEFT =
-                        // the list system's name (AniList today; future
-                        // systems append), RIGHT = the extension's text.
+                    if (displayChips.isNotEmpty()) {
+                        // ROUND 174 (T2 — THE N-WAY SWITCH): the chips ARE the
+                        // linked identities (the v7 content_identity rows +
+                        // the tracking mappings); the selected one DRIVES the
+                        // details display. The user's order: "the chips show
+                        // the ACTUAL identities — TMDB | Extension — and
+                        // tapping a chip switches the display to that
+                        // source."
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
                                 .padding(8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            MenuSourceChip(
-                                label = "AniList",
-                                selected = currentDataSourcePriority == DataSourcePriority.ANILIST,
-                                onClick = {
-                                    onDismissRequest()
-                                    onSwitchDataSource(DataSourcePriority.ANILIST)
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
-                            MenuSourceChip(
-                                label = extensionSourceName?.takeIf { it.isNotBlank() } ?: "Extension",
-                                selected = currentDataSourcePriority == DataSourcePriority.EXTENSION,
-                                onClick = {
-                                    onDismissRequest()
-                                    onSwitchDataSource(DataSourcePriority.EXTENSION)
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
+                            displayChips.forEach { (kind, label) ->
+                                MenuSourceChip(
+                                    label = label,
+                                    selected = kind == selectedDisplayKind,
+                                    onClick = {
+                                        onDismissRequest()
+                                        onSelectDisplaySource(kind)
+                                    },
+                                )
+                            }
                         }
                     }
                     // ROUND 170 (the device order): "Link to other" — the

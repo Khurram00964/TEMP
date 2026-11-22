@@ -623,6 +623,57 @@ class DetailsViewModel(
     val isMetadataEntry: kotlinx.coroutines.flow.StateFlow<Boolean> =
         _isMetadataEntry.asStateFlow()
 
+    // ROUND 174 (T2 — THE N-WAY SWITCH): WHICH identity drives the details
+    // display ("anilist" | "extension" | the row's own kind: tmdb/tvmaze/
+    // mal/simkl). Null = the legacy priority default. The chips render from
+    // the identity list; the pick persists content_identity.display_rank
+    // (0 = the driver) — the schema's designed field.
+    internal val _displaySourceKind = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val displaySourceKind: kotlinx.coroutines.flow.StateFlow<String?> =
+        _displaySourceKind.asStateFlow()
+
+    // The identity chips for the menu (the kind + the display label), built
+    // in refreshLinkedIdentities.
+    internal val _identityChips = kotlinx.coroutines.flow.MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val identityChips: kotlinx.coroutines.flow.StateFlow<List<Pair<String, String>>> =
+        _identityChips.asStateFlow()
+
+    /**
+     * ROUND 174 (T2): the N-way display switch — the picked identity drives
+     * the details page. The mapping-only identities (mal/simkl) carry no
+     * display data: the pick is refused with the honest notice.
+     */
+    fun selectDisplaySource(kind: String) {
+        if (kind in setOf("mal", "simkl")) {
+            Logger.i(TAG) { "selectDisplaySource($kind) — a mapping-only identity, no display data" }
+            com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                "MyAnimeList/Simkl links are tracking links — no display data",
+                com.confused.anikuta.core.designsystem.component.toast.AppToastTone.NEUTRAL,
+            )
+            return
+        }
+        _displaySourceKind.value = kind
+        val mid = currentMainId
+        if (mid != null) {
+            viewModelScope.launch {
+                // The display_rank persist: the picked kind → 0 (the driver),
+                // the others → 1+ (the stable order).
+                runCatching {
+                    val rows = contentRepository.identitiesForContent(mid).toMutableList()
+                    var rank = 1
+                    for (row in rows) {
+                        val newRank = if (row.sourceKind == kind) 0 else rank++
+                        if (newRank != row.displayRank) {
+                            contentRepository.upsertIdentity(row.copy(displayRank = newRank, updatedAt = System.currentTimeMillis()))
+                        }
+                    }
+                }
+            }
+        }
+        remergeBases(persistedDisplayPriority(currentMainId, com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST))
+        Logger.i(TAG) { "the display source switched: $kind" }
+    }
+
     // ROUND 172: the LINKED identities (the menu's per-source unlink rows):
     // "anilist" (the anime's positive anilistId — both kinds), "mal"/"simkl"
     // (the track_entry mappings), "tmdb"/"tvmaze" (the native-content
@@ -1059,6 +1110,10 @@ class DetailsViewModel(
         // EXTENSION shows the extension's. The early returns above guarantee
         // at least one base per branch (the !! are unreachable).
         val primary = when {
+            // ROUND 174 (T2): the N-WAY switch — the explicit display kind
+            // outranks the 2-valued priority.
+            _displaySourceKind.value == "extension" -> ext ?: (meta ?: al)!!
+            _displaySourceKind.value != null && _displaySourceKind.value != "anilist" -> (meta ?: al)!!
             priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> (al ?: meta)!!
             else -> ext!!
         }
@@ -1239,7 +1294,27 @@ class DetailsViewModel(
                 return@launch
             }
             _linkedIdentities.value = linked
-            Logger.d(TAG) { "linked identities for $mid: $linked" }
+            // ROUND 174 (T2): the chips (the kind + the label) — the menu's
+            // N-way switch renders these; the ext label = the extension's
+            // name (the ref = <sourceId>:<url>).
+            val chips = rows.map { row ->
+                val label = when (row.sourceKind) {
+                    "anilist" -> "AniList"
+                    "mal" -> "MyAnimeList"
+                    "simkl" -> "Simkl"
+                    "tmdb" -> "TMDB"
+                    "tvmaze" -> "TVMaze"
+                    "aniyomi", "cloudstream" -> {
+                        val srcId = row.sourceRefId.substringBefore(":").toLongOrNull()
+                        (srcId?.let { extensionManager.getSource(it)?.name })
+                            ?: row.sourceKind.replaceFirstChar { it.uppercase() }
+                    }
+                    else -> row.sourceKind.replaceFirstChar { it.uppercase() }
+                }
+                row.sourceKind to label
+            }.distinctBy { it.first }
+            _identityChips.value = chips
+            Logger.d(TAG) { "linked identities for $mid: $linked (chips: $chips)" }
         }
     }
 
@@ -1456,6 +1531,31 @@ class DetailsViewModel(
             // base — linkSource's remerge now keeps it (the TMDB identity
             // survives the extension link).
             metadataBase = anime
+            // ROUND 174 (T2.2 — THE COLLAPSE FIX): the extension base
+            // REBUILDS from the ext axis on the reopen — the v1.1.109 emit
+            // carried sourceId = null (the chips collapsed on the second
+            // open; only the AniList path restored its base).
+            if (details?.hasExtensionLink == true && extensionBase == null && details.sourceId != null && details.animeUrl != null) {
+                val srcId = details.sourceId!!
+                val srcName = extensionManager.getSource(srcId)?.name
+                    ?: details.extensionType?.replaceFirstChar { it.uppercase() }
+                    ?: "Extension"
+                extensionBase = com.confused.anikuta.core.common.model.UnifiedAnime(
+                    title = anime.title,
+                    coverUrl = details.extThumbnailUrl ?: anime.coverUrl,
+                    description = details.extDescription,
+                    genres = details.extGenres?.split(", ")?.filter { it.isNotBlank() } ?: emptyList(),
+                    status = details.extStatus,
+                    seasonYear = anime.seasonYear,
+                    episodes = anime.episodes,
+                    sourceId = srcId,
+                    sourceName = srcName,
+                    animeUrl = details.animeUrl,
+                    entryMode = com.confused.anikuta.core.common.model.EntryMode.EXTENSION,
+                )
+                Logger.i(TAG) { "the metadata reopen rebuilt the extension base: $srcName ($srcId)" }
+                remergeBases(persistedDisplayPriority(mainId, com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST))
+            }
             _state.value = DetailsState.Success(anime)
             currentMainId = mainId
             _mainIdFlow.value = mainId
@@ -1607,7 +1707,14 @@ class DetailsViewModel(
             if (parts.size == 2) {
                 val sourceId = parts[0].toLongOrNull()
                 if (sourceId != null) {
-                    _linkedSource.value = LinkedSource(sourceId, "", parts[1])
+                    _linkedSource.value = LinkedSource(
+                        sourceId,
+                        // ROUND 174 (T2.3): the NAME re-derives (the empty
+                        // name starved currentSourceName's elvis — the blank
+                        // labels everywhere).
+                        extensionManager.getSource(sourceId)?.name ?: "",
+                        parts[1],
+                    )
                 }
             }
         }
@@ -2014,7 +2121,10 @@ class DetailsViewModel(
         // the extension branch reachable again). Now a linked entry refreshes
         // BOTH axes concurrently; each axis persists itself and re-merges with
         // the user's CURRENT priority as it lands.
-        val hasAnilist = anime.anilistId != null
+        // ROUND 174 (the audit's adjacent gap): the NEGATIVE packed id is
+        // NOT an AniList id — the v1.1.109 shape fired a doomed fetch and
+        // would have replaced the row's TMDB identity with the anilist axis.
+        val hasAnilist = (anime.anilistId ?: 0) > 0
         val hasExtension = anime.sourceId != null && anime.animeUrl != null
 
         if (!hasAnilist && !hasExtension) return
@@ -2313,8 +2423,16 @@ class DetailsViewModel(
             val remote = tracker.fetchEntry(anilistId)
             if (remote != null) {
                 val entry = remote.copy(contentKey = mid)
-                repo.upsert(entry)
-                _trackEntry.value = entry
+                // ROUND 174 (T4 — the fetch merge): the local-differs case
+                // wins (the user's pending input; the bridge re-relays) —
+                // the v1.1.109 assign clobbered it.
+                val localNow = _trackEntry.value
+                if (localNow != null && localNow.progress != entry.progress) {
+                    _trackEntry.value = localNow
+                } else {
+                    repo.upsert(entry)
+                    _trackEntry.value = entry
+                }
                 Logger.i(TAG) { "refreshTracking — fetched from AniList: $entry" }
 
                 // D-242-fix: set the pending entry so the init{} observer can
@@ -3773,7 +3891,7 @@ class DetailsViewModel(
 
     /** The extension source's display name (the WebView title / share subtitle). */
     fun currentSourceName(): String? =
-        _linkedSource.value?.sourceName
+        _linkedSource.value?.sourceName?.takeIf { it.isNotBlank() }
             ?: (_state.value as? DetailsState.Success)?.anime?.sourceId
                 ?.let { extensionManager.getSource(it)?.name }
 

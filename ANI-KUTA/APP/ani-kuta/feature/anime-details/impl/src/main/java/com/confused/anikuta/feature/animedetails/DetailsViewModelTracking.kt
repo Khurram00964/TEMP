@@ -63,9 +63,25 @@ fun DetailsViewModel.openTrackSheet() {
                     val remote = tracker.fetchEntry(anilistId)
                     if (remote != null) {
                         val entry = remote.copy(contentKey = mid)
-                        repo.upsert(entry)
-                        _trackEntry.value = entry
-                        Logger.i(TAG) { "openTrackSheet — fetched from AniList: $entry" }
+                        // ROUND 174 (T4 — THE FETCH MERGE): a local progress
+                        // that DIFFERS from the fetched remote is the user's
+                        // pending input (the marks not yet relayed) — the
+                        // local WINS and the cache stays (the bridge
+                        // re-relays); the v1.1.109 shape assigned the remote
+                        // unconditionally, silently overwriting the user's
+                        // marks (the "shows progress 2" report).
+                        val local = _trackEntry.value
+                        if (local != null && local.progress != entry.progress) {
+                            Logger.w(TAG) {
+                                "openTrackSheet — the fetch disagreed with the local progress " +
+                                    "(${entry.progress} vs ${local.progress}); the local keeps"
+                            }
+                            _trackEntry.value = local
+                        } else {
+                            repo.upsert(entry)
+                            _trackEntry.value = entry
+                            Logger.i(TAG) { "openTrackSheet — fetched from AniList: $entry" }
+                        }
                     }
                 }.onFailure { e ->
                     Logger.w(TAG) { "openTrackSheet — fetchEntry failed (using cached): ${e.message}" }
