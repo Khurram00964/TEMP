@@ -634,8 +634,12 @@ class DetailsViewModel(
 
     // The identity chips for the menu (the kind + the display label), built
     // in refreshLinkedIdentities.
-    internal val _identityChips = kotlinx.coroutines.flow.MutableStateFlow<List<Pair<String, String>>>(emptyList())
-    val identityChips: kotlinx.coroutines.flow.StateFlow<List<Pair<String, String>>> =
+    // ROUND 175 (F7): the chips carry the ICON RES — the icon-based layout
+    // (the user's explicit design) replaces the 5 text names. The icon:
+    // the static res for the 5 known kinds; the extension's icon resolves
+    // from the source (AnimeSource.icon); null = the fallback glyph.
+    internal val _identityChips = kotlinx.coroutines.flow.MutableStateFlow<List<Triple<String, String, Int?>>>(emptyList())
+    val identityChips: kotlinx.coroutines.flow.StateFlow<List<Triple<String, String, Int?>>> =
         _identityChips.asStateFlow()
 
     /**
@@ -1109,13 +1113,36 @@ class DetailsViewModel(
         // AniList base exists — ANILIST priority shows the metadata data,
         // EXTENSION shows the extension's. The early returns above guarantee
         // at least one base per branch (the !! are unreachable).
+        // ROUND 175 (F6.1 — THE AUDIT'S CLASSIFIER): the chip kinds map to
+        // BASES — the ext-axis kinds (aniyomi/cloudstream + the legacy
+        // "extension") → the ext base; the data-axis kinds (tmdb/tvmaze/
+        // mal/simkl) → the metadata base; anilist → the AniList base.
+        // THE v1.1.110 BREAK: every non-"extension" kind routed to the
+        // metadata base (no chip could ever reach the ext base — the
+        // "switch changes NOTHING" bug). The branch decision LOGS (the
+        // meta-order: the identity state machine readable in logcat).
+        val kind = _displaySourceKind.value
         val primary = when {
-            // ROUND 174 (T2): the N-WAY switch — the explicit display kind
-            // outranks the 2-valued priority.
-            _displaySourceKind.value == "extension" -> ext ?: (meta ?: al)!!
-            _displaySourceKind.value != null && _displaySourceKind.value != "anilist" -> (meta ?: al)!!
-            priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> (al ?: meta)!!
-            else -> ext!!
+            kind == "extension" || kind == "aniyomi" || kind == "cloudstream" -> {
+                Logger.i(TAG) { "remergeBases: kind-primary(EXT) kind=$kind" }
+                (ext ?: (meta ?: al))!!
+            }
+            kind == "anilist" -> {
+                Logger.i(TAG) { "remergeBases: kind-primary(ANILIST)" }
+                (al ?: meta)!!
+            }
+            kind != null -> {
+                Logger.i(TAG) { "remergeBases: kind-primary(META) kind=$kind" }
+                (meta ?: al)!!
+            }
+            priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> {
+                Logger.i(TAG) { "remergeBases: priority-anilist (no display kind)" }
+                (al ?: meta)!!
+            }
+            else -> {
+                Logger.i(TAG) { "remergeBases: priority-ext (no display kind)" }
+                ext!!
+            }
         }
         val merged = primary.copy(
             // Identity fields — always from whichever base has them (NOT subject to priority).
@@ -1238,6 +1265,7 @@ class DetailsViewModel(
         _showMarkSeriesPrompt.value = false
         _isMetadataEntry.value = false
         _linkedIdentities.value = emptySet()
+        _displaySourceKind.value = null // ROUND 175 (F6.1): the pick never leaks across screens
         Logger.d(TAG) { "resetState: all per-anime state cleared (loadGeneration=$loadGeneration)" }
     }
 
@@ -1293,7 +1321,16 @@ class DetailsViewModel(
                 Logger.d(TAG) { "the identities refresh discarded (stale generation)" }
                 return@launch
             }
-            _linkedIdentities.value = linked
+            // ROUND 175 (F6.1): the pick RESTORES from the rank-0 identity
+            // row — the persisted display driver survives the reopen (the
+            // v1.1.110 pick never did). The stale-kind safety: a kind no
+            // longer present (the unlink) clears the pick.
+            val rankZero = rows.minByOrNull { it.displayRank }
+            _displaySourceKind.value = rankZero?.sourceKind
+            Logger.i(TAG) { "the display kind restored: ${rankZero?.sourceKind ?: "(none)"} (rank-0 of ${rows.size} identities)" }
+            if (linked.isNotEmpty()) {
+                _linkedIdentities.value = linked
+            }
             // ROUND 174 (T2): the chips (the kind + the label) — the menu's
             // N-way switch renders these; the ext label = the extension's
             // name (the ref = <sourceId>:<url>).
@@ -1311,10 +1348,37 @@ class DetailsViewModel(
                     }
                     else -> row.sourceKind.replaceFirstChar { it.uppercase() }
                 }
-                row.sourceKind to label
+                // ROUND 175 (F7): the icon res — the static marks for the 5
+                // known kinds; the extension's icon rides the source (the
+                // aniyomi API's drawable res; the CS bridges may return 0 →
+                // the fallback glyph).
+                val iconRes = when (row.sourceKind) {
+                    "anilist" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist
+                    "mal" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal
+                    "simkl" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl
+                    "tmdb" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb
+                    "tvmaze" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze
+                    "aniyomi", "cloudstream" -> {
+                        val srcId = row.sourceRefId.substringBefore(":").toLongOrNull()
+                        srcId?.let { extensionManager.getSource(it)?.icon }?.takeIf { it != 0 }
+                    }
+                    else -> null
+                }
+                Triple(row.sourceKind, label, iconRes)
             }.distinctBy { it.first }
             _identityChips.value = chips
-            Logger.d(TAG) { "linked identities for $mid: $linked (chips: $chips)" }
+            if (gen != loadGeneration) {
+                Logger.d(TAG) { "the identities refresh discarded (stale generation)" }
+                return@launch
+            }
+            // ROUND 175 (F6.1): the stale-kind safety — a picked kind that
+            // no longer exists (the unlink) clears the display pick.
+            val picked = _displaySourceKind.value
+            if (picked != null && picked !in linked) {
+                Logger.i(TAG) { "the display kind $picked no longer exists — cleared" }
+                _displaySourceKind.value = null
+            }
+            Logger.i(TAG) { "linked identities for $mid: $linked (chips: $chips)" }
         }
     }
 
@@ -1537,6 +1601,11 @@ class DetailsViewModel(
             // open; only the AniList path restored its base).
             // The fresh capture — details is a mutated local (the
             // enrichment reassigns it), the smart cast is impossible on it.
+            // ROUND 175 (F6.1): the rebuild's remerge RESULT survives — the
+            // v1.1.110 shape emitted the raw synthetic right after,
+            // discarding the remerge (the display kind ignored on every
+            // reopen).
+            var extRebuildRemerged = false
             val extDetails = details
             if (extDetails?.hasExtensionLink == true && extensionBase == null && extDetails.sourceId != null && extDetails.animeUrl != null) {
                 val srcId = extDetails.sourceId!!
@@ -1558,8 +1627,9 @@ class DetailsViewModel(
                 )
                 Logger.i(TAG) { "the metadata reopen rebuilt the extension base: $srcName ($srcId)" }
                 remergeBases(persistedDisplayPriority(mainId, com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST))
+                extRebuildRemerged = true
             }
-            _state.value = DetailsState.Success(anime)
+            if (!extRebuildRemerged) _state.value = DetailsState.Success(anime)
             currentMainId = mainId
             _mainIdFlow.value = mainId
             Logger.i(TAG) { "metadata state emitted for $mainId" }
@@ -2124,6 +2194,14 @@ class DetailsViewModel(
         // the extension branch reachable again). Now a linked entry refreshes
         // BOTH axes concurrently; each axis persists itself and re-merges with
         // the user's CURRENT priority as it lands.
+        // ROUND 175 (F8): the METADATA refresh branch — the packed-id rows
+        // re-run the ENRICHMENT pass (the round-171 detail fetches) + the
+        // state re-derives from the refreshed axis. The v1.1.110 shape
+        // returned immediately (the pull did NOTHING on the metadata rows).
+        if (_isMetadataEntry.value && (anime.anilistId ?: 0) < 0) {
+            refreshMetadataEnrichment()
+            return
+        }
         // ROUND 174 (the audit's adjacent gap): the NEGATIVE packed id is
         // NOT an AniList id — the v1.1.109 shape fired a doomed fetch and
         // would have replaced the row's TMDB identity with the anilist axis.
@@ -3045,6 +3123,91 @@ class DetailsViewModel(
     /**
      * Refresh the contentId + library status from the repository.
      */
+    /**
+     * ROUND 175 (F8): the metadata row's ENRICHMENT refresh — the pull on a
+     * packed-id row re-runs the round-171 detail fetches (TMDB/TVmaze/MAL)
+     * against the row's fine type, merges into the data axis, and re-derives
+     * the display (the metadataBase + the remerge). The episodes' extension
+     * fetch rides refreshAll's other leg.
+     */
+    private suspend fun refreshMetadataEnrichment() {
+        val mid = currentMainId ?: return
+        val details = runCatching { contentRepository.getContentDetails(mid) }.getOrNull()
+        val fineType = details?.dataSourceType
+        val refId = details?.dataSourceRefId?.toIntOrNull() ?: return
+        Logger.i(TAG) { "the metadata enrichment refresh: $mid ($fineType:$refId)" }
+        var refreshed = details
+        when (fineType) {
+            "tmdb_movie", "tmdb_tv" -> tmdbApi?.detail(
+                if (fineType == "tmdb_tv") "tv" else "movie",
+                refId,
+            )?.let { d ->
+                refreshed = refreshed?.copy(
+                    dataSynopsis = d.item.overview ?: refreshed?.dataSynopsis,
+                    dataCoverUrl = d.item.posterUrl ?: refreshed?.dataCoverUrl,
+                    dataSeasonYear = d.item.year?.toLong() ?: refreshed?.dataSeasonYear,
+                    dataScore = d.item.rating?.let { (it * 10).toInt().toLong() } ?: refreshed?.dataScore,
+                    dataEpisodes = d.episodes?.toLong() ?: refreshed?.dataEpisodes,
+                    dataStatus = d.status ?: refreshed?.dataStatus,
+                    dataGenres = d.genres.joinToString(",").ifBlank { refreshed?.dataGenres },
+                    dataUpdatedAt = System.currentTimeMillis(),
+                )
+            }
+            "tvmaze" -> tvmazeApi?.show(refId)?.let { show ->
+                refreshed = refreshed?.copy(
+                    dataSynopsis = show.overview?.replace(Regex("<[^>]*>"), "") ?: refreshed?.dataSynopsis,
+                    dataCoverUrl = show.posterUrl ?: refreshed?.dataCoverUrl,
+                    dataSeasonYear = show.year?.toLong() ?: refreshed?.dataSeasonYear,
+                    dataScore = show.rating?.let { (it * 10).toInt().toLong() } ?: refreshed?.dataScore,
+                    dataUpdatedAt = System.currentTimeMillis(),
+                )
+            }
+            "mal" -> malTracker?.detail(refId)?.let { d ->
+                refreshed = refreshed?.copy(
+                    dataSynopsis = d.synopsis ?: refreshed?.dataSynopsis,
+                    dataCoverUrl = d.main_picture?.large ?: d.main_picture?.medium ?: refreshed?.dataCoverUrl,
+                    dataSeasonYear = d.start_season?.year?.toLong() ?: refreshed?.dataSeasonYear,
+                    dataEpisodes = d.num_episodes?.toLong() ?: refreshed?.dataEpisodes,
+                    dataScore = d.mean?.let { (it * 10).toInt().toLong() } ?: refreshed?.dataScore,
+                    dataStatus = when (d.status) {
+                        "currently_airing" -> "RELEASING"
+                        "finished_airing" -> "FINISHED"
+                        "not_yet_aired" -> "NOT_YET_RELEASED"
+                        else -> refreshed?.dataStatus
+                    },
+                    dataGenres = (d.genres.map { it.name } + d.themes.map { it.name })
+                        .distinct()
+                        .joinToString(",")
+                        .ifBlank { refreshed?.dataGenres },
+                    dataUpdatedAt = System.currentTimeMillis(),
+                )
+            }
+            else -> {
+                Logger.w(TAG) { "the enrichment refresh: no detail backend for $fineType" }
+                return
+            }
+        }
+        refreshed?.let {
+            runCatching { contentRepository.upsertContentDetails(it) }
+            // The display re-derives: the metadata base rebuilds from the
+            // refreshed axis + the remerge honors the display kind.
+            if (metadataBase != null) {
+                metadataBase = metadataBase?.copy(
+                    description = it.dataSynopsis ?: metadataBase?.description,
+                    coverUrl = it.dataCoverUrl ?: metadataBase?.coverUrl,
+                    genres = it.dataGenres?.split(",")?.filter { g -> g.isNotBlank() } ?: metadataBase?.genres,
+                    status = it.dataStatus ?: metadataBase?.status,
+                    episodes = it.dataEpisodes?.toInt() ?: metadataBase?.episodes,
+                    averageScore = it.dataScore?.toInt() ?: metadataBase?.averageScore,
+                    seasonYear = it.dataSeasonYear?.toInt() ?: metadataBase?.seasonYear,
+                )
+                remergeBases(persistedDisplayPriority(mid, com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST))
+                Logger.i(TAG) { "the metadata enrichment refresh applied to the display" }
+            }
+        }
+    }
+
+
     private fun refreshContentAndLibraryStatus(mainId: String) {
         val content = contentRepository.getMainEntryByMainId(mainId)
         if (content != null) {
@@ -4203,6 +4366,16 @@ class DetailsViewModel(
             // link to a bit-62 CloudStream-bridged source used to persist
             // extensionType "aniyomi", lying about the entry's own ecosystem.
             val ecosystemName = if (source.id.isCloudstreamBridgedId()) "cloudstream" else "aniyomi"
+            // ROUND 175 (F6.3): the display-kind RE-MAP — a re-link through a
+            // DIFFERENT ecosystem invalidates the old ext kind (the chip row
+            // is replaced); the pick follows to the new ecosystem so the
+            // display choice survives the extension switch.
+            if (_displaySourceKind.value in setOf("aniyomi", "cloudstream") &&
+                _displaySourceKind.value != ecosystemName
+            ) {
+                _displaySourceKind.value = ecosystemName
+                Logger.i(TAG) { "the display kind re-mapped to the new ecosystem: $ecosystemName" }
+            }
             // ROUND 125 (R7/RC2): the search SAnime is SPARSE (description/
             // genre null on search rows) and its status int was written RAW
             // ("0"/"1" rendered as the status row on the device). Map the
@@ -4274,9 +4447,20 @@ class DetailsViewModel(
         // below refills it from the newly linked source.
         extensionBase = sAnime.toUnifiedAnime(source.id, source.name)
         Logger.i(TAG) { "Extension base (re)built from picked SAnime: ${sAnime.title}" }
-        // Re-merge to update the display (keeps current priority).
-        val currentPriority = (_state.value as? DetailsState.Success)?.anime?.dataSourcePriority
-            ?: com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST
+        // Re-merge to update the display. ROUND 175 (F6.3 — THE
+        // DECOUPLING): the extension (episodes) switch must NOT flip the
+        // details display — (a) the metadata rows' fallback priority forces
+        // ANILIST (the metadata base is the display slot when no AniList
+        // base exists), (b) the display kind re-maps across an ecosystem
+        // change below. The display-switch axis and the extension axis are
+        // SEPARATE.
+        val metaAlive = metadataBase != null && anilistBase == null
+        val currentPriority = if (metaAlive) {
+            com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST
+        } else {
+            (_state.value as? DetailsState.Success)?.anime?.dataSourcePriority
+                ?: com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST
+        }
         remergeBases(currentPriority)
 
         // D-139: Fetch full extension details in the background.

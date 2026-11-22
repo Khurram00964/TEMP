@@ -817,6 +817,13 @@ fun DetailsViewModel.unlinkUnifiedIdentity(source: String) {
         else -> return
     }
     val repo = trackEntryRepository ?: return
+    // ROUND 175 (F6.2): the OWN-KIND determination — unlinking the row's
+    // own source (tmdb unlink on tmdb:123) deletes the content's PRIMARY
+    // identity: the metadataBase must clear and the display must re-derive
+    // from the REMAINING identities (the ext base) — the v1.1.110 shape
+    // kept the TMDB cover/synopsis forever after the unlink.
+    val ownKind = mid.substringBefore(":")
+    val isOwnKind = source == ownKind
     viewModelScope.launch {
         runCatching { repo.delete(mid, type) }
             .onFailure { e ->
@@ -824,7 +831,27 @@ fun DetailsViewModel.unlinkUnifiedIdentity(source: String) {
             }
         // ROUND 173 (N2): the identity row goes with the unlink.
         runCatching { contentRepository.deleteIdentity(mid, type.id) }
+        if (isOwnKind) {
+            Logger.i(TAG_MT) { "unlink $source = the row's OWN kind — the display re-derives from the remaining identities" }
+            metadataBase = null
+            _displaySourceKind.value = null
+            if (extensionBase != null) {
+                remergeBases(com.confused.anikuta.core.common.model.DataSourcePriority.EXTENSION)
+            }
+            // The data axis in content_details nulls too (the row's identity
+            // is gone — the next load must not re-hydrate the deleted data).
+            runCatching {
+                contentRepository.upsertContentDetails(
+                    com.confused.anikuta.core.content.ContentDetails(
+                        mainId = mid,
+                        dataSourceType = null,
+                        dataSourceRefId = null,
+                        dataUpdatedAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
         refreshLinkedIdentities()
-        Logger.i(TAG_MT) { "the $source identity unlinked for $mid" }
+        Logger.i(TAG_MT) { "the $source identity unlinked for $mid (own-kind=$isOwnKind)" }
     }
 }

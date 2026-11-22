@@ -271,6 +271,32 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             Logger.e("AnikutaApp", e) { "Failed to start the tracking watch-sync bridge" }
         }
 
+        // ROUND 175 (F9.3): the CONNECTIVITY-TRIGGERED relay sweep — the
+        // failed relays retry the moment the network returns (the round-174
+        // device report: the marks synced only on the NEXT write). Throttled
+        // to 30s to survive the network flapping.
+        val trackingBridge = runCatching {
+            org.koin.core.context.GlobalContext.get()
+                .get<com.confused.anikuta.core.trackeranilist.TrackingWatchSyncBridge>()
+        }.getOrNull()
+        if (trackingBridge != null) {
+            val connectivityManager = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            var lastSweepAt = 0L
+            connectivityManager.registerDefaultNetworkCallback(
+                object : android.net.ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: android.net.Network) {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (now - lastSweepAt > 30_000L) {
+                            lastSweepAt = now
+                            trackingBridge.reconcileNow("network-available")
+                        }
+                    }
+                },
+            )
+            Logger.i("AnikutaApp") { "the relay connectivity sweep registered" }
+        }
+
         // ── ROUND 163 (STEP-1): the growth-bound maintenance pass — throttled
         // to once per day on the app-open path (the preference stamp; 0 = the
         // first open runs it). The sweeps are failure-isolated inside

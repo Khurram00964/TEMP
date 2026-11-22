@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -103,6 +104,24 @@ class TrackingWatchSyncBridge(
                 }
         }
         Logger.i(TAG) { "TrackingWatchSyncBridge started — observing watch_progress (settle=${SETTLE_WINDOW_MS}ms)" }
+    }
+
+    /**
+     * ROUND 175 (F9.3): the EXTERNAL sweep trigger — the connectivity
+     * callback (onAvailable) / the app foreground fire this; the failed
+     * relays retry WITHOUT waiting for the next watch write. The guard
+     * chain inside reconcile makes it a no-op when nothing is pending.
+     */
+    fun reconcileNow(reason: String) {
+        scope.launch {
+            runCatching {
+                val snapshot = watchProgressStore.observeAllHighestWatchedNumbers().first()
+                Logger.i(TAG) { "reconcileNow ($reason) — ${snapshot.size} contents in the sweep" }
+                reconcile(snapshot)
+            }.onFailure { e ->
+                Logger.w(TAG) { "reconcileNow ($reason) failed: ${e.message}" }
+            }
+        }
     }
 
     /**

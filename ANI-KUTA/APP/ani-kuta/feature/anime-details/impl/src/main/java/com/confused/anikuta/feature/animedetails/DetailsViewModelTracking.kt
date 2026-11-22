@@ -217,11 +217,25 @@ private fun DetailsViewModel.pushTrackEntry(
                 // ROUND 121 (D2-b): entryToSync (the seeded-startedAt copy)
                 // rides the sync AND the cache — the Started row reads back.
                 if (tracker.isLoggedIn()) {
-                    val success = runCatching { tracker.syncEntry(entryToSync) }
+                    // ROUND 175 (F9.2): the sync attempts TWICE — the first
+                    // failure backs off ~1.5s and retries once (the transient
+                    // API blips die); the REAL reason surfaces from the
+                    // tracker's syncState (the audit: the generic message
+                    // dead-lettered it).
+                    var success = runCatching { tracker.syncEntry(entryToSync) }
                         .onFailure { e ->
                             Logger.w(TAG) { "pushTrackEntry — sync failed: ${e.message}" }
                         }
                         .getOrDefault(false)
+                    if (!success) {
+                        kotlinx.coroutines.delay(1500)
+                        success = runCatching { tracker.syncEntry(entryToSync) }
+                            .onFailure { e ->
+                                Logger.w(TAG) { "pushTrackEntry — the retry failed: ${e.message}" }
+                            }
+                            .getOrDefault(false)
+                        Logger.w(TAG) { "pushTrackEntry — the AniList sync retried once: $success" }
+                    }
                     if (success) {
                         repo.upsert(entryToSync)
                         _trackEntry.value = entryToSync
@@ -239,10 +253,17 @@ private fun DetailsViewModel.pushTrackEntry(
                         }
                         Logger.i(TAG) { "pushTrackEntry(flipOptIn=$flipOptIn) — synced + cached: $entryToSync" }
                     } else {
+                        // ROUND 175 (F9.2): the REAL reason surfaces (the
+                        // tracker's syncState carries it — the audit found it
+                        // dead-lettered).
+                        val syncState = runCatching { tracker.observeSyncState().first() }.getOrNull()
+                        val reason = (syncState as? com.confused.anikuta.core.trackerapi.TrackerSyncState.Failed)
+                            ?.message
                         _trackSheetError.value =
                             "Couldn't reach AniList — " +
                                 (if (flipOptIn) "tracking is on, but this change didn't sync. Try again."
-                                 else "this change didn't sync. Try saving again.")
+                                 else "this change didn't sync. Try saving again.") +
+                            (reason?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
                     }
                 } else {
                     _trackSheetError.value =

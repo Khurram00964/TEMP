@@ -116,7 +116,7 @@ fun DetailsActionMenu(
     // ── Data source section (ROUND 174: THE N-WAY SWITCH — the chips are
     // the ACTUAL linked identities from content_identity; the 2-slot
     // AniList|Extension pair retired) ──
-    displayChips: List<Pair<String, String>>,
+    displayChips: List<Triple<String, String, Int?>>,
     selectedDisplayKind: String?,
     onSelectDisplaySource: (String) -> Unit,
     // ── Actions ──
@@ -209,29 +209,68 @@ fun DetailsActionMenu(
                 MenuSectionLabel("Data source")
                 MenuSectionCard {
                     if (displayChips.isNotEmpty()) {
-                        // ROUND 174 (T2 — THE N-WAY SWITCH): the chips ARE the
-                        // linked identities (the v7 content_identity rows +
-                        // the tracking mappings); the selected one DRIVES the
-                        // details display. The user's order: "the chips show
-                        // the ACTUAL identities — TMDB | Extension — and
-                        // tapping a chip switches the display to that
-                        // source."
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            displayChips.forEach { (kind, label) ->
-                                MenuSourceChip(
-                                    label = label,
-                                    selected = kind == selectedDisplayKind,
-                                    onClick = {
-                                        onDismissRequest()
-                                        onSelectDisplaySource(kind)
-                                    },
-                                )
+                        // ROUND 175 (F7 — THE ICON LAYOUT, the user's explicit
+                        // design): TOP ROW, RIGHTMOST = the extension in use;
+                        // LEFT OF IT = the currently-DRIVING source's icon
+                        // (it moves as the selection moves); BELOW = the
+                        // remaining linked sources (up to 4). The icons carry
+                        // the small labels; the tap switches the display.
+                        val extKinds = setOf("aniyomi", "cloudstream", "extension")
+                        val extChip = displayChips.firstOrNull { it.first in extKinds }
+                        val driverChip = displayChips.firstOrNull {
+                            it.first == selectedDisplayKind && it.first !in extKinds
+                        } ?: displayChips.firstOrNull { it.first !in extKinds }
+                        val others = displayChips.filter { it != extChip && it != driverChip }.take(4)
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                driverChip?.let { chip ->
+                                    MenuSourceIconChip(
+                                        label = chip.second,
+                                        iconRes = chip.third,
+                                        selected = chip.first == selectedDisplayKind,
+                                        onClick = {
+                                            onDismissRequest()
+                                            onSelectDisplaySource(chip.first)
+                                        },
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                extChip?.let { chip ->
+                                    MenuSourceIconChip(
+                                        label = chip.second,
+                                        iconRes = chip.third,
+                                        selected = chip.first == selectedDisplayKind,
+                                        onClick = {
+                                            onDismissRequest()
+                                            onSelectDisplaySource(chip.first)
+                                        },
+                                    )
+                                }
+                            }
+                            if (others.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(horizontal = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    others.forEach { chip ->
+                                        MenuSourceIconChip(
+                                            label = chip.second,
+                                            iconRes = chip.third,
+                                            selected = chip.first == selectedDisplayKind,
+                                            onClick = {
+                                                onDismissRequest()
+                                                onSelectDisplaySource(chip.first)
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -541,6 +580,71 @@ private fun MenuSourceChip(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 10.dp),
+        )
+    }
+}
+
+/**
+ * ROUND 175 (F7): the ICON chip — the 44dp tile carrying the source's icon
+ * + the small label under it; the selected state wears the primary border.
+ */
+@Composable
+private fun MenuSourceIconChip(
+    label: String,
+    iconRes: Int?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(4.dp),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            },
+            border = if (selected) {
+                androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            } else {
+                null
+            },
+        ) {
+            Box(
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+                modifier = Modifier.size(44.dp).padding(6.dp),
+            ) {
+                if (iconRes != null) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(iconRes),
+                        contentDescription = label,
+                        modifier = Modifier.size(32.dp),
+                    )
+                } else {
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.Link,
+                        contentDescription = label,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        }
+        Text(
+            text = label,
+            fontFamily = RobotoFamily,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 3.dp),
         )
     }
 }
