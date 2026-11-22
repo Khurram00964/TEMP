@@ -544,8 +544,30 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10120
-    const val versionName = "1.1.20"
+    const val versionCode = 10208
+    const val versionName = "1.1.108"
+    // ROUND 172 (v1.1.108): the v1.1.107 device-report orders — the
+    // correctness round. THE METADATA AUTO-SEARCH = the AniList pattern
+    // (the scored ReverseAutoLinkService flow with the VISIBLE states —
+    // the silent first-result link that opened the wrong anime is gone;
+    // the per-load reset + currentAnimeId = packedId fixes the
+    // linked-at-top-but-not-linked contradiction). THE ONE LINK SHEET for
+    // ALL 5 sources (the menu-vocabulary design, no description text, the
+    // rating + year rows) with the picks that LINK FOR REAL (the anilist
+    // merge/link, the mal/simkl mappings, the tmdb/tvmaze identity rows)
+    // + the per-source Unlink rows from linkedIdentities. THE THREE-DOT
+    // MENU: the default state on every open, the animated expansion, the
+    // AniList logo, the full menu always. THE TRACK-ON PICKER: 0 linked =
+    // the honest sheet, 1 = the direct open, 2+ = the working rows (the
+    // dead taps were the never-hosted link sheets — the unified sheet's
+    // fromTracking return replaced them). THE TRACKERS CARDS: the
+    // populate-less trackers' Link/Unlink inline at the name row. THE
+    // SEARCH PAGINATION: the MAL v2 offset, the TMDB trending pages, the
+    // honest end-cap for the one-shot sources. THE PER-SOURCE SEARCH
+    // CACHING: the defaults feeds cache-first in browse_cache (the 12h
+    // TTL, 2 pages where the API pages), the background refresh, the
+    // pull-refresh clears first (and refreshCurrent no longer leaks the
+    // AniList state into the metadata tabs) — CI 44997952621 GREEN.
     // D-498 (round 57): release/1.1.20 — cut from the round-57 FEATURE branch
     // head cf067e68 (CI green — implementation run 35522908889 after four
     // one-fix rounds: the setMaxVideoSize setter shape, the Kotlin \$-template
