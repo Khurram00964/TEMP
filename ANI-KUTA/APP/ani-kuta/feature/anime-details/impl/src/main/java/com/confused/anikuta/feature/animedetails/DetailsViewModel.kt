@@ -1122,6 +1122,22 @@ class DetailsViewModel(
         // "switch changes NOTHING" bug). The branch decision LOGS (the
         // meta-order: the identity state machine readable in logcat).
         val kind = _displaySourceKind.value
+        // ROUND 176 (F6.3 — THE SYSTEMATIC FALLBACK): a METADATA row's own
+        // data is the display slot unless the user explicitly picked the
+        // extension — the state-inherited EXTENSION priority (the link
+        // flow's remerge threads it) never flips a metadata row's display
+        // by itself (the v1.1.111 report: the manual link auto-switched the
+        // data source).
+        val effectivePriority = if (
+            kind == null &&
+            metadataBase != null &&
+            currentMainId?.substringBefore(":") in setOf("tmdb", "tvmaze", "mal", "simkl")
+        ) {
+            Logger.i(TAG) { "remergeBases: the metadata row's fallback coerced to ANILIST" }
+            com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST
+        } else {
+            priority
+        }
         val primary = when {
             kind == "extension" || kind == "aniyomi" || kind == "cloudstream" -> {
                 Logger.i(TAG) { "remergeBases: kind-primary(EXT) kind=$kind" }
@@ -1135,7 +1151,7 @@ class DetailsViewModel(
                 Logger.i(TAG) { "remergeBases: kind-primary(META) kind=$kind" }
                 (meta ?: al)!!
             }
-            priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> {
+            effectivePriority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> {
                 Logger.i(TAG) { "remergeBases: priority-anilist (no display kind)" }
                 (al ?: meta)!!
             }
@@ -1366,7 +1382,19 @@ class DetailsViewModel(
                 }
                 Triple(row.sourceKind, label, iconRes)
             }.distinctBy { it.first }
-            _identityChips.value = chips
+            // ROUND 176: the FIXED canonical order (the UI-history rebuild —
+            // the approved pair never re-ordered on selection): the known
+            // kinds in the user's order, the unknowns before the extension,
+            // the extension LAST.
+            val chipOrder = listOf("anilist", "mal", "simkl", "tmdb", "tvmaze")
+            val ordered = chips.sortedBy { chip ->
+                when {
+                    chip.first in chipOrder -> chipOrder.indexOf(chip.first)
+                    chip.first in setOf("aniyomi", "cloudstream", "extension") -> 90
+                    else -> 80
+                }
+            }
+            _identityChips.value = ordered
             if (gen != loadGeneration) {
                 Logger.d(TAG) { "the identities refresh discarded (stale generation)" }
                 return@launch

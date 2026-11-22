@@ -208,66 +208,39 @@ fun DetailsActionMenu(
             if (displayChips.isNotEmpty() || isExtensionEntry || isMetadataEntry) {
                 MenuSectionLabel("Data source")
                 MenuSectionCard {
-                    if (displayChips.isNotEmpty()) {
-                        // ROUND 175 (F7 — THE ICON LAYOUT, the user's explicit
-                        // design): TOP ROW, RIGHTMOST = the extension in use;
-                        // LEFT OF IT = the currently-DRIVING source's icon
-                        // (it moves as the selection moves); BELOW = the
-                        // remaining linked sources (up to 4). The icons carry
-                        // the small labels; the tap switches the display.
-                        val extKinds = setOf("aniyomi", "cloudstream", "extension")
-                        val extChip = displayChips.firstOrNull { it.first in extKinds }
-                        val driverChip = displayChips.firstOrNull {
-                            it.first == selectedDisplayKind && it.first !in extKinds
-                        } ?: displayChips.firstOrNull { it.first !in extKinds }
-                        val others = displayChips.filter { it != extChip && it != driverChip }.take(4)
-
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                driverChip?.let { chip ->
-                                    MenuSourceIconChip(
-                                        label = chip.second,
-                                        iconRes = chip.third,
-                                        selected = chip.first == selectedDisplayKind,
-                                        onClick = {
-                                            onDismissRequest()
-                                            onSelectDisplaySource(chip.first)
-                                        },
-                                    )
-                                }
-                                Spacer(Modifier.weight(1f))
-                                extChip?.let { chip ->
-                                    MenuSourceIconChip(
-                                        label = chip.second,
-                                        iconRes = chip.third,
-                                        selected = chip.first == selectedDisplayKind,
-                                        onClick = {
-                                            onDismissRequest()
-                                            onSelectDisplaySource(chip.first)
-                                        },
-                                    )
-                                }
-                            }
-                            if (others.isNotEmpty()) {
+                    // ROUND 176 (the UI-history rebuild — the user's order:
+                    // "analyze from the older implementations… keep things
+                    // minimal"): the approved round-103/104 wide TEXT chips
+                    // resurrected (MenuSourceChip — the device-approved chip
+                    // that survived dead in this file), chunked into rows of
+                    // two; the odd chip takes the full-width closing row.
+                    // TEXT-ONLY: the extension can never carry an icon (the
+                    // AnimeSource icon isn't exposed) — any icon scheme
+                    // guarantees the mixed logo/glyph row the device report
+                    // flagged. FIXED canonical order (never selection-driven
+                    // — the approved pair never re-ordered). The selection IS
+                    // the fill — no border, no checkmark.
+                    if (displayChips.size >= 2) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            displayChips.chunked(2).forEach { pair ->
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
-                                        .padding(horizontal = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    others.forEach { chip ->
-                                        MenuSourceIconChip(
-                                            label = chip.second,
-                                            iconRes = chip.third,
-                                            selected = chip.first == selectedDisplayKind,
+                                    pair.forEach { (kind, label, _) ->
+                                        MenuSourceChip(
+                                            label = label,
+                                            selected = kind == selectedDisplayKind,
                                             onClick = {
                                                 onDismissRequest()
-                                                onSelectDisplaySource(chip.first)
+                                                onSelectDisplaySource(kind)
                                             },
+                                            modifier = Modifier.weight(1f),
                                         )
                                     }
                                 }
@@ -580,71 +553,6 @@ private fun MenuSourceChip(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 10.dp),
-        )
-    }
-}
-
-/**
- * ROUND 175 (F7): the ICON chip — the 44dp tile carrying the source's icon
- * + the small label under it; the selected state wears the primary border.
- */
-@Composable
-private fun MenuSourceIconChip(
-    label: String,
-    iconRes: Int?,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(4.dp),
-    ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-            },
-            border = if (selected) {
-                androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-            } else {
-                null
-            },
-        ) {
-            Box(
-                contentAlignment = androidx.compose.ui.Alignment.Center,
-                modifier = Modifier.size(44.dp).padding(6.dp),
-            ) {
-                if (iconRes != null) {
-                    androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(iconRes),
-                        contentDescription = label,
-                        modifier = Modifier.size(32.dp),
-                    )
-                } else {
-                    androidx.compose.material3.Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Filled.Link,
-                        contentDescription = label,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-        }
-        Text(
-            text = label,
-            fontFamily = RobotoFamily,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 3.dp),
         )
     }
 }
