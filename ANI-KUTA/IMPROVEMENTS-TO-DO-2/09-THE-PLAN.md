@@ -474,3 +474,55 @@ Deferred by the user: the search-page refresh animations/polish.
    cause); the TMDB detail skips the cast/tagline/runtime/networks.
 10. **D2+D3** the UI-reuse principle + the state-reset/generation/identity
     rules documented; D4 the DB coherence audit rides N2's schema.
+
+---
+
+## L. THE ROUND-173 IMPLEMENTATION RECORD (the audit → the builds)
+
+**THE SUBAGENT AUDIT (the user's order, findings before building) — the
+verified root causes:**
+- **F2 = THREE breaks:** (1) the metadata anime lived ONLY in _state →
+  linkSource's remerge (the ext-only path) replaced it — the "TMDB identity
+  vanishes"; (2) linkExtensionToExisting regenerated contentId into the
+  6-segment shape (the metadata 2-segment shape destroyed); (3) the library
+  reopen: loadMetadataContent never called refreshContentAndLibraryStatus
+  (the saved rows reopened "NOT SAVED") and MainActivity's dispatch dropped
+  the metadata-only rows / ext-linked rows lost the identity.
+- **F3:** refreshLinkedIdentities was called ONLY on the metadata path (the
+  library entries showed NO Unlink rows); the phantom MAL unlink = the
+  v1.1.107-era silent picks' REAL track_entry rows resurfacing + the mixed
+  read race (mid before launch, _state inside — the cross-content bleed).
+- **N2:** the current storage cannot hold N identities (the 1:1 axes); the
+  recommendation = the NEW content_identity table (main_id, source_kind PK;
+  the reverse-unique index; display_rank) + the 6.sqm v6→v7 seeding from
+  both axes + the track_entry identity rows. 10 landmines recorded
+  (the dead reverse lookup, the undocumented 'metadata' display_source, the
+  contentId shape drift, the wrong-axis unlink, the currentAnimeId re-key,
+  the axis-wiping upsert, the unopenable library rows, the mixed-read race,
+  the stale entryMode, the dual link-key slots).
+
+**THE BUILDS (cycle 1 + cycle 2):**
+- **Cycle 1** (334b3dee): the Simkl cluster (the token everywhere, the
+  native-first sync probe, the strict errors), the MAL cluster (getStrict +
+  detail() + the enrichment mal branch), F1 (the refresh toast), F5 part 2
+  (the sheet's error + the re-search), N1 (the live search status + the
+  timer + the cancel), N3 (the tracking sheet's cover+title + the 'None'
+  status), the F3 identities wiring.
+- **Cycle 2** (the F2/N2 cycle): the metadataBase (the audit Break 1) +
+  the remerge rework (the metadata slot + the entryMode fix — landmine 9);
+  refreshContentAndLibraryStatus on the metadata reopens (Break 3a); the
+  reopen routing (loadFromExtension's kind-prefixed route + MainActivity's
+  library dispatch — Break 3b + landmine 7); **content_identity** (the
+  table + 6.sqm v6→v7 + the seeding + the ContentIdentity model + the
+  repo APIs); the write hooks (every link/unlink/pick maintains the
+  identity rows; the axis-wiping upsert GONE — landmine 6);
+  refreshLinkedIdentities reads the authoritative table with the gen guard
+  (landmine 8).
+- **THE DOCS:** 10-THE-UI-REUSE-PRINCIPLE.md (D2/D3 — the one-surface rule,
+  the menu vocabulary, the sheet anatomy, the state/generation/identity
+  rules, the error-surfacing rule, the checklist rule).
+- **THE N2 FOLLOW-UP (the next cycle):** the N-way DISPLAY merge reading
+  the identity rows (v1 keeps the metadata-vs-extension 2-slot display with
+  ALL the linked sources shown in the menu), the AnimeDetailsKey.Main(mainId)
+  route, the contentId freezing onto main_id, the switchDataSource →
+  display_rank.

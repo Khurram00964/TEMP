@@ -440,3 +440,56 @@ countExtensionIdMismatches:
 SELECT COUNT(*) FROM content_details
 WHERE extension_id IS NOT NULL
   AND IFNULL(source_id, -1) <> IFNULL(NULLIF(CAST(extension_id AS INTEGER), 0), -1);
+
+-- ============================================================================
+-- content_identity (ROUND 173 / N2 — THE MULTI-LINK IDENTITY MODEL)
+-- One row per (content, source) link: a content may hold SEVERAL identities
+-- simultaneously (the TMDB data axis + the AniList mapping + the MAL/Simkl
+-- mappings + the extension link coexist — the user's multi-link approval).
+-- display_rank picks WHICH identity drives the details page (0 = primary).
+-- The content_details axes REMAIN the write-through cache for the library
+-- batch loader; THIS table is the authoritative identity set.
+-- source_kind: 'anilist' | 'mal' | 'simkl' | 'tmdb' | 'tvmaze' | 'metadata'
+--              | 'aniyomi' | 'cloudstream'
+-- source_ref_id: the remote id; the extensions: '<extensionId>:<animeUrl>'
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS content_identity (
+    main_id        TEXT NOT NULL,
+    source_kind    TEXT NOT NULL,
+    source_ref_id  TEXT NOT NULL,
+    display_title  TEXT,
+    cover_url      TEXT,
+    synopsis       TEXT,
+    score          INTEGER,
+    episodes       INTEGER,
+    status         TEXT,
+    genres         TEXT,
+    year           INTEGER,
+    display_rank   INTEGER NOT NULL DEFAULT 0,
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL,
+    PRIMARY KEY (main_id, source_kind)
+);
+
+-- The reverse lookup (the reopen resolution: the packed id → the main_id)
+-- mirrors track_entry's doctrine.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_remote ON content_identity(source_kind, source_ref_id);
+CREATE INDEX IF NOT EXISTS idx_identity_main ON content_identity(main_id);
+
+getIdentitiesForContent:
+SELECT * FROM content_identity WHERE main_id = :mainId ORDER BY display_rank ASC, created_at ASC;
+
+lookupIdentityMain:
+SELECT main_id FROM content_identity WHERE source_kind = :kind AND source_ref_id = :refId LIMIT 1;
+
+upsertIdentity:
+INSERT OR REPLACE INTO content_identity(
+    main_id, source_kind, source_ref_id, display_title, cover_url, synopsis,
+    score, episodes, status, genres, year, display_rank, created_at, updated_at
+) VALUES (
+    :mainId, :sourceKind, :sourceRefId, :displayTitle, :coverUrl, :synopsis,
+    :score, :episodes, :status, :genres, :year, :displayRank, :createdAt, :updatedAt
+);
+
+deleteIdentity:
+DELETE FROM content_identity WHERE main_id = :mainId AND source_kind = :sourceKind;

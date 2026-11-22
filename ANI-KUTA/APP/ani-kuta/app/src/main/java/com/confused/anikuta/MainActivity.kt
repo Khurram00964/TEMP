@@ -1643,7 +1643,31 @@ fun AppRoot() {
                     // If it only has an extension source → open via Extension.
                     // D-320: carry coverUrl/title + the shared-element key so
                     // the cover morphs from the tapped card (experimental).
-                    if (entry.hasAniListId) {
+                    // ROUND 173 (F2, the audit landmine 7): the METADATA route
+                    // FIRST — a kind-prefixed mainId (tmdb:12345) opens the
+                    // metadata loader via the packed id (the same route the
+                    // search taps use). The old dispatch dropped metadata-only
+                    // rows (no anilistId, no extension → "no valid navigation
+                    // target") and ext-linked ones lost the TMDB identity.
+                    val libKindPrefix = entry.mainId.substringBefore(":")
+                    val libRemoteId = entry.mainId.substringAfter(":").toLongOrNull()
+                    if (libKindPrefix in setOf("tmdb", "tvmaze", "mal", "simkl") && libRemoteId != null) {
+                        val libKindIndex = when (libKindPrefix) {
+                            "tmdb" -> 1
+                            "tvmaze" -> 2
+                            "mal" -> 3
+                            "simkl" -> 4
+                            else -> 0
+                        }
+                        navigateToDetails(
+                            AnimeDetailsKey.AniList(
+                                -(libRemoteId * 8 + libKindIndex).toInt(),
+                                coverUrl = entry.coverUrl,
+                                title = entry.title,
+                                transitionKey = libraryCoverKey(entry.coverUrl),
+                            )
+                        )
+                    } else if (entry.hasAniListId) {
                         navigateToDetails(
                             AnimeDetailsKey.AniList(
                                 entry.anilistId!!,

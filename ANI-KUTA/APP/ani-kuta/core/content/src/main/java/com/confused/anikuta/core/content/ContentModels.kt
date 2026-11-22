@@ -245,3 +245,25 @@ data class LibraryItemRecord(
     val addedAt: Long,
 )
 
+/**
+ * ROUND 173 (N2): ONE identity link of the multi-link model — a content may
+ * hold SEVERAL (the TMDB data axis + the AniList mapping + the MAL/Simkl
+ * mappings + the extension link coexist). `displayRank` 0 = the identity
+ * that drives the details page.
+ */
+data class ContentIdentity(
+    val mainId: String,
+    val sourceKind: String,     // 'anilist'|'mal'|'simkl'|'tmdb'|'tvmaze'|'aniyomi'|'cloudstream'
+    val sourceRefId: String,    // the remote id; the extensions: '<extensionId>:<url>'
+    val displayTitle: String?,
+    val coverUrl: String?,
+    val synopsis: String?,
+    val score: Int?,
+    val episodes: Int?,
+    val status: String?,
+    val genres: String?,
+    val year: Int?,
+    val displayRank: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)

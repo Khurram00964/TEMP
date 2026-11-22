@@ -1,0 +1,90 @@
+-- ROUND 173 (N2): THE MULTI-LINK IDENTITY MODEL — v6 → v7.
+-- content_identity: one row per (content, source) link. The seed migrates
+-- BOTH existing axes (the data axis + the extension axis) + the v1.1.107-era
+-- track_entry identity rows (tmdb/tvmaze kinds) so every link the user made
+-- survives. display_rank 0 = the currently-displayed axis (from
+-- main_entry.display_source).
+CREATE TABLE content_identity (
+    main_id        TEXT NOT NULL,
+    source_kind    TEXT NOT NULL,
+    source_ref_id  TEXT NOT NULL,
+    display_title  TEXT,
+    cover_url      TEXT,
+    synopsis       TEXT,
+    score          INTEGER,
+    episodes       INTEGER,
+    status         TEXT,
+    genres         TEXT,
+    year           INTEGER,
+    display_rank   INTEGER NOT NULL DEFAULT 0,
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL,
+    PRIMARY KEY (main_id, source_kind)
+);
+CREATE UNIQUE INDEX idx_identity_remote ON content_identity(source_kind, source_ref_id);
+CREATE INDEX idx_identity_main ON content_identity(main_id);
+
+-- The data axis → the identity rows (the fine tmdb_movie/tmdb_tv kinds
+-- normalize to 'tmdb'; the 'metadata' fallback kind is skipped).
+INSERT INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
+SELECT
+    cd.main_id,
+    CASE WHEN cd.data_source_type LIKE 'tmdb%' THEN 'tmdb' ELSE cd.data_source_type END,
+    cd.data_source_ref_id,
+    me.title,
+    cd.data_cover_url,
+    cd.data_synopsis,
+    cd.data_score,
+    cd.data_episodes,
+    cd.data_status,
+    cd.data_genres,
+    cd.data_season_year,
+    CASE WHEN me.display_source = 'data_source' THEN 0 ELSE 1 END,
+    cd.data_updated_at,
+    cd.data_updated_at
+FROM content_details cd
+JOIN main_entry me ON me.main_id = cd.main_id
+WHERE cd.data_source_type IS NOT NULL
+  AND cd.data_source_ref_id IS NOT NULL
+  AND cd.data_source_type != 'metadata'
+  AND cd.data_source_ref_id != '';
+
+-- The extension axis → the identity rows (the ref = <extensionId>:<url>).
+INSERT OR REPLACE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
+SELECT
+    cd.main_id,
+    cd.extension_type,
+    cd.extension_id || ':' || cd.anime_url,
+    me.title,
+    cd.ext_thumbnail_url,
+    cd.ext_description,
+    NULL,
+    NULL,
+    cd.ext_status,
+    cd.ext_genres,
+    NULL,
+    CASE WHEN me.display_source = 'extension' THEN 0 ELSE 1 END,
+    cd.ext_updated_at,
+    cd.ext_updated_at
+FROM content_details cd
+JOIN main_entry me ON me.main_id = cd.main_id
+WHERE cd.extension_type IS NOT NULL
+  AND cd.extension_id IS NOT NULL
+  AND cd.anime_url IS NOT NULL;
+
+-- The v1.1.107-era track_entry IDENTITY rows (the tmdb/tvmaze kinds — the
+-- round-172 unified-sheet picks) become identity rows; the MAL/Simkl
+-- mappings STAY in track_entry (they double as the tracking seeds).
+INSERT OR REPLACE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
+SELECT
+    te.main_id,
+    te.tracker_type,
+    CAST(te.tracker_id AS TEXT),
+    me.title,
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    2,
+    te.updated_at,
+    te.updated_at
+FROM track_entry te
+JOIN main_entry me ON me.main_id = te.main_id
+WHERE te.tracker_type IN ('tmdb', 'tvmaze');

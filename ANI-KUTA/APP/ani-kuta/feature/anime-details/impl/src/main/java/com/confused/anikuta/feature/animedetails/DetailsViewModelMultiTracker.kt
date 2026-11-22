@@ -692,9 +692,40 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
             }
         }
         "tmdb", "tvmaze" -> {
+            // ROUND 173 (N2): BOTH paths write the content_identity ROW — the
+            // authoritative multi-link record (the reverse index resolves the
+            // reopens; the menu's Unlink rows read this table).
+            val identityRepo = contentRepository
+            if (identityRepo != null) {
+                viewModelScope.launch {
+                    runCatching {
+                        val now = System.currentTimeMillis()
+                        identityRepo.upsertIdentity(
+                            com.confused.anikuta.core.content.ContentIdentity(
+                                mainId = mid,
+                                sourceKind = source,
+                                sourceRefId = result.id.toString(),
+                                displayTitle = result.title,
+                                coverUrl = result.posterUrl,
+                                synopsis = null,
+                                score = result.rating?.let { (it * 10).toInt() },
+                                episodes = null,
+                                status = null,
+                                genres = null,
+                                year = result.year,
+                                displayRank = 2,
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                        )
+                        Logger.i(TAG_MT) { "the $source identity linked: " + result.title }
+                    }
+                    refreshLinkedIdentities()
+                }
+            }
             if (!mid.contains(":") || mid.substringBefore(":") in setOf("anilist", "cloudstream")) {
-                // The NATIVE content: the identity rides track_entry (the
-                // LINK ≠ TRACK identity; the tracking flows never consult
+                // The NATIVE content: the track_entry mapping ALSO stays (the
+                // LINK ≠ TRACK identity row; the tracking flows never consult
                 // the TMDB/TVMAZE types).
                 val repo = trackEntryRepository ?: return
                 val type = if (source == "tmdb") TrackerType.TMDB else TrackerType.TVMAZE
@@ -717,28 +748,29 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                     }.onFailure { e ->
                         Logger.w(TAG_MT) { "the $source identity store failed: " + (e.message ?: "") }
                     }
-                    refreshLinkedIdentities()
                 }
             } else {
-                // The METADATA row: the picked entry's data merges into the
-                // data axis (the "the data source displays the data"
-                // semantics the v1.1.107 device round approved).
-                viewModelScope.launch {
-                    runCatching {
-                        val repo = contentRepository ?: return@launch
-                        val now = System.currentTimeMillis()
-                        repo.upsertContentDetails(
-                            com.confused.anikuta.core.content.ContentDetails(
-                                mainId = mid,
-                                dataSourceType = source,
-                                dataSourceRefId = result.id.toString(),
-                                dataCoverUrl = result.posterUrl,
-                                dataUpdatedAt = now,
-                            ),
-                        )
-                        Logger.i(TAG_MT) { "the $source identity linked: " + result.title }
+                // The METADATA row: the data-axis merge rides ONLY for the
+                // row's OWN kind (the v1.1.107 same-kind enrichment the
+                // device approved). The audit landmine 6: the old full-row
+                // upsert WIPED the ext axis on a linked row — gone.
+                val ownKind = mid.substringBefore(":")
+                if (source == ownKind) {
+                    viewModelScope.launch {
+                        runCatching {
+                            val repo = contentRepository ?: return@launch
+                            val now = System.currentTimeMillis()
+                            repo.upsertContentDetails(
+                                com.confused.anikuta.core.content.ContentDetails(
+                                    mainId = mid,
+                                    dataSourceType = source,
+                                    dataSourceRefId = result.id.toString(),
+                                    dataCoverUrl = result.posterUrl,
+                                    dataUpdatedAt = now,
+                                ),
+                            )
+                        }
                     }
-                    refreshLinkedIdentities()
                 }
             }
         }
@@ -769,6 +801,8 @@ fun DetailsViewModel.unlinkUnifiedIdentity(source: String) {
             .onFailure { e ->
                 Logger.w(TAG_MT) { "unlink $source failed: " + (e.message ?: "") }
             }
+        // ROUND 173 (N2): the identity row goes with the unlink.
+        runCatching { contentRepository.deleteIdentity(mid, type.id) }
         refreshLinkedIdentities()
         Logger.i(TAG_MT) { "the $source identity unlinked for $mid" }
     }

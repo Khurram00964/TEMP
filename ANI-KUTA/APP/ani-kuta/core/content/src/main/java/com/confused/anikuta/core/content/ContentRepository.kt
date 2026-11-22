@@ -878,4 +878,62 @@ class ContentRepository(
     fun countItemsInCategory(categoryId: Long): Int {
         return libraryQueries.countItemsInCategory(categoryId).executeAsOne().toInt()
     }
+
+    // ── ROUND 173 (N2): the content_identity APIs — the authoritative
+    // multi-link identity set (the axes in content_details remain the
+    // write-through cache for the library batch loader). ──
+
+    private fun rowToIdentity(it: com.confused.anikuta.core.database.GetIdentitiesForContent): ContentIdentity =
+        ContentIdentity(
+            mainId = it.main_id,
+            sourceKind = it.source_kind,
+            sourceRefId = it.source_ref_id,
+            displayTitle = it.display_title,
+            coverUrl = it.cover_url,
+            synopsis = it.synopsis,
+            score = it.score?.toInt(),
+            episodes = it.episodes?.toInt(),
+            status = it.status,
+            genres = it.genres,
+            year = it.year?.toInt(),
+            displayRank = it.display_rank.toInt(),
+            createdAt = it.created_at,
+            updatedAt = it.updated_at,
+        )
+
+    /** All identity links of a content, the display-ranked order. */
+    fun identitiesForContent(mainId: String): List<ContentIdentity> =
+        contentQueries.getIdentitiesForContent(mainId).executeAsList().map { rowToIdentity(it) }
+
+    /**
+     * The reverse lookup — the reopen resolution (the packed id → the
+     * main_id). NULL when no content holds this (kind, ref).
+     */
+    fun lookupIdentityMain(kind: String, refId: String): String? =
+        contentQueries.lookupIdentityMain(kind, refId).executeAsOneOrNull()?.main_id
+
+    /** Insert-or-update ONE identity link (per mainId+kind). */
+    fun upsertIdentity(identity: ContentIdentity) {
+        contentQueries.upsertIdentity(
+            mainId = identity.mainId,
+            sourceKind = identity.sourceKind,
+            sourceRefId = identity.sourceRefId,
+            displayTitle = identity.displayTitle,
+            coverUrl = identity.coverUrl,
+            synopsis = identity.synopsis,
+            score = identity.score?.toLong(),
+            episodes = identity.episodes?.toLong(),
+            status = identity.status,
+            genres = identity.genres,
+            year = identity.year?.toLong(),
+            displayRank = identity.displayRank.toLong(),
+            createdAt = identity.createdAt,
+            updatedAt = identity.updatedAt,
+        )
+    }
+
+    /** Remove ONE identity link (the unlink flows). */
+    fun deleteIdentity(mainId: String, sourceKind: String) {
+        contentQueries.deleteIdentity(mainId, sourceKind)
+    }
 }

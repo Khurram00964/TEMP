@@ -1004,6 +1004,14 @@ class DetailsViewModel(
 
     /** The original AniList data (null for extension-only entries, set after linking). */
     private var anilistBase: UnifiedAnime? = null
+    // ROUND 173 (F2): the METADATA identity base — the synthetic anime the
+    // metadata loader builds (the packed-id anilistId + the data-axis data).
+    // The audit's Break 1: the metadata anime lived ONLY in _state, so
+    // linkSource's remerge (the extension-only path) REPLACED it — the
+    // "TMDB data source vanishes" bug. As a real base it participates in
+    // every merge (the identity fields survive; the display follows the
+    // priority).
+    private var metadataBase: com.confused.anikuta.core.common.model.UnifiedAnime? = null
 
     /**
      * Re-merge [extensionBase] + [anilistBase] with the given [priority].
@@ -1021,40 +1029,51 @@ class DetailsViewModel(
     private fun remergeBases(priority: com.confused.anikuta.core.common.model.DataSourcePriority) {
         val ext = extensionBase
         val al = anilistBase
-        if (ext == null && al == null) {
-            Logger.w(TAG) { "remergeBases: both bases null — nothing to display" }
+        val meta = metadataBase
+        if (ext == null && al == null && meta == null) {
+            Logger.w(TAG) { "remergeBases: all bases null — nothing to display" }
             return
         }
         if (ext == null) {
-            // AniList-only
-            _state.value = DetailsState.Success(al!!.copy(dataSourcePriority = priority))
+            // AniList-only OR metadata-only (F2: the metadata base displays
+            // from the same slot — the identity/data stays intact).
+            val shown = al ?: meta
+            _state.value = DetailsState.Success(shown!!.copy(dataSourcePriority = priority))
             refreshLinkedIdentities() // ROUND 173 (F3)
             return
         }
-        if (al == null) {
+        if (al == null && meta == null) {
             // Extension-only
             _state.value = DetailsState.Success(ext.copy(dataSourcePriority = priority))
             refreshLinkedIdentities() // ROUND 173 (F3)
             return
         }
-        // Both exist — merge by priority.
+        // At least two bases — merge by priority.
         // D-139: STRICT switching — the primary source's values are used AS-IS.
         // No fallback to secondary. When the user picks "Extension", they see ONLY
         // extension data (even if some fields are null). When they pick "AniList",
         // they see ONLY AniList data. This is the expected behavior — the user
         // explicitly chose which source to display.
-        val (primary, _) = if (priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST) {
-            al to ext
-        } else {
-            ext to al
-        }
+        // ROUND 173 (F2): the metadata base fills the display slot when no
+        // AniList base exists — ANILIST priority shows the metadata data,
+        // EXTENSION shows the extension's.
+        val primary = when {
+            priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> (al ?: meta)
+            else -> ext
+        } ?: ext
         val merged = primary.copy(
             // Identity fields — always from whichever base has them (NOT subject to priority).
-            anilistId = al.anilistId ?: ext.anilistId,
+            // F2: the metadata base's packed id is the identity anchor for the
+            // metadata entries (the reverse auto-link + the saved-link keying
+            // derive from it).
+            anilistId = al.anilistId ?: ext.anilistId ?: meta?.anilistId,
             sourceId = ext.sourceId ?: al.sourceId,
             sourceName = ext.sourceName ?: al.sourceName,
             animeUrl = ext.animeUrl ?: al.animeUrl,
-            entryMode = ext.entryMode, // Entry mode stays from extension (how the user opened it).
+            // F2 (the audit landmine 9): the metadata entries keep their
+            // ANILIST entry mode until an extension base actually exists —
+            // the stale EXTENSION mode drove the menu gating wrong.
+            entryMode = if (al == null && meta != null) meta.entryMode else ext.entryMode,
             dataSourcePriority = priority,
             // Metadata fields — STRICT: primary values ONLY, no fallback to secondary.
             description = primary.description,
@@ -1175,26 +1194,30 @@ class DetailsViewModel(
      */
     fun refreshLinkedIdentities() {
         val mid = currentMainId
+        // ROUND 173 (N2/F3 — the audit landmine 8): capture the state
+        // snapshot SYNCHRONOUSLY with the mid (the mixed-read race: the
+        // coroutine read the NEW content's state against the OLD mid).
+        val stateAnime = (_state.value as? DetailsState.Success)?.anime
+        val gen = loadGeneration
         if (mid == null) {
             _linkedIdentities.value = emptySet()
             return
         }
         viewModelScope.launch {
             val linked = mutableSetOf<String>()
-            val anime = (_state.value as? DetailsState.Success)?.anime
-            if (anime?.anilistId?.takeIf { it > 0 } != null) linked.add("anilist")
-            val repo = trackEntryRepository
-            if (repo != null) {
-                for (type in listOf(
-                    com.confused.anikuta.core.trackerapi.TrackerType.MAL,
-                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL,
-                    com.confused.anikuta.core.trackerapi.TrackerType.TMDB,
-                    com.confused.anikuta.core.trackerapi.TrackerType.TVMAZE,
-                )) {
-                    if (runCatching { repo.get(mid, type) }.getOrNull() != null) {
-                        linked.add(type.id)
-                    }
-                }
+            // ROUND 173 (N2): the AUTHORITATIVE set — content_identity (the
+            // multi-link table; the migration seeded every existing link).
+            val rows = runCatching { contentRepository.identitiesForContent(mid) }
+                .getOrDefault(emptyList())
+            rows.forEach { linked.add(it.sourceKind) }
+            // The live-AniList fallback: the state's positive anilistId (the
+            // pre-migration rows + the in-session merges).
+            if (stateAnime?.anilistId?.takeIf { it > 0 } != null) linked.add("anilist")
+            // F3: the stale-write guard — a superseded load never stamps its
+            // identities onto the new content.
+            if (gen != loadGeneration) {
+                Logger.d(TAG) { "the identities refresh discarded (stale generation)" }
+                return@launch
             }
             _linkedIdentities.value = linked
             Logger.d(TAG) { "linked identities for $mid: $linked" }
@@ -1258,6 +1281,7 @@ class DetailsViewModel(
         _contentId.value = ""
         extensionBase = null
         anilistBase = null
+        metadataBase = null // ROUND 173 (F2)
         _coverAccent.value = null
         _nextEpisodeInfo.value = null
         _isRefreshing.value = false
@@ -1399,11 +1423,18 @@ class DetailsViewModel(
                 anilistId = packedId,
                 entryMode = com.confused.anikuta.core.common.model.EntryMode.ANILIST,
             )
+            // F2 (the audit Break 1): the synthetic identity becomes a REAL
+            // base — linkSource's remerge now keeps it (the TMDB identity
+            // survives the extension link).
+            metadataBase = anime
             _state.value = DetailsState.Success(anime)
             currentMainId = mainId
             _mainIdFlow.value = mainId
             Logger.i(TAG) { "metadata state emitted for $mainId" }
             refreshLinkedIdentities()
+            // F2 (the audit Break 3a): the library state NEVER refreshed on
+            // the metadata reopens — a saved row reopened as "NOT SAVED".
+            refreshContentAndLibraryStatus(mainId)
 
             // ── ROUND 171 (the device orders): the EPISODES + the AUTO-SEARCH ──
             val linked = _linkedSource.value
@@ -1523,6 +1554,7 @@ class DetailsViewModel(
         // D-134: Reset the data bases.
         extensionBase = null
         anilistBase = null
+        metadataBase = null // ROUND 173 (F2)
         // D-227: Reset per-anime UI state that was NOT reset before (caused "shadow"
         // of the previous anime's data — adaptive accent, category sheet, refresh).
         _coverAccent.value = null
@@ -2383,6 +2415,33 @@ class DetailsViewModel(
                 // UI if the data actually changed. This eliminates the ~1s loading
                 // delay the user saw when opening extension-saved entries from Library.
                 val existingContent = contentRepository.getMainEntryByExtension(sourceId, animeUrl)
+                // ROUND 173 (F2, the audit Break 3b): the METADATA-row route —
+                // an extension link on a metadata row (tmdb:12345) resolves to
+                // the SAME row here; loading it through the extension loader
+                // displayed it extension-only (the TMDB identity invisible —
+                // the v1.1.108 device report). Route back to the metadata
+                // loader: it restores the saved extension link, the TMDB data
+                // axis, the library state — BOTH identities coexist.
+                val resolvedMainId = existingContent?.mainId
+                if (resolvedMainId != null) {
+                    val kindPrefix = resolvedMainId.substringBefore(":")
+                    val remoteIdPart = resolvedMainId.substringAfter(":").toLongOrNull()
+                    if (kindPrefix in setOf("tmdb", "tvmaze", "mal", "simkl") && remoteIdPart != null) {
+                        val kindIndex = when (kindPrefix) {
+                            "tmdb" -> 1
+                            "tvmaze" -> 2
+                            "mal" -> 3
+                            "simkl" -> 4
+                            else -> 0
+                        }
+                        val packedId = -(remoteIdPart * 8 + kindIndex).toInt()
+                        Logger.i(TAG) {
+                            "ext resolve hit a metadata row ($resolvedMainId) — routing to the metadata loader"
+                        }
+                        loadMetadataContent(packedId, title, thumbnailUrl)
+                        return@launch
+                    }
+                }
                 val cachedDetails = existingContent?.let {
                     contentRepository.getContentDetails(it.mainId)
                 }
@@ -3240,6 +3299,28 @@ class DetailsViewModel(
                     dataUpdatedAt = System.currentTimeMillis(),
                 )
                 contentResolver.linkAniList(mainId, anilistId, detail)
+                // ROUND 173 (N2): the anilist identity ROW (the multi-link
+                // model's authoritative record).
+                runCatching {
+                    contentRepository.upsertIdentity(
+                        com.confused.anikuta.core.content.ContentIdentity(
+                            mainId = mainId,
+                            sourceKind = "anilist",
+                            sourceRefId = anilistId.toString(),
+                            displayTitle = anilistData.displayName,
+                            coverUrl = anilistData.coverUrl,
+                            synopsis = anilistData.description,
+                            score = anilistData.averageScore,
+                            episodes = anilistData.episodes,
+                            status = anilistData.status,
+                            genres = anilistData.genres?.joinToString(","),
+                            year = anilistData.seasonYear,
+                            displayRank = 1,
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis(),
+                        ),
+                    )
+                }
                 // D-237: Fetch + store fresh airing data now that we have an anilistId.
                 // Without this, the next-episode card doesn't show when an extension
                 // entry is auto-linked to AniList (forward auto-link path).
@@ -3515,6 +3596,8 @@ class DetailsViewModel(
         if (mainId != null) {
             contentResolver.unlinkAniList(mainId)
             refreshContentId(mainId)
+            // ROUND 173 (N2): the identity row goes with the unlink.
+            runCatching { contentRepository.deleteIdentity(mainId, "anilist") }
         }
 
         // D-134: Clear the AniList base + re-merge (shows extension data only).
@@ -3549,6 +3632,8 @@ class DetailsViewModel(
         Logger.i(TAG) { "Unlinking the metadata row's AniList identity: $mainId" }
         contentResolver.unlinkAniList(mainId)
         refreshContentId(mainId)
+        // ROUND 173 (N2): the identity row goes with the unlink.
+        runCatching { contentRepository.deleteIdentity(mainId, "anilist") }
         anilistBase = null
         // The packed id from the mainId — the loader re-keys the state.
         val kind = mainId.substringBefore(":")
@@ -4006,6 +4091,28 @@ class DetailsViewModel(
                 extensionDetail = extensionDetail,
             )
             refreshContentId(mainId)
+            // ROUND 173 (N2): the extension identity ROW (the multi-link
+            // model's authoritative record; the ref = <sourceId>:<url>).
+            runCatching {
+                contentRepository.upsertIdentity(
+                    com.confused.anikuta.core.content.ContentIdentity(
+                        mainId = mainId,
+                        sourceKind = ecosystemName,
+                        sourceRefId = "${source.id}:${sAnime.url}",
+                        displayTitle = sAnime.title,
+                        coverUrl = sAnime.thumbnail_url,
+                        synopsis = sAnime.description,
+                        score = null,
+                        episodes = null,
+                        status = linkedStatusString,
+                        genres = sAnime.genre,
+                        year = null,
+                        displayRank = if (existingDetailsAtLink == null) 0 else 1,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
         }
 
         // D-134 → ROUND 121 (D1-a): (RE)BUILD extensionBase from the picked
@@ -4157,6 +4264,12 @@ class DetailsViewModel(
         if (mainId != null) {
             contentResolver.unlinkExtension(mainId)
             refreshContentId(mainId)
+            // ROUND 173 (N2): the ext identity rows go with the unlink.
+            runCatching {
+                contentRepository.identitiesForContent(mainId)
+                    .filter { it.sourceKind == "aniyomi" || it.sourceKind == "cloudstream" }
+                    .forEach { contentRepository.deleteIdentity(mainId, it.sourceKind) }
+            }
             // D-238 superseded (D-849): the episode cache is PRESERVED on unlink too —
             // the same metadata-preservation rule; the next fetch reconciles.
             Logger.d(TAG) { "D-238 superseded (D-849): episode cache PRESERVED for mainId=$mainId (source unlinked)" }
