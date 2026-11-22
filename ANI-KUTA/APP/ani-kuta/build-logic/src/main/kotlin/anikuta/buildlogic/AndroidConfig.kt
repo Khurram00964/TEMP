@@ -544,8 +544,24 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10211
-    const val versionName = "1.1.111"
+    const val versionCode = 10212
+    const val versionName = "1.1.112"
+    // ROUND 176 (v1.1.112): the v1.1.111 device report. THE PULL INDICATOR
+    // (the user's EXACT model): the small drag = ONE dot cycling the three
+    // colors growing with the drag; the full drag = the three dots STATIC;
+    // the lift = the three dots JUMPING; the threshold VIBRATION. THE
+    // 12-HOUR GATE (the round-169 spec, re-ordered): the loaders' background
+    // refresh runs ONLY when the cache is stale — the fresh cache offline =
+    // a SILENT entry (the error notice and the No-response hang die). THE
+    // FLICKER FIX (the audit's 3-emission chain): the force refresh is
+    // SILENT (no Loading, no legacy cache serve — the content changed-then-
+    // reverted bug); the in-flight pull guard; the search page writes the
+    // fresh trending back to the cache. THE MENU REBUILD (the dedicated
+    // UI-history agent): the approved round-103/104 wide TEXT chips
+    // resurrected (the icon experiment deleted), the fixed canonical order,
+    // the systematic metadata-display fallback (the link no longer flips
+    // the display). The details-page pull upgraded to the same three-state
+    // model — CI 45035615237 GREEN.
     // ROUND 175 (v1.1.111): the v1.1.110 device report — the display-truth
     // round. F1: the dots GATED (the custom indicator composed
     // unconditionally — the M3 default gates internally). F2: THE CACHE-WIPE
