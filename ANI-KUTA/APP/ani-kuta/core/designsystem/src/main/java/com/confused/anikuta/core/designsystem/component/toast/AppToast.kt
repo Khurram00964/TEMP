@@ -148,9 +148,14 @@ object AppToast {
 /**
  * The toast host — render ONCE at the app root (MainActivity's composition,
  * over the nav host). A pass-through overlay: it never intercepts touches.
+ *
+ * ROUND 175 (F5): [bottomExtra] lifts the pill above the SCREEN's own
+ * bottom furniture — the search/library/browse screens carry the app's
+ * bottom nav bar (~90dp above the insets); without the lift the pill
+ * rendered INSIDE that band (the overlap the device report showed).
  */
 @Composable
-fun AppToastHost() {
+fun AppToastHost(bottomExtra: androidx.compose.ui.unit.Dp = 0.dp) {
     val request by AppToast.request.collectAsState()
     val context = LocalContext.current
 
@@ -181,7 +186,7 @@ fun AppToastHost() {
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(bottom = 16.dp),
+            .padding(bottom = 16.dp + bottomExtra),
         contentAlignment = Alignment.BottomCenter,
     ) {
         AnimatedVisibility(

@@ -2236,23 +2236,19 @@ class SearchViewModel(
                     // 'old cache deleted' spec) → the reload's cache-first
                     // path finds nothing → the full fresh load. The AniList
                     // trending keeps its D-278 always-refresh semantics.
+                    // ROUND 175 (F2 — THE CLASS FIX): the pull NO LONGER
+                    // clears the cache BEFORE the load — offline, the load
+                    // found no cache + no network → the page WIPED to Empty
+                    // (the AniList path never cleared — the asymmetry's
+                    // root). THE NEW RULE: the cache clears AFTER a
+                    // successful fresh fetch (the loaders' write-through
+                    // rewrites the row on success) — a failed refresh NEVER
+                    // downgrades a cached state, on ANY source.
                     when (_dataSource.value) {
-                        DataSourceKind.TMDB -> {
-                            clearDefaultsCache(DataSourceKind.TMDB)
-                            defaultsJob = loadTmdbDefaults()
-                        }
-                        DataSourceKind.TVMAZE -> {
-                            clearDefaultsCache(DataSourceKind.TVMAZE)
-                            defaultsJob = loadTvmazeDefaults()
-                        }
-                        DataSourceKind.MAL -> {
-                            clearDefaultsCache(DataSourceKind.MAL)
-                            defaultsJob = loadMalDefaults()
-                        }
-                        DataSourceKind.SIMKL -> {
-                            clearDefaultsCache(DataSourceKind.SIMKL)
-                            defaultsJob = loadSimklDefaults()
-                        }
+                        DataSourceKind.TMDB -> defaultsJob = loadTmdbDefaults()
+                        DataSourceKind.TVMAZE -> defaultsJob = loadTvmazeDefaults()
+                        DataSourceKind.MAL -> defaultsJob = loadMalDefaults()
+                        DataSourceKind.SIMKL -> defaultsJob = loadSimklDefaults()
                         DataSourceKind.ANILIST -> loadTrending()
                     }
                 }

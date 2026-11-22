@@ -394,12 +394,24 @@ fun SearchScreen(
             // ROUND 174 (T1.4): the user's animation order — the colorful
             // jumping dots replace the default indicator (one loading
             // language with the load-more footer).
+            // ROUND 175 (F1+F3 — THE GATE + THE FOLLOW): the M3 default
+            // indicator gates itself on isRefreshing INTERNALLY; a custom
+            // lambda composes UNCONDITIONALLY — the v1.1.110 dots rendered
+            // always. THE SHAPE: the lambda always composes (the drag needs
+            // the live fraction), the CONTENT gates — idle renders nothing,
+            // the drag previews the capsule following the finger (F3), the
+            // refresh holds the resting capsule while the dots jump.
             indicator = {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    com.confused.anikuta.core.designsystem.component.JumpingDotsIndicator()
+                val dragFraction = ptrState.distanceFraction
+                if (pullRefreshing || dragFraction > 0.01f) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        com.confused.anikuta.core.designsystem.component.RefreshCapsuleIndicator(
+                            dragFraction = if (pullRefreshing) 1f else dragFraction,
+                        )
+                    }
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -940,11 +952,9 @@ private fun LoadingMoreFooter() {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // ROUND 174 (T1.4): the jumping dots — the ONE loading language.
-        com.confused.anikuta.core.designsystem.component.JumpingDotsIndicator(
-            dotSize = 8.dp,
-            jumpHeight = 8.dp,
-        )
+        // ROUND 175 (F4): the CAPSULE — the one loading language with the
+        // pull indicator.
+        com.confused.anikuta.core.designsystem.component.RefreshCapsuleIndicator()
         Spacer(Modifier.width(10.dp))
         Text(
             text = "Loading more…",

@@ -571,3 +571,35 @@ relay UX is the core failure class of 172-173.
 state machine); 09-M/L documented; the DB tests run explicitly on the
 identity changes; the release after CI green (1.1.1NN, Routine A) + the
 LOGICAL checklist (no confirmed-items re-listing).
+
+---
+
+## N. THE ROUND-175 ORDER (the v1.1.110 device report — the display truth round)
+
+**THE META-ORDERS:** the DEBUGGING is a deliverable (the Logger across the
+identity/display/unlink/refresh paths — the user reads the logcat); THE
+COORDINATION RULE (the AniList experience is the REFERENCE — every source
+identical; fix the CLASS not the symptom); the error display at every layer.
+
+1. **F1 🚨 the dots render ALWAYS** — the custom indicator lambda lacks the
+   isRefreshing gate (the M3 default gates internally). FIX: the gate + the
+   bounded lifetime.
+2. **F2 🚨 the offline refresh WIPES the metadata sources** — the pull
+   CLEARS the cache row BEFORE the load (the round-172 refresh design); the
+   offline load finds no cache + no network → Empty. THE CLASS FIX: the
+   cache clears AFTER a successful fresh fetch (the write-through), never
+   before — the failed refresh NEVER downgrades a cached state. (The
+   AniList path never cleared — the asymmetry's root.)
+3. **F3+F4 the capsule dots** — the capsule follows the drag distance, the
+   threshold haptic (the HapticHelper), the spring to rest; ONE component
+   for the pull + the load-more.
+4. **F5 the notice placement** — above the bottom nav on the search screen.
+5. **F6 🚨 the display switch** — THE AUDIT FIRST (the subagent): the
+   ext-kind mapping hypothesis ("aniyomi" ≠ "extension"), the unlink's
+   metadataBase rebuild, the extension-switch decoupling.
+6. **F7 the icon chips** — the user's explicit layout: the top-right
+   extension icon, the driver's icon left of it, the linked others below.
+7. **F8 the details-page pull-refresh.**
+8. **F9 the relay gaps:** the rating notice, the AniList failure's REAL
+   reason (+ the refresh-and-retry-once), the connectivity-triggered sweep.
+9. **F10 the link-sheet polish pass.**

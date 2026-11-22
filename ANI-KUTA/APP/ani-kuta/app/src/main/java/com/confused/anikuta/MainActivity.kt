@@ -2469,7 +2469,12 @@ fun AppRoot() {
         // requests (from every swept surface in the app) render here, above
         // the nav, over every screen. A pass-through overlay (it never
         // intercepts touches); the pill sits above the navigation bar.
-        com.confused.anikuta.core.designsystem.component.toast.AppToastHost()
+        // ROUND 175 (F5): the pill lifts above the APP's bottom nav bar on
+        // the root tabs (the nav band ~90dp above the insets) — the search
+        // page's notices rendered INSIDE the band (the device report).
+        com.confused.anikuta.core.designsystem.component.toast.AppToastHost(
+            bottomExtra = if (showBottomNav) 90.dp else 0.dp,
+        )
 
         // ROUND 120 (D-749): the ASK-fallback download picker host — the SAME
         // sheet the player page mounts, rendered at the app root (the AppToast
