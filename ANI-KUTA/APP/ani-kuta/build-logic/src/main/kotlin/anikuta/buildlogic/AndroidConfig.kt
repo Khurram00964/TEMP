@@ -544,8 +544,26 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10209
-    const val versionName = "1.1.109"
+    const val versionCode = 10210
+    const val versionName = "1.1.110"
+    // ROUND 174 (v1.1.110): the v1.1.109 device report — THE FINAL-ATTEMPT
+    // ROUND (the async-relay UX). THE AUDIT (the subagent, the user's
+    // order) traced the relay's silent-loss chains + the menu state gaps.
+    // T4: the relay bridge gated EVERY tracker on the ANILIST COLUMN (the
+    // MAL/Simkl-tracked rows synced locally forever) — the mapping IS the
+    // id now; the dead syncState channel WIRED (the themed AppToast
+    // confirms the success + surfaces the failure); the fetch-clobber
+    // merges (the local-differs wins, the bridge re-relays); the sheet
+    // draft seeds once. T2: THE N-WAY IDENTITY SWITCH (the chips = the
+    // REAL identities from content_identity, the 2-slot pair retired, the
+    // pick persists display_rank); the collapse fix (the ext-base rebuilds
+    // on the reopen); the blank extension name re-derives; the SECOND
+    // unlink surface confirmed; the negative-id guard. T1: the OS Toast
+    // RETIRED (the round-106 AppToast everywhere); the offline spinner's
+    // completion signals (the notice-keyed dismissal + the bounded 10s);
+    // the jumping-dots indicator. T3: the None keys on the opt-in; the
+    // spacing. T5: the identity read unions track_entry (the invisible
+    // mappings visible). CI 45017657306 GREEN.
     // ROUND 173 (v1.1.109): the v1.1.108 device-report orders — the identity
     // round. THE SUBAGENT AUDIT (the user's order) verified F2's three
     // breaks + the F3 mechanisms + 10 identity-model landmines. THE FIXES:
