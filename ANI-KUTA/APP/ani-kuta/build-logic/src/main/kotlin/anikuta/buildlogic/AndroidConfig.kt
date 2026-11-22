@@ -544,8 +544,26 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10210
-    const val versionName = "1.1.110"
+    const val versionCode = 10211
+    const val versionName = "1.1.111"
+    // ROUND 175 (v1.1.111): the v1.1.110 device report — the display-truth
+    // round. F1: the dots GATED (the custom indicator composed
+    // unconditionally — the M3 default gates internally). F2: THE CACHE-WIPE
+    // CLASS FIX (the pull cleared the cache BEFORE the load — offline the
+    // page wiped to Empty; the cache clears AFTER a successful fetch now —
+    // a failed refresh never downgrades a cached state, on ANY source). F3+F4:
+    // THE REFRESH CAPSULE (the AppToast-pill anatomy hosting the dots, the
+    // bouncy drag-follow, the threshold haptic — one language for the pull
+    // and the load-more). F5: the notice lifts above the app's bottom nav.
+    // F6 (the audit): THE KIND→BASE CLASSIFIER (the ext kinds reach the ext
+    // base — the v1.1.110 switch changed NOTHING), the reopen overwrite
+    // gone, the pick RESTORES from display_rank, the own-kind unlink
+    // rebuild, the extension-switch/display-switch DECOUPLING, the negative-
+    // id guard. F7: THE ICON CHIPS (the top-right extension, the driver left,
+    // the others below). F8: the metadata enrichment refresh branch. F9: the
+    // sync retries once with the REAL reason + the connectivity-triggered
+    // sweep. THE LOGGING (the meta-order): the identity/display state
+    // machine readable in logcat — CI 45027163126 GREEN.
     // ROUND 174 (v1.1.110): the v1.1.109 device report — THE FINAL-ATTEMPT
     // ROUND (the async-relay UX). THE AUDIT (the subagent, the user's
     // order) traced the relay's silent-loss chains + the menu state gaps.
