@@ -1067,14 +1067,14 @@ class DetailsViewModel(
             // F2: the metadata base's packed id is the identity anchor for the
             // metadata entries (the reverse auto-link + the saved-link keying
             // derive from it).
-            anilistId = al.anilistId ?: ext.anilistId ?: meta?.anilistId,
-            sourceId = ext.sourceId ?: al.sourceId,
-            sourceName = ext.sourceName ?: al.sourceName,
-            animeUrl = ext.animeUrl ?: al.animeUrl,
+            anilistId = al?.anilistId ?: ext?.anilistId ?: meta?.anilistId,
+            sourceId = ext?.sourceId ?: al?.sourceId,
+            sourceName = ext?.sourceName ?: al?.sourceName,
+            animeUrl = ext?.animeUrl ?: al?.animeUrl,
             // F2 (the audit landmine 9): the metadata entries keep their
             // ANILIST entry mode until an extension base actually exists —
             // the stale EXTENSION mode drove the menu gating wrong.
-            entryMode = if (al == null && meta != null) meta.entryMode else ext.entryMode,
+            entryMode = if (al == null && meta != null) meta.entryMode else (ext?.entryMode ?: meta?.entryMode ?: primary.entryMode),
             dataSourcePriority = priority,
             // Metadata fields — STRICT: primary values ONLY, no fallback to secondary.
             description = primary.description,
