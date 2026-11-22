@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -78,12 +79,13 @@ fun JumpingDotsIndicator(
                 ),
                 label = "jump$index",
             )
-            Surface(
-                shape = CircleShape,
-                color = color,
+            // M3 Surface requires a content lambda — the plain Box carries
+            // the circle.
+            androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .size(dotSize)
-                    .offset { IntOffset(0, (jump * jumpHeight.toPx()).toInt()) },
+                    .offset { IntOffset(0, (jump * jumpHeight.toPx()).toInt()) }
+                    .background(color, CircleShape),
             )
             if (index < colors.lastIndex) Spacer(Modifier.width(6.dp))
         }
