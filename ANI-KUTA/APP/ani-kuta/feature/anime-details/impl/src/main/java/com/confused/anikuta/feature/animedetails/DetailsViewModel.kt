@@ -1535,22 +1535,25 @@ class DetailsViewModel(
             // REBUILDS from the ext axis on the reopen — the v1.1.109 emit
             // carried sourceId = null (the chips collapsed on the second
             // open; only the AniList path restored its base).
-            if (details?.hasExtensionLink == true && extensionBase == null && details.sourceId != null && details.animeUrl != null) {
-                val srcId = details.sourceId!!
+            // The fresh capture — details is a mutated local (the
+            // enrichment reassigns it), the smart cast is impossible on it.
+            val extDetails = details
+            if (extDetails?.hasExtensionLink == true && extensionBase == null && extDetails.sourceId != null && extDetails.animeUrl != null) {
+                val srcId = extDetails.sourceId!!
                 val srcName = extensionManager.getSource(srcId)?.name
-                    ?: details.extensionType?.replaceFirstChar { it.uppercase() }
+                    ?: extDetails.extensionType?.replaceFirstChar { it.uppercase() }
                     ?: "Extension"
                 extensionBase = com.confused.anikuta.core.common.model.UnifiedAnime(
                     title = anime.title,
-                    coverUrl = details.extThumbnailUrl ?: anime.coverUrl,
-                    description = details.extDescription,
-                    genres = details.extGenres?.split(", ")?.filter { it.isNotBlank() } ?: emptyList(),
-                    status = details.extStatus,
+                    coverUrl = extDetails.extThumbnailUrl ?: anime.coverUrl,
+                    description = extDetails.extDescription,
+                    genres = extDetails.extGenres?.split(", ")?.filter { it.isNotBlank() } ?: emptyList(),
+                    status = extDetails.extStatus,
                     seasonYear = anime.seasonYear,
                     episodes = anime.episodes,
                     sourceId = srcId,
                     sourceName = srcName,
-                    animeUrl = details.animeUrl,
+                    animeUrl = extDetails.animeUrl,
                     entryMode = com.confused.anikuta.core.common.model.EntryMode.EXTENSION,
                 )
                 Logger.i(TAG) { "the metadata reopen rebuilt the extension base: $srcName ($srcId)" }
