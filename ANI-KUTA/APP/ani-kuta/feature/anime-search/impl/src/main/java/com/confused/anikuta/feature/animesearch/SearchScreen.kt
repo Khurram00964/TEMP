@@ -293,32 +293,6 @@ fun SearchScreen(
     // ROUND 163 (STEP-3): the DATA-SOURCE picker + the metadata results state.
     var showDataSourcePicker by remember { mutableStateOf(false) }
 
-    // ── ROUND 174 (T1.2/T1.3): the refresh completion signals —
-    // (a) the FAILURE notice (the VM also fires the themed AppToast — the
-    // OS Toast retired) DISMISSES the spinner (the v1.1.109 bug: the
-    // cache-stays failure emitted NO state change → the pull indicator
-    // spun forever offline); (b) the BOUNDED WAIT — 10s with nothing
-    // landing forces the dismissal + the notice (the network stacks can
-    // hang well past the user's patience).
-    val refreshNotice by viewModel.refreshNotice.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(refreshNotice) {
-        if (refreshNotice != null) {
-            pullRefreshing = false
-            viewModel.clearRefreshNotice()
-        }
-    }
-    androidx.compose.runtime.LaunchedEffect(pullRefreshing) {
-        if (pullRefreshing) {
-            kotlinx.coroutines.delay(10_000)
-            if (pullRefreshing) {
-                pullRefreshing = false
-                com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
-                    "No response — check your connection",
-                    com.confused.anikuta.core.designsystem.component.toast.AppToastTone.ERROR,
-                )
-            }
-        }
-    }
     val dataSourceKind by viewModel.dataSource.collectAsState()
     val tmdbEnabled by viewModel.tmdbEnabled.collectAsState()
     val tvmazeEnabled by viewModel.tvmazeEnabled.collectAsState()
@@ -381,6 +355,33 @@ fun SearchScreen(
         // "old cache deleted" spec). Any settled uiState emission dismisses the
         // indicator (content landed — that IS the refresh's visible result).
         var pullRefreshing by remember { mutableStateOf(false) }
+    // ── ROUND 174 (T1.2/T1.3): the refresh completion signals —
+    // (a) the FAILURE notice (the VM also fires the themed AppToast — the
+    // OS Toast retired) DISMISSES the spinner (the v1.1.109 bug: the
+    // cache-stays failure emitted NO state change → the pull indicator
+    // spun forever offline); (b) the BOUNDED WAIT — 10s with nothing
+    // landing forces the dismissal + the notice (the network stacks can
+    // hang well past the user's patience).
+    val refreshNotice by viewModel.refreshNotice.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(refreshNotice) {
+        if (refreshNotice != null) {
+            pullRefreshing = false
+            viewModel.clearRefreshNotice()
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(pullRefreshing) {
+        if (pullRefreshing) {
+            kotlinx.coroutines.delay(10_000)
+            if (pullRefreshing) {
+                pullRefreshing = false
+                com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                    "No response — check your connection",
+                    com.confused.anikuta.core.designsystem.component.toast.AppToastTone.ERROR,
+                )
+            }
+        }
+    }
+
         val ptrState = rememberPullToRefreshState()
         LaunchedEffect(uiState) { pullRefreshing = false }
         PullToRefreshBox(
