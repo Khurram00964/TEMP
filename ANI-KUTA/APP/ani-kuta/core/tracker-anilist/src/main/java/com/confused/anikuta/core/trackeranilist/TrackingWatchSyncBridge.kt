@@ -150,8 +150,10 @@ class TrackingWatchSyncBridge(
                 if (cached != null && cached.progress == computed) continue
 
                 // The status math (the details page's parity).
-                val totalEps = details.dataEpisodes?.toInt() ?: cached?.totalEpisodes ?: 0
-                val isFinished = details.dataStatus == "FINISHED"
+                // ROUND 174: the gate no longer early-continues on the
+                // details row — the safe calls carry the nullable.
+                val totalEps = details?.dataEpisodes?.toInt() ?: cached?.totalEpisodes ?: 0
+                val isFinished = details?.dataStatus == "FINISHED"
                 val status = when {
                     totalEps > 0 && computed >= totalEps && isFinished -> TrackStatus.COMPLETED
                     computed > 0 -> TrackStatus.WATCHING
