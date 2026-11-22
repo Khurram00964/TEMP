@@ -14,6 +14,13 @@ enum class TrackerType(val id: String) {
     MAL("mal"),           // the anime tracker redo (pending; the client id is registered)
     SIMKL("simkl"),       // ROUND 163 (STEP-2): movies + TV series tracking (one account covers anime too)
     SHIKIMORI("shikimori"), // future
+    // ROUND 172: the LINK identities (the "Link to other" picks on the
+    // native content — NOT trackers). The rows live in track_entry (the
+    // generic (contentKey, trackerType, trackerId) mapping table); the
+    // TRACKING dispatch never consults these types (openTrackerPickerOrSheet
+    // + the picker only offer ANILIST/MAL/SIMKL) — the LINK ≠ TRACK rule.
+    TMDB("tmdb"),
+    TVMAZE("tvmaze"),
 }
 
 /**

@@ -177,15 +177,28 @@ class DataCacheRepository(
         }
     }
 
-    fun upsertBrowseCache(sectionKey: String, dataJson: String) {
+    fun upsertBrowseCache(sectionKey: String, dataJson: String) =
+        upsertBrowseCacheWithTtl(sectionKey, dataJson, BROWSE_CACHE_TTL_MS)
+
+    /**
+     * ROUND 172: the TTL variant — the per-source search defaults ride the
+     * SAME browse_cache table with their OWN 12-hour horizon (the user's
+     * spec) vs the browse feed's 6h.
+     */
+    fun upsertBrowseCacheWithTtl(sectionKey: String, dataJson: String, ttlMs: Long) {
         val now = System.currentTimeMillis()
         queries.upsertBrowseCache(
             sectionKey = sectionKey,
             dataJson = dataJson,
             fetchedAt = now,
-            expiresAt = now + BROWSE_CACHE_TTL_MS,
+            expiresAt = now + ttlMs,
         )
-        Logger.d(TAG) { "Cached browse section: $sectionKey (expires in ${BROWSE_CACHE_TTL_MS / 3600000}h)" }
+        Logger.d(TAG) { "Cached browse section: $sectionKey (expires in ${ttlMs / 3600000}h)" }
+    }
+
+    /** ROUND 172: the search defaults' refresh — the row clears FIRST (the 'old cache deleted' spec). */
+    fun deleteBrowseCache(sectionKey: String) {
+        queries.deleteBrowseCache(sectionKey)
     }
 
     /** Whether the browse cache for a section is expired or missing. */

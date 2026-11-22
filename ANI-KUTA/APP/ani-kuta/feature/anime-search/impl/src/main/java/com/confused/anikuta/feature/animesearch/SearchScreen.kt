@@ -1774,6 +1774,23 @@ private fun DataSourceResultsGrid(
                 LoadingMoreFooter()
             }
         }
+        // ROUND 172: the honest end-cap — the one-shot sources (TVmaze/
+        // Simkl) never paginate; the user sees the list is COMPLETE, not
+        // broken (the device report: "scrolling to the very bottom did not
+        // load any more new results").
+        if (!loadingMore && !canLoadMore && results.isNotEmpty()) {
+            item(key = "ds-end-cap", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "That's every result",
+                    fontFamily = com.confused.anikuta.core.designsystem.theme.RobotoFamily,
+                    fontSize = 12.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                )
+            }
+        }
     }
 }
 

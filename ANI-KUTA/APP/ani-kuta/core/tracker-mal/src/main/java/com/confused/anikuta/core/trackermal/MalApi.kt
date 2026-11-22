@@ -108,10 +108,13 @@ class MalApi(
      * GET /anime?q=…&fields=… — the app-auth search (no user token). Returns
      * the node rows (id + title + picture + episodes + mean).
      */
-    fun searchAnime(query: String, limit: Int = 10): List<MalAnime> {
-        val fields = "id,title,main_picture,num_episodes,mean"
+    // ROUND 172: the offset joins (the v2 API's pagination — the search
+    // page's load-more at page 2+).
+    fun searchAnime(query: String, limit: Int = 10, offset: Int = 0): List<MalAnime> {
+        val fields = "id,title,main_picture,num_episodes,mean,start_season"
         val q = java.net.URLEncoder.encode(query, "UTF-8")
-        val raw = get("/anime", "q=$q&limit=$limit&fields=$fields", null) ?: return emptyList()
+        val offsetPart = if (offset > 0) "&offset=$offset" else ""
+        val raw = get("/anime", "q=$q&limit=$limit$offsetPart&fields=$fields", null) ?: return emptyList()
         return runCatching {
             json.decodeFromString(MalSearchResponse.serializer(), raw).data.map { it.node }
         }.getOrDefault(emptyList())
@@ -121,9 +124,11 @@ class MalApi(
      * GET /anime/ranking?ranking_type=bypopularity — the blank-query default
      * (the search source's grid fill). App-auth (no user token).
      */
-    fun topAnime(limit: Int = 20): List<MalAnime> {
-        val fields = "id,title,main_picture,num_episodes,mean"
-        val raw = get("/anime/ranking", "ranking_type=bypopularity&limit=$limit&fields=$fields", null)
+    // ROUND 172: the offset joins (the ranking's load-more).
+    fun topAnime(limit: Int = 20, offset: Int = 0): List<MalAnime> {
+        val fields = "id,title,main_picture,num_episodes,mean,start_season"
+        val offsetPart = if (offset > 0) "&offset=$offset" else ""
+        val raw = get("/anime/ranking", "ranking_type=bypopularity&limit=$limit$offsetPart&fields=$fields", null)
             ?: return emptyList()
         return runCatching {
             json.decodeFromString(MalRankingResponse.serializer(), raw).data.map { it.node }

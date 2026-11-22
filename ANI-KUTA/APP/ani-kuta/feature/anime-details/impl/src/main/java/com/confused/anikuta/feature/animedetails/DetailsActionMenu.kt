@@ -1,6 +1,7 @@
 package com.confused.anikuta.feature.animedetails
 
 import android.content.Intent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -121,19 +122,27 @@ fun DetailsActionMenu(
     // ── Tracking (ROUND 103 WS-2: the color-coded state) ──
     onOpenTracking: () -> Unit,
     isTracked: Boolean,
-    // ── AniList link (extension entries only — folded INTO the data-source
-    //    section, below the chips, per the round-103 order) ──
+    // ── The "Link to other" section (extension AND metadata entries — the
+    //    metadata rows have no extension identity yet but MUST still offer
+    //    the links; ROUND 172) ──
     isExtensionEntry: Boolean,
-    isAniListLinked: Boolean,
+    isMetadataEntry: Boolean,
+    // ROUND 172: the LINKED identities ("anilist"/"mal"/"simkl"/"tmdb"/
+    // "tvmaze") — the per-source Unlink rows render from this set.
+    linkedIdentities: Set<String>,
     onLinkAniList: () -> Unit,
-    // ROUND 170: the "Link to other" source picks (the AniList pick rides
-    // onLinkAniList; the MAL/Simkl picks open their link sheets; the
-    // TMDB/TVmaze picks hand off to the search pre-set to that source).
+    // ROUND 170: the "Link to other" source picks — ALL 5 open the unified
+    // link sheet (ONE UI, the different backends).
     onLinkMal: () -> Unit = {},
     onLinkSimkl: () -> Unit = {},
     onLinkTmdb: () -> Unit = {},
     onLinkTvmaze: () -> Unit = {},
     onUnlinkAniList: () -> Unit,
+    // ROUND 172: the per-source unlinks (the identity rows).
+    onUnlinkMal: () -> Unit = {},
+    onUnlinkSimkl: () -> Unit = {},
+    onUnlinkTmdb: () -> Unit = {},
+    onUnlinkTvmaze: () -> Unit = {},
     // ── Share: the targets, built on demand when the submenu opens ──
     buildShareLinks: () -> List<ShareLink>,
 ) {
@@ -157,12 +166,17 @@ fun DetailsActionMenu(
     // The Share page swap — internal so both menus share ONE anchor Box.
     // Reset when fully closed so the next open starts on the main page.
         var linkToOtherExpanded by remember { mutableStateOf(false) }
-    // ROUND 171: the expansion RESETS on the dismiss (the reopen shows
-    // "Link to other" again — the device order).
-    androidx.compose.runtime.LaunchedEffect(onDismissRequest) { linkToOtherExpanded = false }
     var sharePage by remember { mutableStateOf(false) }
+    // ROUND 172 (the device order): the menu ALWAYS opens in its DEFAULT
+    // state — the v1.1.171 reset keyed on onDismissRequest was dead (the
+    // lambda's identity never changes); the reset rides `expanded` like the
+    // Share page's does. Closing the expanded source list reopens the
+    // plain three-dot menu.
     LaunchedEffect(expanded) {
-        if (!expanded) sharePage = false
+        if (!expanded) {
+            sharePage = false
+            linkToOtherExpanded = false
+        }
     }
 
     // ── The MAIN menu (hidden while the Share page shows) ──
@@ -179,12 +193,16 @@ fun DetailsActionMenu(
         Column(
             modifier = Modifier
                 .width(220.dp)
-                .padding(10.dp),
+                .padding(10.dp)
+                // ROUND 172: the Link-to-other expansion ANIMATES (the
+                // device order — the height change springs, no snap).
+                .animateContentSize(),
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            // ══ SECTION: DATA SOURCE — the chip row + the link/unlink row ══
-            // (shows when there is a choice to make OR a list to link/unlink)
-            if (hasBothDataSources || isExtensionEntry) {
+            // ══ SECTION: DATA SOURCE — the chip row + the link/unlink rows ══
+            // (shows when there is a choice to make OR a list to link/unlink;
+            // the METADATA rows offer it too — ROUND 172)
+            if (hasBothDataSources || isExtensionEntry || isMetadataEntry) {
                 MenuSectionLabel("Data source")
                 MenuSectionCard {
                     if (hasBothDataSources) {
@@ -218,64 +236,73 @@ fun DetailsActionMenu(
                         }
                     }
                     // ROUND 170 (the device order): "Link to other" — the
-                    // row expands IN-PLACE into the data-sources list
-                    // (AniList → MyAnimeList → Simkl → TMDB → TVmaze); the
-                    // linked state shows the linked source's name + the
-                    // "Unlink {source}" row below it.
-                    if (isExtensionEntry) {
-                        if (isAniListLinked) {
+                    // row expands IN-PLACE into the sources list (AniList →
+                    // MyAnimeList → Simkl → TMDB → TVmaze), each row with
+                    // its REAL logo. ROUND 172: the pick dismisses the menu
+                    // first (the unified sheet opens over a closed menu).
+                    if (linkToOtherExpanded) {
+                        MenuDiscRowWithLogo(
+                            label = "AniList",
+                            logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist,
+                            onClick = { onDismissRequest(); onLinkAniList() },
+                        )
+                        MenuDiscRowWithLogo(
+                            label = "MyAnimeList",
+                            logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
+                            onClick = { onDismissRequest(); onLinkMal() },
+                        )
+                        MenuDiscRowWithLogo(
+                            label = "Simkl",
+                            logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl,
+                            onClick = { onDismissRequest(); onLinkSimkl() },
+                        )
+                        MenuDiscRowWithLogo(
+                            label = "TMDB",
+                            logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb,
+                            onClick = { onDismissRequest(); onLinkTmdb() },
+                        )
+                        MenuDiscRowWithLogo(
+                            label = "TVMaze",
+                            logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze,
+                            onClick = { onDismissRequest(); onLinkTvmaze() },
+                        )
+                    } else {
+                        MenuDiscRow(
+                            icon = Icons.Filled.Link,
+                            label = "Link to other",
+                            onClick = { linkToOtherExpanded = true },
+                        )
+                    }
+                    // ROUND 172: the LINKED identities — the per-source
+                    // Unlink rows (the user's model: after linking, the menu
+                    // shows "Unlink {source}"; the v1.1.107 bug hid the row
+                    // behind an AniList-only check that lied on metadata).
+                    val unlinkTargets = listOf(
+                        Triple("anilist", "Unlink AniList", onUnlinkAniList),
+                        Triple("mal", "Unlink MyAnimeList", onUnlinkMal),
+                        Triple("simkl", "Unlink Simkl", onUnlinkSimkl),
+                        Triple("tmdb", "Unlink TMDB", onUnlinkTmdb),
+                        Triple("tvmaze", "Unlink TVMaze", onUnlinkTvmaze),
+                    )
+                    unlinkTargets.forEach { (key, label, onUnlink) ->
+                        if (key in linkedIdentities) {
                             MenuDiscRow(
                                 icon = Icons.Filled.LinkOff,
-                                label = "Unlink AniList",
+                                label = label,
                                 destructive = true,
                                 onClick = {
                                     onDismissRequest()
-                                    onUnlinkAniList()
+                                    onUnlink()
                                 },
-                            )
-                        } else if (linkToOtherExpanded) {
-                            MenuSectionLabel("Pick a source")
-                            MenuDiscRow(
-                                icon = Icons.Filled.Link,
-                                label = "AniList",
-                                onClick = { onDismissRequest(); onLinkAniList() },
-                            )
-                            // ROUND 171: the rows carry the SOURCE LOGOS
-                            // (the device order: the real marks).
-                            MenuDiscRowWithLogo(
-                                label = "MyAnimeList",
-                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
-                                onClick = { onLinkMal() },
-                            )
-                            MenuDiscRowWithLogo(
-                                label = "Simkl",
-                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl,
-                                onClick = { onLinkSimkl() },
-                            )
-                            MenuDiscRowWithLogo(
-                                label = "TMDB",
-                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb,
-                                onClick = { onLinkTmdb() },
-                            )
-                            MenuDiscRowWithLogo(
-                                label = "TVMaze",
-                                logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze,
-                                onClick = { onLinkTvmaze() },
-                            )
-                        } else {
-                            MenuDiscRow(
-                                icon = Icons.Filled.Link,
-                                label = "Link to other",
-                                onClick = { linkToOtherExpanded = true },
                             )
                         }
                     }
                 }
             }
 
-            // ══ SECTION: ACTIONS ══ (hidden while the source list is
-            // expanded — the menu BECOMES the sources list)
-            if (!linkToOtherExpanded) {
+            // ══ SECTION: ACTIONS ══ (ALWAYS visible — the v1.1.107 bug hid
+            // it while the source list was expanded; the user ordered the
+            // FULL menu every time)
             MenuSectionLabel("Actions")
             MenuSectionCard {
                 MenuDiscRow(
@@ -296,10 +323,7 @@ fun DetailsActionMenu(
                 }
             }
 
-            }
-
             // ══ SECTION: TRACKING — the state speaks through color ══
-            if (!linkToOtherExpanded) {
             MenuSectionLabel("Tracking")
             MenuSectionCard {
                 MenuTrackingRow(
@@ -310,7 +334,6 @@ fun DetailsActionMenu(
                     },
                 )
             }
-            } // ROUND 171: the linkToOtherExpanded gate's closer
         }
     }
 

@@ -67,7 +67,7 @@ import kotlinx.coroutines.withContext
  * CORE_RULES §23: Reactive state (StateFlow).
  */
 class DetailsViewModel(
-    private val anilistApi: AniListApi,
+    internal val anilistApi: AniListApi,
     private val extensionManager: ExtensionManager,
     private val preferenceStore: PreferenceStore,
     private val videoResolver: VideoResolver,
@@ -76,7 +76,7 @@ class DetailsViewModel(
     private val anilistProvider: AniListDetailsProvider,
     private val autoLinkService: AutoLinkService,
     private val autoLinkPreferences: AutoLinkPreferences,
-    private val contentResolver: com.confused.anikuta.core.content.ContentResolver,
+    internal val contentResolver: com.confused.anikuta.core.content.ContentResolver,
     internal val contentRepository: com.confused.anikuta.core.content.ContentRepository,
     private val dataCacheRepository: com.confused.anikuta.core.datacache.DataCacheRepository,
     private val downloadManager: com.confused.anikuta.core.download.DownloadManager,
@@ -601,6 +601,28 @@ class DetailsViewModel(
     val unifiedLinkResults: kotlinx.coroutines.flow.StateFlow<List<UnifiedLinkResult>> =
         _unifiedLinkResults.asStateFlow()
 
+    // ROUND 172: the unified sheet's ENTRY MODE — the tracking flows'
+    // no-mapping reroutes open the sheet with fromTracking=true; the pick
+    // then lands the mapping AND opens the tracker's sheet. The LINK entry
+    // ("Link to other") stores the identity ONLY (the LINK ≠ TRACK rule).
+    internal val _unifiedLinkFromTracking = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    // ROUND 172: whether the current content is a METADATA row (the packed
+    // negative id / the kind-prefixed mainId) — drives the menu's
+    // Data-source section (a fresh metadata page has no extension identity
+    // yet, but MUST still offer "Link to other").
+    internal val _isMetadataEntry = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isMetadataEntry: kotlinx.coroutines.flow.StateFlow<Boolean> =
+        _isMetadataEntry.asStateFlow()
+
+    // ROUND 172: the LINKED identities (the menu's per-source unlink rows):
+    // "anilist" (the anime's positive anilistId — both kinds), "mal"/"simkl"
+    // (the track_entry mappings), "tmdb"/"tvmaze" (the native-content
+    // identity rows). Refreshed on load + after every pick/unlink.
+    internal val _linkedIdentities = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+    val linkedIdentities: kotlinx.coroutines.flow.StateFlow<Set<String>> =
+        _linkedIdentities.asStateFlow()
+
     // The linked usernames (the picker rows' subtitle).
     internal val _anilistLinkedUsername = kotlinx.coroutines.flow.MutableStateFlow("")
     val anilistLinkedUsername: kotlinx.coroutines.flow.StateFlow<String> = _anilistLinkedUsername.asStateFlow()
@@ -1124,7 +1146,44 @@ class DetailsViewModel(
         _showTrackSheet.value = false
         _showMarkPreviousPrompt.value = null
         _showMarkSeriesPrompt.value = false
+        _isMetadataEntry.value = false
+        _linkedIdentities.value = emptySet()
         Logger.d(TAG) { "resetState: all per-anime state cleared (loadGeneration=$loadGeneration)" }
+    }
+
+    /**
+     * ROUND 172: re-reads the LINKED identities for the current content —
+     * the menu's per-source linked state + the Unlink rows render from
+     * THIS. anilist = the anime's positive anilistId (the extension rows by
+     * construction; the metadata rows after the mergeAniListIntoUnified
+     * remerge); mal/simkl/tmdb/tvmaze = the track_entry mapping rows.
+     */
+    fun refreshLinkedIdentities() {
+        val mid = currentMainId
+        if (mid == null) {
+            _linkedIdentities.value = emptySet()
+            return
+        }
+        viewModelScope.launch {
+            val linked = mutableSetOf<String>()
+            val anime = (_state.value as? DetailsState.Success)?.anime
+            if (anime?.anilistId?.takeIf { it > 0 } != null) linked.add("anilist")
+            val repo = trackEntryRepository
+            if (repo != null) {
+                for (type in listOf(
+                    com.confused.anikuta.core.trackerapi.TrackerType.MAL,
+                    com.confused.anikuta.core.trackerapi.TrackerType.SIMKL,
+                    com.confused.anikuta.core.trackerapi.TrackerType.TMDB,
+                    com.confused.anikuta.core.trackerapi.TrackerType.TVMAZE,
+                )) {
+                    if (runCatching { repo.get(mid, type) }.getOrNull() != null) {
+                        linked.add(type.id)
+                    }
+                }
+            }
+            _linkedIdentities.value = linked
+            Logger.d(TAG) { "linked identities for $mid: $linked" }
+        }
     }
 
     // ── Load from AniList (existing flow) ──
@@ -1151,6 +1210,34 @@ class DetailsViewModel(
         // (the fine-grained tmdb_movie/tmdb_tv lives in the details' type).
         val mainId = "$kind:$remoteId"
         Logger.i(TAG) { "metadata load: $mainId" }
+
+        // ROUND 172 (the device order): the metadata load gets the SAME
+        // per-load reset + generation guard as loadFromAniListCore — the
+        // v1.1.107 bug: the state leaked across screens (currentAnimeId
+        // stayed the PREVIOUS screen's id, so linkSource persisted the
+        // extension link under the WRONG key — the "extension linked at
+        // the top but Link-to-other at the right" contradiction), and the
+        // silent auto-search ran with no scoring and no UI.
+        loadGeneration++
+        val gen = loadGeneration
+        _linkedSource.value = null
+        _episodeState.value = EpisodeState.Idle
+        _episodeMetadata.value = emptyMap()
+        _reverseAutoLinkState.value = ReverseAutoLinkState.Idle
+        _autoLinkState.value = AutoLinkState.Idle
+        _trackEntry.value = null
+        _showTrackSheet.value = false
+        _isInLibrary.value = false
+        _contentId.value = ""
+        extensionBase = null
+        anilistBase = null
+        _coverAccent.value = null
+        _nextEpisodeInfo.value = null
+        _isRefreshing.value = false
+        // THE KEY FIX: the packed id IS this content's link-key id —
+        // linkSource/unlinkSource persist under currentAnimeId's key.
+        currentAnimeId = packedId
+        _isMetadataEntry.value = true
 
         _state.value = DetailsState.Loading
         viewModelScope.launch {
@@ -1263,6 +1350,7 @@ class DetailsViewModel(
             currentMainId = mainId
             _mainIdFlow.value = mainId
             Logger.i(TAG) { "metadata state emitted for $mainId" }
+            refreshLinkedIdentities()
 
             // ── ROUND 171 (the device orders): the EPISODES + the AUTO-SEARCH ──
             val linked = _linkedSource.value
@@ -1278,27 +1366,66 @@ class DetailsViewModel(
                     }
                 }
             } else {
-                // The AUTO-SEARCH (the round-165 hand-off semantics): the
-                // ExtensionManager's CS-bridged sources (the round-4 bridge:
-                // every trusted CS provider is published as an AnimeSource)
-                // search the title; the best match links (LINK ≠ TRACK — the
-                // identity link only). The details VM has no cloudstream
-                // repository — the manager IS the source of the providers.
-                // The CS-bridged providers live in the ExtensionManager's
-                // sources map (the round-4 bridge) — the first AnimeCatalogueSource.
-                val providerSource = extensionManager.sources.value.values
-                    .filterIsInstance<eu.kanade.tachiyomi.animesource.AnimeCatalogueSource>()
-                    .firstOrNull()
-                if (providerSource != null) {
-                    runCatching {
-                        val page = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            providerSource.getSearchAnime(1, anime.title, eu.kanade.tachiyomi.animesource.model.AnimeFilterList())
+                // ROUND 172 (the device order): the metadata auto-search =
+                // THE ANILIST PATTERN — the ReverseAutoLinkService's SCORED
+                // search across the trusted providers drives the SAME visible
+                // states the AniList page shows (Searching extensions… → the
+                // Matched card → the link + the episodes; NoMatch → "Link
+                // source manually"). The v1.1.107 silent first-provider/
+                // first-result link had NO scoring (the STEPS mismatch) and
+                // NO UI (the unprompted auto-link). The D-238 user-unlinked
+                // flag honors the metadata ids (the negative packed ids).
+                val reverse = reverseAutoLinkService
+                if (reverse != null && !autoLinkPreferences.isUserUnlinked(packedId)) {
+                    _reverseAutoLinkState.value = ReverseAutoLinkState.Searching
+                    val reverseGen = loadGeneration
+                    viewModelScope.launch {
+                        val result = try {
+                            reverse.attemptReverseAutoLink(
+                                anilistTitle = anime.title,
+                                anilistYear = anime.seasonYear,
+                            )
+                        } catch (e: Exception) {
+                            if (reverseGen != loadGeneration) return@launch
+                            Logger.w(TAG) { "metadata reverse auto-link failed: ${e.message}" }
+                            _reverseAutoLinkState.value =
+                                ReverseAutoLinkState.Error(e.message ?: "Unknown error")
+                            return@launch
                         }
-                        val best = page.animes.firstOrNull() ?: return@runCatching
-                        linkSource(providerSource, best)
-                        Logger.i(TAG) { "metadata auto-search linked: ${best.url} (${providerSource.name})" }
-                    }.onFailure { e ->
-                        Logger.w(TAG) { "metadata auto-search failed (non-fatal): ${e.message}" }
+                        if (reverseGen != loadGeneration) {
+                            Logger.d(TAG) { "metadata reverse auto-link result discarded (stale)" }
+                            return@launch
+                        }
+                        when (result) {
+                            is com.confused.anikuta.core.smartmatcher.ReverseAutoLinkResult.Matched -> {
+                                Logger.i(TAG) {
+                                    "metadata reverse auto-link MATCHED: " +
+                                        "${result.source.name} '${result.sAnime.title}' " +
+                                        "(score=${result.score})"
+                                }
+                                // The same linkSource() the AniList flow uses —
+                                // persists under currentAnimeId's key (now the
+                                // packed id), links the DB axis, fetches the
+                                // episodes, rebuilds the base.
+                                linkSource(result.source, result.sAnime)
+                                _reverseAutoLinkState.value = ReverseAutoLinkState.Matched(
+                                    sourceName = result.source.name,
+                                    animeTitle = result.sAnime.title,
+                                    thumbnailUrl = result.sAnime.thumbnail_url,
+                                    score = result.score,
+                                )
+                            }
+                            is com.confused.anikuta.core.smartmatcher.ReverseAutoLinkResult.NoMatch ->
+                                _reverseAutoLinkState.value = ReverseAutoLinkState.NoMatch(
+                                    bestScore = result.bestScore,
+                                    searchedTitle = result.searchedTitle,
+                                )
+                            is com.confused.anikuta.core.smartmatcher.ReverseAutoLinkResult.Skipped ->
+                                _reverseAutoLinkState.value = ReverseAutoLinkState.Idle
+                            is com.confused.anikuta.core.smartmatcher.ReverseAutoLinkResult.Error ->
+                                _reverseAutoLinkState.value =
+                                    ReverseAutoLinkState.Error(result.message)
+                        }
                     }
                 }
             }
@@ -1349,6 +1476,7 @@ class DetailsViewModel(
         _showTrackSheet.value = false
         _showMarkPreviousPrompt.value = null
         _showMarkSeriesPrompt.value = false
+        _isMetadataEntry.value = false
         // Read the saved source link from PreferenceStore SYNCHRONOUSLY (SharedPreferences
         // is in-memory cached) so the UI shows the correct linked source immediately —
         // no async gap where "No Source" is shown despite being linked.
@@ -2139,6 +2267,7 @@ class DetailsViewModel(
 
     fun loadFromExtension(sourceId: Long, animeUrl: String, title: String, thumbnailUrl: String?, year: Int? = null) {
         currentAnimeId = 0 // No AniList ID yet — will be set by auto-link if it matches.
+        _isMetadataEntry.value = false
         // D-192 Phase 5: Increment generation — async blocks from previous loads will be discarded.
         loadGeneration++
         // CRITICAL: Reset ALL state when loading a new anime (D-131).
@@ -2990,7 +3119,7 @@ class DetailsViewModel(
      * @param anilistId The AniList ID to fetch.
      * @param priority The priority to use for the re-merge.
      */
-    private suspend fun mergeAniListIntoUnified(
+    internal suspend fun mergeAniListIntoUnified(
         anilistId: Int,
         priority: com.confused.anikuta.core.common.model.DataSourcePriority =
             com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST,
@@ -3325,6 +3454,34 @@ class DetailsViewModel(
         anilistBase = null
         currentAnimeId = 0
         remergeBases(com.confused.anikuta.core.common.model.DataSourcePriority.EXTENSION)
+
+    /**
+     * ROUND 172: the METADATA row's AniList unlink — the extension-entry
+     * unlinkAniList requires a source identity; a metadata row has none
+     * (the packed id IS the row). Clears the DB axis + reloads the row from
+     * its data axis (the tested loadMetadataContent path rebuilds the
+     * state, the enrichment, the saved extension link, the identities).
+     */
+    fun unlinkAniListFromMetadata() {
+        val mainId = currentMainId ?: return
+        val anime = (_state.value as? DetailsState.Success)?.anime
+        Logger.i(TAG) { "Unlinking the metadata row's AniList identity: $mainId" }
+        contentResolver.unlinkAniList(mainId)
+        refreshContentId(mainId)
+        anilistBase = null
+        // The packed id from the mainId — the loader re-keys the state.
+        val kind = mainId.substringBefore(":")
+        val remoteId = mainId.substringAfter(":").toLongOrNull() ?: return
+        val kindIndex = when (kind) {
+            "tmdb" -> 1
+            "tvmaze" -> 2
+            "mal" -> 3
+            "simkl" -> 4
+            else -> 0
+        }
+        val packedId = -(remoteId * 8 + kindIndex).toInt()
+        loadMetadataContent(packedId, anime?.displayName, anime?.coverUrl)
+    }
         // ROUND 102 (WS-C): the title follows the now-extension-only display —
         // the Library row reads main_entry.title, and the unlink already
         // flipped display_source to 'extension' inside contentResolver.unlinkAniList.
@@ -3683,7 +3840,9 @@ class DetailsViewModel(
 
         // D-238: Clear the "user unlinked" flag — the user is manually linking
         // a source, so future auto-links should be allowed again.
-        if (animeId > 0) {
+        // ROUND 172: metadata ids ride this too (the negative packed ids —
+        // the same unlink/relink semantics as the AniList ones).
+        if (animeId != 0) {
             autoLinkPreferences.clearUserUnlinked(animeId)
         }
 
@@ -3919,7 +4078,8 @@ class DetailsViewModel(
 
         // D-238: Mark this anime as "user unlinked" so reverse auto-link
         // doesn't re-link the same (or a different) source on next open.
-        if (animeId > 0) {
+        // ROUND 172: metadata ids ride this too (the negative packed ids).
+        if (animeId != 0) {
             autoLinkPreferences.markUserUnlinked(animeId)
             Logger.d(TAG) { "D-238: Marked anilistId=$animeId as user-unlinked (reverse auto-link will skip)" }
         }

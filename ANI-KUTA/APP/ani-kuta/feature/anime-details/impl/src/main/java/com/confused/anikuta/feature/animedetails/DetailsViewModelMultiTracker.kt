@@ -66,15 +66,24 @@ fun DetailsViewModel.openTrackerPickerOrSheet() {
         if (simklTracker != null && runCatching { simklTracker!!.isLoggedIn() }.getOrDefault(false)) {
             linked.add(TrackerType.SIMKL)
         }
-        if (linked.size > 1) {
-            _showTrackerPicker.value = true
-        } else {
-            _activeTrackerType.value = linked.firstOrNull() ?: TrackerType.ANILIST
-            when (_activeTrackerType.value) {
-                TrackerType.MAL -> openMalTrackSheet()
-                TrackerType.SIMKL -> openSimklTrackSheet()
-                else -> openTrackSheet()
+        when {
+            // ROUND 172 (the device orders): 0 linked → the picker's honest
+            // "No trackers are connected" (the v1.1.107 bug fell through to
+            // the ANILIST default → the AniList not-connected sheet).
+            linked.isEmpty() -> _showTrackerPicker.value = true
+            // 1 linked → the DIRECT open (that tracker's flow — the sheet
+            // or, with no mapping, the unified link sheet's tracking entry;
+            // the v1.1.107 dead taps were the never-hosted link sheets).
+            linked.size == 1 -> {
+                _activeTrackerType.value = linked.first()
+                when (_activeTrackerType.value) {
+                    TrackerType.MAL -> openMalTrackSheet()
+                    TrackerType.SIMKL -> openSimklTrackSheet()
+                    else -> openTrackSheet()
+                }
             }
+            // >1 linked → the picker.
+            else -> _showTrackerPicker.value = true
         }
     }
 }
@@ -118,8 +127,12 @@ fun DetailsViewModel.openMalTrackSheet() {
         }
         val cached = runCatching { repo.get(mid, TrackerType.MAL) }.getOrNull()
         if (cached == null) {
-            Logger.i(TAG_MT) { "openMalTrackSheet — no MAL mapping; opening MalLinkSheet" }
-            _showMalLinkSheet.value = true
+            // ROUND 172: the unified link sheet (fromTracking = true — the
+            // pick lands the mapping AND returns here). The v1.1.107 bug:
+            // the MalLinkSheet flag was never hosted, so the tap showed
+            // NOTHING.
+            Logger.i(TAG_MT) { "openMalTrackSheet — no MAL mapping; opening the unified link sheet" }
+            openUnifiedLinkSheet("mal", fromTracking = true)
             return@launch
         }
         _activeTrackerType.value = TrackerType.MAL
@@ -335,8 +348,9 @@ fun DetailsViewModel.openSimklTrackSheet() {
         }
         val cached = runCatching { repo.get(mid, TrackerType.SIMKL) }.getOrNull()
         if (cached == null) {
-            Logger.i(TAG_MT) { "openSimklTrackSheet — no Simkl mapping; opening SimklLinkSheet" }
-            _showSimklLinkSheet.value = true
+            // ROUND 172: the unified link sheet (the same fromTracking return).
+            Logger.i(TAG_MT) { "openSimklTrackSheet — no Simkl mapping; opening the unified link sheet" }
+            openUnifiedLinkSheet("simkl", fromTracking = true)
             return@launch
         }
         _activeTrackerType.value = TrackerType.SIMKL
@@ -520,8 +534,13 @@ fun DetailsViewModel.deleteFromSimkl() {
 //    the TMDB/TVmaze picks enrich the page from that source's data (the
 //    "the data source displays the data" semantics).
 
-fun DetailsViewModel.openUnifiedLinkSheet(source: String) {
+fun DetailsViewModel.openUnifiedLinkSheet(source: String, fromTracking: Boolean = false) {
     _showTrackSheet.value = false
+    // ROUND 172: the tracking flows' no-mapping reroute lands here with
+    // fromTracking=true — the pick then opens the tracker's sheet. The
+    // LINK entry ("Link to other") leaves it false: the pick stores the
+    // identity ONLY (the LINK ≠ TRACK rule).
+    _unifiedLinkFromTracking.value = fromTracking
     _showUnifiedLinkSheet.value = source
     _unifiedLinkResults.value = emptyList()
 }
@@ -529,6 +548,7 @@ fun DetailsViewModel.openUnifiedLinkSheet(source: String) {
 fun DetailsViewModel.dismissUnifiedLinkSheet() {
     _showUnifiedLinkSheet.value = null
     _unifiedLinkResults.value = emptyList()
+    _unifiedLinkFromTracking.value = false
 }
 
 fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
@@ -536,12 +556,25 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
         _unifiedLinkSearching.value = true
         val results: List<UnifiedLinkResult> = runCatching {
             when (source) {
+                // ROUND 172: the AniList backend joins — ONE sheet for ALL 5
+                // sources. The ratings normalize to the 10-scale for the
+                // shared meta row (AniList's averageScore is 0-100).
+                "anilist" -> anilistApi.searchAnime(query, page = 1, perPage = 20).map { node ->
+                    UnifiedLinkResult(
+                        id = node.id,
+                        title = node.displayName,
+                        posterUrl = node.coverUrl,
+                        rating = node.averageScore?.toDouble()?.div(10.0),
+                        year = node.seasonYear,
+                    )
+                }
                 "mal" -> malTracker?.searchWithMeta(query).orEmpty().map { node ->
                     UnifiedLinkResult(
                         id = node.id,
                         title = node.title ?: "—",
                         posterUrl = node.main_picture?.medium ?: node.main_picture?.large,
-                        meta = node.num_episodes?.let { "$it episodes" },
+                        rating = node.mean?.toDouble(),
+                        year = node.start_season?.year,
                     )
                 }
                 "simkl" -> simklTracker?.searchItems(query).orEmpty().mapNotNull { node ->
@@ -550,7 +583,8 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
                         id = id,
                         title = node.title ?: "—",
                         posterUrl = node.poster?.let { "https://simkl.in/posters/" + it + "_m.jpg" } ?: node.poster_url,
-                        meta = node.release_date?.takeLast(4),
+                        rating = null,
+                        year = node.release_date?.takeLast(4)?.toIntOrNull(),
                     )
                 }
                 "tmdb" -> tmdbApi?.search(query).orEmpty().map { item ->
@@ -558,7 +592,8 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
                         id = item.id,
                         title = item.title,
                         posterUrl = item.posterUrl,
-                        meta = listOfNotNull(item.mediaType, item.year?.toString()).joinToString(" · "),
+                        rating = item.rating,
+                        year = item.year,
                     )
                 }
                 "tvmaze" -> tvmazeApi?.search(query).orEmpty().map { show ->
@@ -566,7 +601,8 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
                         id = show.id,
                         title = show.title,
                         posterUrl = show.posterUrl,
-                        meta = show.year?.toString(),
+                        rating = show.rating?.toDouble(),
+                        year = show.year,
                     )
                 }
                 else -> emptyList()
@@ -580,83 +616,150 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
 }
 
 /**
- * The unified pick: the MAL/Simkl mappings store (the LINK ≠ TRACK); the
- * TMDB/TVmaze picks ENRICH the page (the source's data merges into the
- * details state via the content_details' data axis).
+ * ROUND 172: the unified pick LINKS FOR REAL on every source:
+ *  • anilist — the extension entry → linkAniListEntry (the proven cache +
+ *    persist + merge + display-switch path); the metadata entry →
+ *    mergeAniListIntoUnified (the fetch + the DB axis + the remerge).
+ *  • mal/simkl — the track_entry mapping (the LINK ≠ TRACK identity), and
+ *    when the entry point was TRACKING (the no-mapping reroute) the
+ *    tracker's sheet opens after the mapping lands.
+ *  • tmdb/tvmaze — the NATIVE content → the track_entry identity row (the
+ *    generic mapping table; the tracking dispatch never consults these
+ *    types); the METADATA row → the picked entry's data merges into the
+ *    data axis (the v1.1.107 semantics the device approved).
+ * Every branch refreshes _linkedIdentities (the menu's linked state).
  */
 fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) {
+    val fromTracking = _unifiedLinkFromTracking.value
     _showUnifiedLinkSheet.value = null
     _unifiedLinkResults.value = emptyList()
+    _unifiedLinkFromTracking.value = false
     val mid = currentMainId ?: return
     when (source) {
-        "mal" -> {
-            val repo = trackEntryRepository ?: return
-            viewModelScope.launch {
-                runCatching {
-                    repo.upsert(
-                        TrackEntry(
-                            contentKey = mid,
-                            trackerId = result.id,
-                            status = TrackStatus.PLAN_TO_WATCH,
-                            progress = 0,
-                            totalEpisodes = null,
-                            listId = null,
-                            startedAt = null,
-                            completedAt = null,
-                            updatedAt = System.currentTimeMillis(),
-                        ),
-                        TrackerType.MAL,
-                    )
-                }.onFailure { e -> Logger.w(TAG_MT) { "the MAL link store failed: " + (e.message ?: "") } }
-            }
-        }
-        "simkl" -> {
-            val repo = trackEntryRepository ?: return
-            viewModelScope.launch {
-                runCatching {
-                    repo.upsert(
-                        TrackEntry(
-                            contentKey = mid,
-                            trackerId = result.id,
-                            status = TrackStatus.PLAN_TO_WATCH,
-                            progress = 0,
-                            totalEpisodes = null,
-                            listId = null,
-                            startedAt = null,
-                            completedAt = null,
-                            updatedAt = System.currentTimeMillis(),
-                        ),
-                        TrackerType.SIMKL,
-                    )
-                }.onFailure { e -> Logger.w(TAG_MT) { "the Simkl link store failed: " + (e.message ?: "") } }
-            }
-        }
-        "tmdb", "tvmaze" -> {
-            // The ENRICHMENT v1: for the METADATA mainId (the kind: prefix)
-            // the picked entry's data merges into the data axis (the
-            // "the data source displays the data" semantics). The AniList/
-            // extension content's cross-source identity = the caching
-            // round's work (the data-axis wipe risk on those rows).
-            viewModelScope.launch {
-                runCatching {
-                    if (!mid.contains(":") || mid.substringBefore(":") in setOf("anilist", "cloudstream")) {
-                        Logger.i(TAG_MT) { "the $source identity pick on the native content — the cross-source mapping lands with the caching pass" }
-                        return@runCatching
-                    }
-                    val repo = contentRepository ?: return@runCatching
-                    val now = System.currentTimeMillis()
-                    repo.upsertContentDetails(
-                        com.confused.anikuta.core.content.ContentDetails(
-                            mainId = mid,
-                            dataSourceType = source,
-                            dataSourceRefId = result.id.toString(),
-                            dataCoverUrl = result.posterUrl,
-                            dataUpdatedAt = now,
-                        ),
-                    )
-                    Logger.i(TAG_MT) { "the $source identity linked: " + result.title }
+        "anilist" -> {
+            val anime = (_state.value as? DetailsState.Success)?.anime
+            if (anime?.sourceId != null && anime.animeUrl != null) {
+                linkAniListEntry(result.id)
+                refreshLinkedIdentities()
+            } else {
+                viewModelScope.launch {
+                    runCatching { mergeAniListIntoUnified(result.id) }
+                        .onFailure { e ->
+                            Logger.w(TAG_MT) { "the metadata AniList link failed: " + (e.message ?: "") }
+                        }
+                    refreshLinkedIdentities()
                 }
             }
         }
+        "mal", "simkl" -> {
+            val repo = trackEntryRepository ?: return
+            val type = if (source == "mal") TrackerType.MAL else TrackerType.SIMKL
+            viewModelScope.launch {
+                runCatching {
+                    repo.upsert(
+                        TrackEntry(
+                            contentKey = mid,
+                            trackerId = result.id,
+                            status = TrackStatus.PLAN_TO_WATCH,
+                            progress = 0,
+                            totalEpisodes = null,
+                            listId = null,
+                            startedAt = null,
+                            completedAt = null,
+                            updatedAt = System.currentTimeMillis(),
+                        ),
+                        type,
+                    )
+                }.onFailure { e ->
+                    Logger.w(TAG_MT) { "the $source link store failed: " + (e.message ?: "") }
+                }
+                refreshLinkedIdentities()
+                // The TRACKING entry's return path: the mapping now exists →
+                // the tracker's sheet opens driving that tracker.
+                if (fromTracking) {
+                    if (source == "mal") openMalTrackSheet() else openSimklTrackSheet()
+                }
+            }
+        }
+        "tmdb", "tvmaze" -> {
+            if (!mid.contains(":") || mid.substringBefore(":") in setOf("anilist", "cloudstream")) {
+                // The NATIVE content: the identity rides track_entry (the
+                // LINK ≠ TRACK identity; the tracking flows never consult
+                // the TMDB/TVMAZE types).
+                val repo = trackEntryRepository ?: return
+                val type = if (source == "tmdb") TrackerType.TMDB else TrackerType.TVMAZE
+                viewModelScope.launch {
+                    runCatching {
+                        repo.upsert(
+                            TrackEntry(
+                                contentKey = mid,
+                                trackerId = result.id,
+                                status = TrackStatus.PLAN_TO_WATCH,
+                                progress = 0,
+                                totalEpisodes = null,
+                                listId = null,
+                                startedAt = null,
+                                completedAt = null,
+                                updatedAt = System.currentTimeMillis(),
+                            ),
+                            type,
+                        )
+                    }.onFailure { e ->
+                        Logger.w(TAG_MT) { "the $source identity store failed: " + (e.message ?: "") }
+                    }
+                    refreshLinkedIdentities()
+                }
+            } else {
+                // The METADATA row: the picked entry's data merges into the
+                // data axis (the "the data source displays the data"
+                // semantics the v1.1.107 device round approved).
+                viewModelScope.launch {
+                    runCatching {
+                        val repo = contentRepository ?: return@launch
+                        val now = System.currentTimeMillis()
+                        repo.upsertContentDetails(
+                            com.confused.anikuta.core.content.ContentDetails(
+                                mainId = mid,
+                                dataSourceType = source,
+                                dataSourceRefId = result.id.toString(),
+                                dataCoverUrl = result.posterUrl,
+                                dataUpdatedAt = now,
+                            ),
+                        )
+                        Logger.i(TAG_MT) { "the $source identity linked: " + result.title }
+                    }
+                    refreshLinkedIdentities()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * ROUND 172: the per-source UNLINK (the menu's Unlink rows). anilist
+ * routes by the content kind (the extension path / the metadata reload);
+ * the other four clear their track_entry identity row.
+ */
+fun DetailsViewModel.unlinkUnifiedIdentity(source: String) {
+    if (source == "anilist") {
+        if (_isMetadataEntry.value) unlinkAniListFromMetadata() else unlinkAniList()
+        return
+    }
+    val mid = currentMainId ?: return
+    val type = when (source) {
+        "mal" -> TrackerType.MAL
+        "simkl" -> TrackerType.SIMKL
+        "tmdb" -> TrackerType.TMDB
+        "tvmaze" -> TrackerType.TVMAZE
+        else -> return
+    }
+    val repo = trackEntryRepository ?: return
+    viewModelScope.launch {
+        runCatching { repo.delete(mid, type) }
+            .onFailure { e ->
+                Logger.w(TAG_MT) { "unlink $source failed: " + (e.message ?: "") }
+            }
+        refreshLinkedIdentities()
+        Logger.i(TAG_MT) { "the $source identity unlinked for $mid" }
     }
 }

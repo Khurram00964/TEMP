@@ -124,10 +124,14 @@ class TmdbApi(
         }
     }
 
-    /** The day's trending (movies + TV mixed) — the home's movies/series feed. */
-    suspend fun trending(): List<TmdbItem> = withContext(Dispatchers.IO) {
+    /**
+     * The day's trending (movies + TV mixed) — the home's movies/series
+     * feed + the search page's TMDB default. ROUND 172: the page param
+     * joins (the load-more at page 2+).
+     */
+    suspend fun trending(page: Int = 1): List<TmdbItem> = withContext(Dispatchers.IO) {
         if (!configured()) return@withContext emptyList()
-        parseItems(get("/trending/all/day", "language" to "en-US"))
+        parseItems(get("/trending/all/day", "language" to "en-US", "page" to page.toString()))
     }
 
     /** The multi search (movies + TV) — the search page's TMDB source. */

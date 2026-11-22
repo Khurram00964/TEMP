@@ -155,18 +155,18 @@ class MalTracker(
      * MalLinkSheet's pick rows (the title + the cover + the episodes). The
      * app-auth read (no user token needed).
      */
-    suspend fun searchWithMeta(query: String, limit: Int = 10): List<MalAnime> =
+    suspend fun searchWithMeta(query: String, limit: Int = 10, offset: Int = 0): List<MalAnime> =
         withContext(Dispatchers.IO) {
-            api.searchAnime(query, limit)
+            api.searchAnime(query, limit, offset)
         }
 
     /**
      * ROUND 168 (Phase E): the popularity ranking (the search source's
      * blank-query default). App-auth — works unlinked.
      */
-    suspend fun topAnimeForUi(limit: Int = 20): List<MalAnime> =
+    suspend fun topAnimeForUi(limit: Int = 20, offset: Int = 0): List<MalAnime> =
         withContext(Dispatchers.IO) {
-            api.topAnime(limit)
+            api.topAnime(limit, offset)
         }
 
     /**

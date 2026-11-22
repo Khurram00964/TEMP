@@ -464,6 +464,12 @@ fun DetailsScreen(
     // exposes the reactive property.)
     val isContentTracked by viewModel.isTracked.collectAsState()
 
+    // ── ROUND 172: the metadata-entry flag + the LINKED identities — the
+    // menu's Data-source section gating (the metadata rows offer "Link to
+    // other" too) + the per-source Unlink rows render from the set. ──
+    val isMetadataEntry by viewModel.isMetadataEntry.collectAsState()
+    val linkedIdentities by viewModel.linkedIdentities.collectAsState()
+
     // ── ROUND 102 (WS-B): the three-dot menu is an ANCHORED DropdownMenu ──
     // again (expanding from the button itself — the user's round-102 spec;
     // the round-101 bottom sheet is retired). Its content composes through
@@ -1285,20 +1291,31 @@ fun DetailsScreen(
                                         // this round's tracking phase).
                                         isTracked = isContentTracked,
                                         isExtensionEntry = anime.isFromExtension == true,
-                                        isAniListLinked = anime.anilistId != null,
-                                        onLinkAniList = { viewModel.openManualLinkSheet() },
-                                        // ROUND 170: the "Link to other" picks —
-                                        // the MAL/Simkl link sheets exist (the
-                                        // tracker mapping flows); the
-                                        // TMDB/TVmaze picks hand off to the
-                                        // search pre-set to that source (the
-                                        // cross-source identity mapping lands
-                                        // with the caching round).
+                                        // ROUND 172: the metadata rows offer
+                                        // "Link to other" even before any
+                                        // extension identity exists.
+                                        isMetadataEntry = isMetadataEntry,
+                                        // ROUND 172: the linked identities
+                                        // drive the per-source Unlink rows
+                                        // (the anilist check that lied on
+                                        // metadata rows is gone).
+                                        linkedIdentities = linkedIdentities,
+                                        // ROUND 172: the AniList link routes
+                                        // through the unified sheet (ONE UI
+                                        // for all 5 sources).
+                                        onLinkAniList = { viewModel.openUnifiedLinkSheet("anilist") },
                                         onLinkMal = { viewModel.openUnifiedLinkSheet("mal") },
                                         onLinkSimkl = { viewModel.openUnifiedLinkSheet("simkl") },
                                         onLinkTmdb = { viewModel.openUnifiedLinkSheet("tmdb") },
                                         onLinkTvmaze = { viewModel.openUnifiedLinkSheet("tvmaze") },
-                                        onUnlinkAniList = { viewModel.unlinkAniList() },
+                                        onUnlinkAniList = {
+                                            if (isMetadataEntry) viewModel.unlinkAniListFromMetadata()
+                                            else viewModel.unlinkAniList()
+                                        },
+                                        onUnlinkMal = { viewModel.unlinkUnifiedIdentity("mal") },
+                                        onUnlinkSimkl = { viewModel.unlinkUnifiedIdentity("simkl") },
+                                        onUnlinkTmdb = { viewModel.unlinkUnifiedIdentity("tmdb") },
+                                        onUnlinkTvmaze = { viewModel.unlinkUnifiedIdentity("tvmaze") },
                                         buildShareLinks = {
                                             viewModel.buildShareContent()
                                                 ?.let {
@@ -2207,8 +2224,8 @@ fun DetailsScreen(
         )
     }
 
-    // ── ROUND 171: THE UNIFIED LINK SHEET (ONE UI for every source — the
-    // device order: the same design language, the different backends) ──
+    // ── ROUND 171 → 172: THE UNIFIED LINK SHEET (ONE UI for every source —
+    // ALL 5 now, the menu-vocabulary design, the rating + year rows) ──
     val showUnifiedLinkSheet by viewModel.showUnifiedLinkSheet.collectAsState()
     if (showUnifiedLinkSheet != null) {
         val linkSearching by viewModel.unifiedLinkSearching.collectAsState()
@@ -2216,11 +2233,20 @@ fun DetailsScreen(
         val seedTitle = (state as? DetailsState.Success)?.anime?.title.orEmpty()
         UnifiedLinkSheet(
             sourceName = when (showUnifiedLinkSheet) {
+                "anilist" -> "AniList"
                 "mal" -> "MyAnimeList"
                 "simkl" -> "Simkl"
                 "tmdb" -> "TMDB"
                 "tvmaze" -> "TVMaze"
                 else -> "Source"
+            },
+            sourceLogoRes = when (showUnifiedLinkSheet) {
+                "anilist" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist
+                "mal" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal
+                "simkl" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl
+                "tmdb" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb
+                "tvmaze" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze
+                else -> null
             },
             seedTitle = seedTitle,
             isSearching = linkSearching,

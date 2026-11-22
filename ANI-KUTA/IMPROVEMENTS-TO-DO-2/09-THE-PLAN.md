@@ -353,3 +353,65 @@ NEXT CYCLE (the ordered queue):
    ones work).
 9. **🟠 THE PER-SOURCE SEARCH CACHING:** the 2-page caches per source, the
    refresh, the 12h auto — the unified system (NOT per-source copies).
+
+---
+
+## J. THE ROUND-172 ORDER (the v1.1.107 device report — the correctness round)
+
+The verdicts first: the enrichment + the unified cards + the compact
+trackers + the quick re-verifications = APPROVED. The caching + the
+pagination = the explicit orders. The rest = the fixes.
+
+1. **🔴 CYCLE A — THE METADATA AUTO-LINK = THE ANILIST PATTERN.** The
+   v1.1.107 metadata loader silently linked the FIRST provider's FIRST
+   search result (no scoring, no UI, no prompt — the "STEPS opens another
+   anime" mismatch) and persisted the link under a STALE key
+   (currentAnimeId was never set to the packed id → KEY_SOURCE_LINK +
+   0/the previous anime → the "extension linked at the top but Link-to-
+   other at the right" contradiction). THE FIX, exactly the AniList
+   semantics: (a) the full per-load state reset + the generation guard +
+   currentAnimeId = packedId in loadMetadataContent; (b) the silent
+   auto-search REPLACED by the ReverseAutoLinkService flow (the scored
+   matcher across the trusted providers) driving _reverseAutoLinkState —
+   the SAME live preview the AniList page shows (Searching extensions… →
+   the Matched card → the link + the episodes; NoMatch → "Link source
+   manually").
+2. **🔴 CYCLE B — THE ONE LINK SHEET (the new bottom-up menu).** ONE new
+   LinkSourceSheet for ALL 5 sources (AniList included — ManualLinkSheet
+   retires), the UI taking its inspiration from the three-dot menu (the
+   section labels, the crimped cards, the disc rows). NO description
+   text (the user: "remove all of it"). The rows: cover + title +
+   RATING + YEAR. The picks LINK FOR REAL + the page reflects it: the
+   menu shows the linked sources + "Unlink {source}" per source (the
+   MAL/Simkl mappings = track_entry rows; the AniList = anilistId; the
+   TMDB/TVmaze = the data-axis identity slot — ONE external identity per
+   row in v1, documented).
+3. **🔴 CYCLE C — THE MENU RESET + THE ANIMATION.** The menu ALWAYS opens
+   in the default state (the LaunchedEffect(onDismissRequest) reset was
+   dead — the lambda never changed identity; reset on `expanded` → false
+   like sharePage does). The Link-to-other expansion ANIMATES. The
+   AniList row gets its logo (ic_tracker_anilist).
+4. **🔴 CYCLE D — THE TRACK-ON PICKER.** 0 linked → the picker sheet with
+   the honest "No trackers are connected" (NOT the AniList not-connected
+   sheet). 1 linked (ANY) → the direct open. >1 → the picker with
+   WORKING rows — the MAL/Simkl no-mapping path opens the LINK sheet
+   (the openTrackSheet → openManualLinkSheet pattern; the dead
+   _showMalLinkSheet/_showSimklLinkSheet flags were never hosted — the
+   sheets never rendered).
+5. **🟠 CYCLE E — THE TRACKERS CARDS.** MAL/Simkl: the "Not linked" tag
+   REPLACED by the Link button; linked → the Unlink button at the NAME
+   ROW's rightmost (not the bottom-right). The AniList card unchanged.
+6. **🔴 CYCLE F — THE SEARCH PAGINATION.** MAL joins the paginated set
+   (the v2 offset: limit=20&offset=(page-1)*20); TMDB/AniList verified
+   wired; TVmaze/Simkl = the one-shot APIs (the honest "end of results"
+   footer replaces the silent stop). The defaults feeds paginate where
+   the API pages (TMDB trending ?page=, MAL ranking offset).
+7. **🔴 CYCLE G — THE PER-SOURCE SEARCH CACHING (09-H's design).** The
+   source's DEFAULT feed (the blank-query view) cached per source — the
+   first 2 pages — riding the browse_cache expiry pattern; cache-first
+   instant render; the 12h auto-refresh; the REFRESH action (clear +
+   refetch). TVmaze/Simkl (one-shot) cache their single page.
+8. **📋 THE CHECKLISTS GO LOGICAL** (the user's order): the steps follow
+   the real user flow — the search page's source menu first, then the
+   cards, then the details, then the menu, then the links, then the
+   tracking, then the settings.

@@ -34,12 +34,19 @@ data class MalMyListStatus(
 )
 
 @Serializable
+data class MalStartSeason(
+    val year: Int? = null,
+)
+
+@Serializable
 data class MalAnime(
     val id: Int,
     val title: String? = null,
     val main_picture: MalMainPicture? = null,
     val num_episodes: Int? = null,
     val mean: Float? = null,
+    // ROUND 172: the search rows' year (the unified link sheet's meta row).
+    val start_season: MalStartSeason? = null,
     val my_list_status: MalMyListStatus? = null,
 )
 

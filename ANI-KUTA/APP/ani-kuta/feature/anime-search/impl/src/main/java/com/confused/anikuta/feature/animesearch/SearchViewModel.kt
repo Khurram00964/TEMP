@@ -223,6 +223,11 @@ class SearchViewModel(
         ANIYOMI_SEARCH,
         CS_SEARCH,
         TMDB_SEARCH, // ROUND 165: the TMDB multi-search paginates (20/page)
+        // ROUND 172: the MAL v2 offset joins (the search + the ranking
+        // default, 20/page); the TMDB trending default pages too.
+        MAL_SEARCH,
+        TMDB_TRENDING,
+        MAL_DEFAULTS,
         NONE,
     }
 
@@ -804,6 +809,36 @@ class SearchViewModel(
      * device-reported bug where default results never came back after clearing
      * a search.
      */
+    // ── ROUND 172: THE PER-SOURCE SEARCH CACHING (the D-278 pattern
+    // generalized) ── the defaults feeds cache in browse_cache (the
+    // search:defaults:{source} keys): the cached pages render INSTANTLY
+    // (offline too), then the background refresh lands the fresh data +
+    // rewrites the row. The 12-hour expiry rides expires_at (the sweep
+    // reclaims); 2 pages where the API pages (TMDB trending, MAL ranking),
+    // 1 for the one-shot feeds (TVmaze, Simkl).
+    private fun cacheKeyFor(source: DataSourceKind) = "search:defaults:" + source.id
+
+    private fun clearDefaultsCache(source: DataSourceKind) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { dataCacheRepository.deleteBrowseCache(cacheKeyFor(source)) }
+                    .onFailure { Logger.w(TAG) { "the defaults cache clear failed: ${it.message}" } }
+            }
+        }
+    }
+
+    private suspend fun writeDefaultsCache(source: DataSourceKind, results: List<DataSourceResult>) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                dataCacheRepository.upsertBrowseCacheWithTtl(
+                    cacheKeyFor(source),
+                    encodeDefaultsCache(results),
+                    SEARCH_DEFAULTS_TTL_MS,
+                )
+            }.onFailure { Logger.w(TAG) { "the defaults cache write failed: ${it.message}" } }
+        }
+    }
+
     private fun loadDefaults() {
         if (_query.value.isNotBlank()) return
         if (defaultsJob?.isActive == true) return
@@ -852,9 +887,12 @@ class SearchViewModel(
         _uiState.value = SearchUiState.Loading
         searchJob = viewModelScope.launch {
             try {
-                // ROUND 165: TMDB paginates (/search/multi&page=N, 20/page);
-                // TVmaze's search does not (the hasMore stays false).
+                // ROUND 165: TMDB paginates (/search/multi&page=N, 20/page).
+                // ROUND 172: the MAL v2 offset joins (20/page). TVmaze's and
+                // Simkl's searches are one-shot (the honest end-cap marks
+                // the list complete — no silent stop).
                 val isTmdb = _dataSource.value == DataSourceKind.TMDB
+                val isMal = _dataSource.value == DataSourceKind.MAL
                 val results = when (_dataSource.value) {
                     DataSourceKind.TMDB -> {
                         if (!tmdbPreferences.enabled) emptyList()
@@ -864,18 +902,23 @@ class SearchViewModel(
                         if (!tvmazePreferences.enabled) emptyList()
                         else tvmazeApi.search(q).map { it.toDataSourceResult() }
                     }
-                    // ROUND 168 (Phase E): the tracker-backed sources (no
-                    // pagination — the TVmaze semantics; the MAL search is
-                    // app-auth, the Simkl search is client-id auth).
+                    // ROUND 168 (Phase E): the tracker-backed sources (the
+                    // MAL search is app-auth, the Simkl search is client-id
+                    // auth).
                     DataSourceKind.MAL ->
-                        malTracker.searchWithMeta(q).map { it.toDataSourceResult() }
+                        malTracker.searchWithMeta(q, limit = 20, offset = (page - 1) * 20)
+                            .map { it.toDataSourceResult() }
                     DataSourceKind.SIMKL ->
                         simklTracker.searchItems(q).mapNotNull { it.toDataSourceResult() }
                     DataSourceKind.ANILIST -> emptyList() // unreachable
                 }
                 if (_query.value.isBlank()) return@launch
                 if (!isCurrent(gen)) return@launch
-                pagingMode = if (isTmdb) PagingMode.TMDB_SEARCH else PagingMode.NONE
+                pagingMode = when {
+                    isTmdb -> PagingMode.TMDB_SEARCH
+                    isMal -> PagingMode.MAL_SEARCH
+                    else -> PagingMode.NONE
+                }
                 lastLoadedPage = page
                 _uiState.value = if (results.isEmpty() && page == 1) {
                     SearchUiState.Empty
@@ -883,7 +926,7 @@ class SearchViewModel(
                     val previous = (uiState.value as? SearchUiState.DataSourceSuccess)?.results.orEmpty()
                     SearchUiState.DataSourceSuccess(
                         results = if (page == 1) results else previous + results,
-                        hasMore = isTmdb && results.size >= 20,
+                        hasMore = (isTmdb || isMal) && results.size >= 20,
                         loadingMore = false,
                     )
                 }
@@ -901,85 +944,220 @@ class SearchViewModel(
     private fun appendDataSource(more: List<DataSourceResult>, page: Int, hasMore: Boolean) {
         val current = _uiState.value as? SearchUiState.DataSourceSuccess ?: return
         _uiState.value = current.copy(
-            results = current.results + more,
+            // ROUND 172: the dedup — the grid's LazyGrid keys are (source,
+            // remoteId); overlapping pages would CRASH on a duplicate key
+            // (the v1.1.105 Simkl lesson).
+            results = (current.results + more).distinctBy { "${it.source.id}:${it.remoteId}" },
             hasMore = hasMore,
             loadingMore = false,
         )
         lastLoadedPage = page
     }
 
-    /** TMDB's blank-query default: the day's trending (movies + TV). */
+    /**
+     * TMDB's blank-query default: the day's trending (movies + TV).
+     * ROUND 172: cache-first (the cached pages 1+2 render instantly) + the
+     * background refresh (both pages refetch + the row rewrites).
+     */
     private fun loadTmdbDefaults(): Job = viewModelScope.launch {
+        val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
-        showingDefaults = true
-        val results = if (tmdbPreferences.enabled) {
-            tmdbApi.trending().map { it.toDataSourceResult() }
-        } else {
-            emptyList()
+        if (_query.value.isBlank()) {
+            val cached = withContext(Dispatchers.IO) {
+                runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.TMDB)) }.getOrNull()
+            }
+            if (cached != null && _query.value.isBlank()) {
+                val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
+                    .onFailure { Logger.w(TAG) { "TMDB defaults cache parse failed: ${it.message}" } }
+                    .getOrDefault(emptyList())
+                if (cachedResults.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    Logger.i(TAG) { "Serving ${cachedResults.size} cached TMDB trending as default" }
+                    showingDefaults = true
+                    pagingMode = PagingMode.TMDB_TRENDING
+                    lastLoadedPage = 2 // the cache holds pages 1+2
+                    _uiState.value = SearchUiState.DataSourceSuccess(
+                        results = cachedResults,
+                        hasMore = cachedResults.size >= 40,
+                    )
+                }
+            }
         }
-        showingDefaults = _query.value.isBlank()
-        _uiState.value = if (_query.value.isNotBlank()) {
-            return@launch
-        } else if (results.isEmpty()) {
-            SearchUiState.Empty
-        } else {
-            SearchUiState.DataSourceSuccess(results = results)
+        try {
+            val p1 = if (tmdbPreferences.enabled) tmdbApi.trending(1) else emptyList()
+            val p2 = if (tmdbPreferences.enabled && p1.size >= 20) tmdbApi.trending(2) else emptyList()
+            if (_query.value.isNotBlank()) return@launch
+            if (!isCurrent(gen)) return@launch
+            val results = (p1 + p2).map { it.toDataSourceResult() }
+            if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.TMDB, results)
+            if (results.isEmpty()) {
+                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+            } else {
+                showingDefaults = true
+                pagingMode = PagingMode.TMDB_TRENDING
+                lastLoadedPage = 2
+                _uiState.value = SearchUiState.DataSourceSuccess(
+                    results = results,
+                    hasMore = results.size >= 40,
+                )
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Logger.w(TAG) { "TMDB defaults refresh failed: ${e.message}" }
+            // The served cache stays.
         }
     }
 
-    /** TVmaze's blank-query default: today's airing schedule (US grid). */
+    /**
+     * TVmaze's blank-query default: today's airing schedule (US grid).
+     * ROUND 172: cache-first (one page — the API is one-shot) + the
+     * background refresh.
+     */
     private fun loadTvmazeDefaults(): Job = viewModelScope.launch {
+        val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
-        showingDefaults = true
-        val results = if (tvmazePreferences.enabled) {
-            val today = java.time.LocalDate.now().toString()
-            tvmazeApi.schedule(today).map { it.toDataSourceResult() }
-        } else {
-            emptyList()
+        if (_query.value.isBlank()) {
+            val cached = withContext(Dispatchers.IO) {
+                runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.TVMAZE)) }.getOrNull()
+            }
+            if (cached != null && _query.value.isBlank()) {
+                val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
+                    .onFailure { Logger.w(TAG) { "TVmaze defaults cache parse failed: ${it.message}" } }
+                    .getOrDefault(emptyList())
+                if (cachedResults.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    Logger.i(TAG) { "Serving ${cachedResults.size} cached TVmaze schedule as default" }
+                    showingDefaults = true
+                    pagingMode = PagingMode.NONE // the schedule is one-shot
+                    _uiState.value = SearchUiState.DataSourceSuccess(results = cachedResults)
+                }
+            }
         }
-        showingDefaults = _query.value.isBlank()
-        _uiState.value = if (_query.value.isNotBlank()) {
-            return@launch
-        } else if (results.isEmpty()) {
-            SearchUiState.Empty
-        } else {
-            SearchUiState.DataSourceSuccess(results = results)
+        try {
+            val results = if (tvmazePreferences.enabled) {
+                val today = java.time.LocalDate.now().toString()
+                tvmazeApi.schedule(today).map { it.toDataSourceResult() }
+            } else {
+                emptyList()
+            }
+            if (_query.value.isNotBlank()) return@launch
+            if (!isCurrent(gen)) return@launch
+            if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.TVMAZE, results)
+            if (results.isEmpty()) {
+                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+            } else {
+                showingDefaults = true
+                pagingMode = PagingMode.NONE
+                _uiState.value = SearchUiState.DataSourceSuccess(results = results)
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Logger.w(TAG) { "TVmaze defaults refresh failed: ${e.message}" }
+            // The served cache stays.
         }
     }
 
-    /** ROUND 168 (Phase E): MAL's blank-query default — the MAL v2 popularity ranking. */
+    /**
+     * ROUND 168 (Phase E): MAL's blank-query default — the MAL v2 popularity
+     * ranking. ROUND 172: cache-first (the cached pages 1+2 render
+     * instantly) + the background refresh (both pages refetch via the
+     * offset).
+     */
     private fun loadMalDefaults(): Job = viewModelScope.launch {
+        val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
-        showingDefaults = true
-        val results = runCatching { malTracker.topAnimeForUi() }
-            .onFailure { Logger.w(TAG) { "MAL defaults failed: ${it.message}" } }
-            .getOrDefault(emptyList())
-            .map { it.toDataSourceResult() }
-        showingDefaults = _query.value.isBlank()
-        _uiState.value = if (_query.value.isNotBlank()) {
-            return@launch
-        } else if (results.isEmpty()) {
-            SearchUiState.Empty
-        } else {
-            SearchUiState.DataSourceSuccess(results = results)
+        if (_query.value.isBlank()) {
+            val cached = withContext(Dispatchers.IO) {
+                runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.MAL)) }.getOrNull()
+            }
+            if (cached != null && _query.value.isBlank()) {
+                val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
+                    .onFailure { Logger.w(TAG) { "MAL defaults cache parse failed: ${it.message}" } }
+                    .getOrDefault(emptyList())
+                if (cachedResults.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    Logger.i(TAG) { "Serving ${cachedResults.size} cached MAL ranking as default" }
+                    showingDefaults = true
+                    pagingMode = PagingMode.MAL_DEFAULTS
+                    lastLoadedPage = 2 // the cache holds pages 1+2
+                    _uiState.value = SearchUiState.DataSourceSuccess(
+                        results = cachedResults,
+                        hasMore = cachedResults.size >= 40,
+                    )
+                }
+            }
+        }
+        try {
+            val p1 = runCatching { malTracker.topAnimeForUi(limit = 20, offset = 0) }
+                .onFailure { Logger.w(TAG) { "MAL defaults page 1 failed: ${it.message}" } }
+                .getOrDefault(emptyList())
+            val p2 = if (p1.size >= 20) {
+                runCatching { malTracker.topAnimeForUi(limit = 20, offset = 20) }.getOrDefault(emptyList())
+            } else {
+                emptyList()
+            }
+            if (_query.value.isNotBlank()) return@launch
+            if (!isCurrent(gen)) return@launch
+            val results = (p1 + p2).map { it.toDataSourceResult() }
+            if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.MAL, results)
+            if (results.isEmpty()) {
+                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+            } else {
+                showingDefaults = true
+                pagingMode = PagingMode.MAL_DEFAULTS
+                lastLoadedPage = 2
+                _uiState.value = SearchUiState.DataSourceSuccess(
+                    results = results,
+                    hasMore = results.size >= 40,
+                )
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Logger.w(TAG) { "MAL defaults refresh failed: ${e.message}" }
+            // The served cache stays.
         }
     }
 
-    /** ROUND 168 (Phase E): Simkl's blank-query default — the TV trending feed. */
+    /**
+     * ROUND 168 (Phase E): Simkl's blank-query default — the TV trending
+     * feed. ROUND 172: cache-first (one page — the API is one-shot) + the
+     * background refresh.
+     */
     private fun loadSimklDefaults(): Job = viewModelScope.launch {
+        val gen = beginRequest()
         _uiState.value = SearchUiState.Loading
-        showingDefaults = true
-        val results = runCatching { simklTracker.trendingItems("tv") }
-            .onFailure { Logger.w(TAG) { "Simkl defaults failed: ${it.message}" } }
-            .getOrDefault(emptyList())
-            .mapNotNull { it.toDataSourceResult() }
-        showingDefaults = _query.value.isBlank()
-        _uiState.value = if (_query.value.isNotBlank()) {
-            return@launch
-        } else if (results.isEmpty()) {
-            SearchUiState.Empty
-        } else {
-            SearchUiState.DataSourceSuccess(results = results)
+        if (_query.value.isBlank()) {
+            val cached = withContext(Dispatchers.IO) {
+                runCatching { dataCacheRepository.getBrowseCache(cacheKeyFor(DataSourceKind.SIMKL)) }.getOrNull()
+            }
+            if (cached != null && _query.value.isBlank()) {
+                val cachedResults = runCatching { decodeDefaultsCache(cached.dataJson) }
+                    .onFailure { Logger.w(TAG) { "Simkl defaults cache parse failed: ${it.message}" } }
+                    .getOrDefault(emptyList())
+                if (cachedResults.isNotEmpty() && _query.value.isBlank() && isCurrent(gen)) {
+                    Logger.i(TAG) { "Serving ${cachedResults.size} cached Simkl trending as default" }
+                    showingDefaults = true
+                    pagingMode = PagingMode.NONE // the trending is one-shot
+                    _uiState.value = SearchUiState.DataSourceSuccess(results = cachedResults)
+                }
+            }
+        }
+        try {
+            val results = runCatching { simklTracker.trendingItems("tv") }
+                .onFailure { Logger.w(TAG) { "Simkl defaults failed: ${it.message}" } }
+                .getOrDefault(emptyList())
+                .mapNotNull { it.toDataSourceResult() }
+            if (_query.value.isNotBlank()) return@launch
+            if (!isCurrent(gen)) return@launch
+            if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.SIMKL, results)
+            if (results.isEmpty()) {
+                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+            } else {
+                showingDefaults = true
+                pagingMode = PagingMode.NONE
+                _uiState.value = SearchUiState.DataSourceSuccess(results = results)
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Logger.w(TAG) { "Simkl defaults refresh failed: ${e.message}" }
+            // The served cache stays.
         }
     }
 
@@ -1845,6 +2023,27 @@ class SearchViewModel(
                         appendDataSource(more, nextPage, hasMore = more.size >= 20)
                     }
 
+                    // ROUND 172: the MAL search + the two defaults feeds.
+                    PagingMode.MAL_SEARCH -> {
+                        val more = malTracker.searchWithMeta(
+                            _query.value,
+                            limit = 20,
+                            offset = (nextPage - 1) * 20,
+                        ).map { it.toDataSourceResult() }
+                        appendDataSource(more, nextPage, hasMore = more.size >= 20)
+                    }
+
+                    PagingMode.TMDB_TRENDING -> {
+                        val more = tmdbApi.trending(nextPage).map { it.toDataSourceResult() }
+                        appendDataSource(more, nextPage, hasMore = more.size >= 20)
+                    }
+
+                    PagingMode.MAL_DEFAULTS -> {
+                        val more = malTracker.topAnimeForUi(limit = 20, offset = (nextPage - 1) * 20)
+                            .map { it.toDataSourceResult() }
+                        appendDataSource(more, nextPage, hasMore = more.size >= 20)
+                    }
+
                     PagingMode.NONE -> return@launch
 
                     PagingMode.ANILIST_TRENDING -> {
@@ -1993,10 +2192,32 @@ class SearchViewModel(
                 if (_query.value.isNotBlank()) {
                     search(_query.value)
                 } else {
-                    // No force flag needed — loadTrending() always runs the
-                    // network refresh (the cached payload renders instantly,
-                    // then the fresh page-1 lands).
-                    loadTrending()
+                    // ROUND 172: the DATA-SOURCE defaults refresh — the v1.1.107
+                    // bug routed EVERY blank-query refresh to loadTrending(),
+                    // leaking the AniList trending into the metadata tabs. The
+                    // metadata sources: the cache row clears FIRST (the user's
+                    // 'old cache deleted' spec) → the reload's cache-first
+                    // path finds nothing → the full fresh load. The AniList
+                    // trending keeps its D-278 always-refresh semantics.
+                    when (_dataSource.value) {
+                        DataSourceKind.TMDB -> {
+                            clearDefaultsCache(DataSourceKind.TMDB)
+                            defaultsJob = loadTmdbDefaults()
+                        }
+                        DataSourceKind.TVMAZE -> {
+                            clearDefaultsCache(DataSourceKind.TVMAZE)
+                            defaultsJob = loadTvmazeDefaults()
+                        }
+                        DataSourceKind.MAL -> {
+                            clearDefaultsCache(DataSourceKind.MAL)
+                            defaultsJob = loadMalDefaults()
+                        }
+                        DataSourceKind.SIMKL -> {
+                            clearDefaultsCache(DataSourceKind.SIMKL)
+                            defaultsJob = loadSimklDefaults()
+                        }
+                        DataSourceKind.ANILIST -> loadTrending()
+                    }
                 }
             }
 
@@ -2265,6 +2486,61 @@ enum class DataSourceKind(val id: String, val displayName: String) {
  * carries no streams — the tap opens the "find where to watch" hand-off (the
  * CloudStream provider search) per the user's priority rule.
  */
+// ── ROUND 172: THE PER-SOURCE SEARCH CACHE (the DTO + the codec) ── the
+// defaults feeds persist as this row list in browse_cache; the
+// DataSourceResult rehydrates from the kind's id string.
+private const val SEARCH_DEFAULTS_TTL_MS = 12L * 60 * 60 * 1000 // the 12-hour horizon
+
+@kotlinx.serialization.Serializable
+private data class CachedDataSourceResult(
+    val sourceId: String,
+    val remoteId: Int,
+    val mediaType: String,
+    val title: String,
+    val posterUrl: String?,
+    val year: Int?,
+    val rating: Double?,
+    val overview: String?,
+)
+
+private val DefaultsCacheJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+private fun encodeDefaultsCache(results: List<DataSourceResult>): String =
+    DefaultsCacheJson.encodeToString(
+        kotlinx.serialization.builtins.ListSerializer(CachedDataSourceResult.serializer()),
+        results.map {
+            CachedDataSourceResult(
+                sourceId = it.source.id,
+                remoteId = it.remoteId,
+                mediaType = it.mediaType,
+                title = it.title,
+                posterUrl = it.posterUrl,
+                year = it.year,
+                rating = it.rating,
+                overview = it.overview,
+            )
+        },
+    )
+
+private fun decodeDefaultsCache(json: String): List<DataSourceResult> =
+    DefaultsCacheJson
+        .decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(CachedDataSourceResult.serializer()),
+            json,
+        )
+        .map {
+            DataSourceResult(
+                source = DataSourceKind.fromId(it.sourceId),
+                remoteId = it.remoteId,
+                mediaType = it.mediaType,
+                title = it.title,
+                posterUrl = it.posterUrl,
+                year = it.year,
+                rating = it.rating,
+                overview = it.overview,
+            )
+        }
+
 data class DataSourceResult(
     val source: DataSourceKind,
     /** The source's own id (TMDB id / TVmaze id) — the details-key seed later. */

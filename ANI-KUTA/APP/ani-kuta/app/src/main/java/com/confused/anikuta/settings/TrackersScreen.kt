@@ -405,12 +405,64 @@ private fun CompactTrackerCard(
                         )
                     }
                 }
-                // ROUND 171 (the device order): the LINKED state on the
-                // populate-less trackers (Simkl/MAL) shows the WIDE Unlink
-                // button at the rightmost INSTEAD of the "Linked" chip — the
-                // compressed layout. The AniList (with the populate) keeps
-                // the chip.
-                if (!linked || populateLabel != null) {
+                // ROUND 172 (the device order): the populate-less trackers
+                // (Simkl/MAL) show NO tag — the LINK button when not linked,
+                // the UNLINK button when linked, BOTH at the NAME ROW's
+                // rightmost (aligned right, not the bottom-right). The
+                // AniList (with the populate) keeps the chip + the bottom
+                // actions row.
+                if (populateLabel == null) {
+                    when {
+                        !isConfigured -> {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            ) {
+                                Text(
+                                    text = "Setup pending",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
+                        }
+                        !linked -> Button(
+                            onClick = onLink,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                            ),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                horizontal = 14.dp,
+                                vertical = 8.dp,
+                            ),
+                        ) {
+                            Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text("Link", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                        }
+                        else -> androidx.compose.material3.OutlinedButton(
+                            onClick = onUnlink,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                horizontal = 14.dp,
+                                vertical = 8.dp,
+                            ),
+                        ) {
+                            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text("Unlink", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                } else {
+                    // The AniList chip (unchanged).
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = when {
@@ -439,53 +491,57 @@ private fun CompactTrackerCard(
                 }
             }
 
-            // ── The actions row: the Populate (the primary container) + the WIDE unlink (the error tint) ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                when {
-                    !isConfigured -> {}
-                    !linked -> Button(
-                        onClick = onLink,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.size(6.dp))
-                        Text("Link", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
-                    }
-                    else -> {
-                        if (populateLabel != null && onPopulate != null) {
-                            androidx.compose.material3.FilledTonalButton(
-                                onClick = onPopulate,
-                                shape = RoundedCornerShape(8.dp),
-                                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                ),
-                            ) {
-                                Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.size(6.dp))
-                                Text(populateLabel, fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
-                            }
-                            Spacer(Modifier.size(8.dp))
-                        }
-                        // ROUND 171: the WIDE unlink button (the outlined
-                        // error — not the bare trash-can icon).
-                        androidx.compose.material3.OutlinedButton(
-                            onClick = onUnlink,
+            // ── The actions row: the Populate + the wide unlink (the AniList
+            // only — the populate-less trackers' buttons moved INLINE to the
+            // name row; no bottom row for them) ──
+            if (populateLabel != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    when {
+                        !isConfigured -> {}
+                        !linked -> Button(
+                            onClick = onLink,
                             shape = RoundedCornerShape(8.dp),
-                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
                             ),
                         ) {
-                            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(6.dp))
-                            Text("Unlink", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                            Text("Link", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                        }
+                        else -> {
+                            if (onPopulate != null) {
+                                androidx.compose.material3.FilledTonalButton(
+                                    onClick = onPopulate,
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    ),
+                                ) {
+                                    Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.size(6.dp))
+                                    Text(populateLabel, fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                                }
+                                Spacer(Modifier.size(8.dp))
+                            }
+                            // ROUND 171: the WIDE unlink button (the outlined
+                            // error — not the bare trash-can icon).
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = onUnlink,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text("Unlink", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
+                            }
                         }
                     }
                 }
