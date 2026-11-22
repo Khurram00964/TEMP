@@ -1056,11 +1056,12 @@ class DetailsViewModel(
         // explicitly chose which source to display.
         // ROUND 173 (F2): the metadata base fills the display slot when no
         // AniList base exists — ANILIST priority shows the metadata data,
-        // EXTENSION shows the extension's.
+        // EXTENSION shows the extension's. The early returns above guarantee
+        // at least one base per branch (the !! are unreachable).
         val primary = when {
-            priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> (al ?: meta)
-            else -> ext
-        } ?: ext
+            priority == com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST -> (al ?: meta)!!
+            else -> ext!!
+        }
         val merged = primary.copy(
             // Identity fields — always from whichever base has them (NOT subject to priority).
             // F2: the metadata base's packed id is the identity anchor for the

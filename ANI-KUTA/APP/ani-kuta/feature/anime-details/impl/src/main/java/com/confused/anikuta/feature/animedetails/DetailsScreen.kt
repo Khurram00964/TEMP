@@ -1496,6 +1496,8 @@ fun DetailsScreen(
                                 reverseAutoLinkState = reverseAutoLinkState,
                                 matchPreviewVisible = matchPreviewVisible,
                                 onOpenSourcePicker = { showManualSearch = true },
+                                // ROUND 173 (N1): the search card's cancel.
+                                onCancelSearch = { viewModel.cancelReverseSearch() },
                                 onOpenCloudflareWebView = onOpenCloudflareWebView,
                                 onUnlinkSource = { viewModel.unlinkSource() },
                                 onEpisodeClick = { ep -> onEpisodeClick(ep, false) },
@@ -2841,6 +2843,9 @@ private fun EpisodesSection(
     episodeMetadata: Map<Int, com.confused.anikuta.core.metadata.EpisodeMetadata>,
     hasAnilistId: Boolean,
     reverseAutoLinkState: ReverseAutoLinkState = ReverseAutoLinkState.Idle,
+    // ROUND 173 (N1): the live status card's CANCEL (the VM lives outside
+    // this section — the caller passes the handler).
+    onCancelSearch: () -> Unit = {},
     matchPreviewVisible: Boolean = false,
     onOpenSourcePicker: () -> Unit,
     // D-209: callback to open the Cloudflare WebView solver.
@@ -3098,7 +3103,7 @@ private fun EpisodesSection(
                                 )
                                 Spacer(Modifier.height(10.dp))
                                 androidx.compose.material3.TextButton(
-                                    onClick = { viewModel.cancelReverseSearch() },
+                                    onClick = onCancelSearch,
                                 ) {
                                     Text(
                                         text = "Cancel",
