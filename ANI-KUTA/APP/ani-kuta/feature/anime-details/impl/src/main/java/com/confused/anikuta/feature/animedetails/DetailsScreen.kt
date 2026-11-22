@@ -4164,45 +4164,18 @@ private fun PullToRefreshIndicator(
     isRefreshing: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 6.dp,
-        modifier = modifier
-            .padding(top = 18.dp)
-            .graphicsLayer {
-                val fraction = state.distanceFraction.coerceAtLeast(0f)
-                val appear = fraction.coerceIn(0f, 1f)
-                // While refreshing M3 snaps distanceFraction to 1 → fully shown.
-                val shown = if (isRefreshing) 1f else appear
-                scaleX = 0.55f + 0.45f * shown
-                scaleY = 0.55f + 0.45f * shown
-                alpha = shown
-                // Slide down as the pull grows (subtle — stays near the top).
-                translationY = 10.dp.toPx() * shown
-            },
-    ) {
-        Box(
-            modifier = Modifier.padding(9.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (isRefreshing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.5.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-            } else {
-                CircularProgressIndicator(
-                    progress = { state.distanceFraction.coerceIn(0f, 1f) },
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.5.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                )
-            }
-        }
+    // ROUND 176: the SAME three-state model as the search page (the user's
+    // order: "exactly like how I described") — the single color-cycling dot
+    // growing with the drag; the three static at the threshold; the three
+    // jumping while refreshing; the threshold vibration. The old
+    // CircularProgressIndicator pair is retired.
+    val fraction = state.distanceFraction.coerceAtLeast(0f)
+    if (isRefreshing || fraction > 0.01f) {
+        com.confused.anikuta.core.designsystem.component.RefreshCapsuleIndicator(
+            dragFraction = if (isRefreshing) 1f else fraction,
+            refreshing = isRefreshing,
+            modifier = modifier.padding(top = 18.dp),
+        )
     }
 }
 
