@@ -544,8 +544,25 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10208
-    const val versionName = "1.1.108"
+    const val versionCode = 10209
+    const val versionName = "1.1.109"
+    // ROUND 173 (v1.1.109): the v1.1.108 device-report orders — the identity
+    // round. THE SUBAGENT AUDIT (the user's order) verified F2's three
+    // breaks + the F3 mechanisms + 10 identity-model landmines. THE FIXES:
+    // the metadataBase (the TMDB identity survives the extension link); the
+    // library refresh on the metadata reopens; the reopen routing (the
+    // extension-loader + the library dispatch route kind-prefixed mainIds to
+    // the metadata loader); the Simkl cluster (EVERY request needs the user
+    // token — live-verified; the SIMKL-NATIVE-FIRST sync probe fixes F4's
+    // aborted syncs); the MAL cluster (getStrict + the FULL detail fetch +
+    // the enrichment mal branch — the data-limited pages' root cause); F1
+    // (the refresh-failure toast); F5 part 2 (the link sheet's error state +
+    // the re-search affordance); N1 (the live extension-search status + the
+    // elapsed timer + the cancel); N3 (the tracking sheet's cover+title +
+    // the not-in-library 'None'); N2 (THE MULTI-LINK MODEL: content_identity
+    // v6→v7, the seeding, the write hooks on every link/unlink/pick, the
+    // axis-wiping upsert gone, the authoritative identities read with the
+    // generation guard) — CI 45009689281 GREEN.
     // ROUND 172 (v1.1.108): the v1.1.107 device-report orders — the
     // correctness round. THE METADATA AUTO-SEARCH = the AniList pattern
     // (the scored ReverseAutoLinkService flow with the VISIBLE states —
