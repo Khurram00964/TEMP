@@ -48,10 +48,15 @@ jobs:
       - name: Run the DB tests (SchemaMigrationTest — the S2/S3 lock tests)
         run: ./gradlew :core:database:testDebugUnitTest --tests "com.confused.anikuta.core.database.SchemaMigrationTest"
 
+      - name: Run the content-flow tests (ContentSchemaAndFlowsTest — the S8/B7 lock tests)
+        run: ./gradlew :core:content:testDebugUnitTest --tests "com.confused.anikuta.core.content.ContentSchemaAndFlowsTest"
+
       - name: Upload the test report (always — the failures need the HTML)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: db-test-report
-          path: ANI-KUTA/APP/ani-kuta/core/database/build/reports/tests/
+          path: |
+            ANI-KUTA/APP/ani-kuta/core/database/build/reports/tests/
+            ANI-KUTA/APP/ani-kuta/core/content/build/reports/tests/
           if-no-files-found: ignore
