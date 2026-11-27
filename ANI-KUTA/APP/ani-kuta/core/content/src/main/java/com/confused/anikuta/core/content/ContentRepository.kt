@@ -692,15 +692,20 @@ class ContentRepository(
      */
     fun reconcileExtensionIds() {
         val mismatched = contentQueries.countExtensionIdMismatches().executeAsOne()
-        if (mismatched == 0L) return
-        contentQueries.reconcileExtensionIds()
-        Logger.i(TAG) { "DB WRITE content_details RECONCILE ext ids (B7) — realigned $mismatched row(s)" }
+        if (mismatched > 0L) {
+            contentQueries.reconcileExtensionIds()
+            Logger.i(TAG) { "DB WRITE content_details RECONCILE ext ids (B7) — realigned $mismatched row(s)" }
+        }
         // ROUND 179 (S8 — the audit): the CROSS-TABLE mirror — main_entry's
         // INTEGER id is canonical; a NULL/stale NUMERIC TEXT copy in
         // content_details (the mixed-era restore window + any writer gap)
         // mirrors it at startup. The non-numeric TEXT escape hatch (B7) is
         // never clobbered; the choke-point writes above keep healthy devices
         // at zero.
+        // THE CI-CAUGHT FLAW (the lock test, first dispatch): this mirror is
+        // INDEPENDENT of the B7 gate — the Window-A shape (a NULL TEXT copy
+        // under a linked main) counts ZERO B7 mismatches, and the old shape's
+        // early return would have blocked the mirror forever.
         val drifted = contentQueries.countMainEntryExtensionMirrors().executeAsOne()
         if (drifted == 0L) return
         contentQueries.reconcileMainEntryExtensionMirror()
