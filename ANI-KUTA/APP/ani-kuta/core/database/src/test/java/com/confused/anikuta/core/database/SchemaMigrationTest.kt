@@ -441,7 +441,7 @@ class SchemaMigrationTest {
             foreignKeysOf("watch_progress").contains("main_entry"),
         )
 
-        AnikutaDatabase.Schema.migrate(driver, 3, 4)
+        AnikutaDatabase.Schema.migrate(driver, 3, 8) // ROUND 176: the reads end at the CURRENT shape (the P1 doctrine)
 
         assertTrue(
             "v4 watch_progress must have NO foreign keys",
@@ -458,7 +458,7 @@ class SchemaMigrationTest {
         createV3Shape()
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
-        AnikutaDatabase.Schema.migrate(driver, 3, 4)
+        AnikutaDatabase.Schema.migrate(driver, 3, 8) // ROUND 176: the reads end at the CURRENT shape (the P1 doctrine)
 
         // THE user scenario: the content's identity row dies (extension
         // uninstall / rebuild) — the watch history + session ledger SURVIVE.
@@ -958,11 +958,8 @@ class SchemaMigrationTest {
     @Test
     fun `migration 7 to 8 re-splits the coarse tmdb identity kind from the fine content_details type`() {
         createV4Shape()
-        driver.execute(
-            null,
-            "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-1', 'cid-1', 'Tokyo Ghoul', 1, 1)",
-            0,
-        )
+        // createV4Shape already provides main-1 (the round-177 CI round:
+        // the test's own insert PK-duplicated it).
         // The fine type PRESERVED in content_details (the audit's "the fix
         // data already exists and is being dropped").
         driver.execute(
