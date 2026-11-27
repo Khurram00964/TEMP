@@ -373,7 +373,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 3 to 4 strips the cascade foreign keys"() {
+    fun `migration 3 to 4 strips the cascade foreign keys`() {
         createV3Shape()
         // The app enables FKs on every open — reproduce that first.
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
@@ -395,7 +395,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 3 to 4 keeps tracking alive after main_entry deletion"() {
+    fun `migration 3 to 4 keeps tracking alive after main_entry deletion`() {
         createV3Shape()
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
@@ -587,7 +587,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 4 to 6 adds the denorm columns and backfills them"() {
+    fun `migration 4 to 6 adds the denorm columns and backfills them`() {
         createV4Shape()
         assertTrue("precondition: no season_number", "season_number" !in columnNames("watch_progress"))
 
@@ -603,7 +603,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 4 to 6 strips the tracker-table cascade foreign keys"() {
+    fun `migration 4 to 6 strips the tracker-table cascade foreign keys`() {
         createV4Shape()
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
         assertTrue(
@@ -624,7 +624,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 4 to 6 keeps the tracker link and opt-in alive after main_entry deletion"() {
+    fun `migration 4 to 6 keeps the tracker link and opt-in alive after main_entry deletion`() {
         createV4Shape()
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
@@ -646,7 +646,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 4 to 6 dedups tracker ids and enforces uniqueness"() {
+    fun `migration 4 to 6 dedups tracker ids and enforces uniqueness`() {
         createV4Shape()
         // A second content claiming the SAME AniList entry — the silent-winner
         // bug's exact shape (the old index was non-unique).
@@ -693,7 +693,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun "migration 4 to 6 keeps the browse sweep usable and data intact"() {
+    fun `migration 4 to 6 keeps the browse sweep usable and data intact`() {
         createV4Shape()
         AnikutaDatabase.Schema.migrate(driver, 4, 8)
         val database = AnikutaDatabase(driver)
@@ -719,7 +719,7 @@ class SchemaMigrationTest {
     // yields a season-carrying table.
 
     @Test
-    fun "the WS-A v5 cohort shape is recoverable by 5.sqm after the detector adds season_number"() {
+    fun `the WS-A v5 cohort shape is recoverable by 5.sqm after the detector adds season_number`() {
         // The faithful WS-A-v5 shape: 13 columns — the v4 table + episode_number.
         driver.execute(
             null,
