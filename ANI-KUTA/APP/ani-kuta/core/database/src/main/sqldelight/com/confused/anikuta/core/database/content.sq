@@ -436,6 +436,47 @@ SET source_id = NULLIF(CAST(extension_id AS INTEGER), 0)
 WHERE extension_id IS NOT NULL
   AND IFNULL(source_id, -1) <> IFNULL(NULLIF(CAST(extension_id AS INTEGER), 0), -1);
 
+-- ROUND 179 (S8): the CROSS-TABLE mirror reconcile — main_entry's INTEGER
+-- extension_id is the canonical identity; content_details' TEXT copy mirrors
+-- it. The audit's Window C (a mixed-era backup restore restoring the two
+-- tables independently) and any writer gap left the pair disagreeing until a
+-- later enrichment. API-24-safe correlated subselects (UPDATE...FROM needs
+-- SQLite 3.33). The guard: numeric TEXT ids ONLY — the designed non-numeric
+-- TEXT escape hatch (the B7 CloudStream-names shape) is NEVER clobbered —
+-- and rows whose main carries no extension id are untouched.
+countMainEntryExtensionMirrors:
+SELECT COUNT(*) FROM content_details cd
+WHERE EXISTS (
+        SELECT 1 FROM main_entry m
+        WHERE m.main_id = cd.main_id AND m.extension_id IS NOT NULL
+      )
+  AND (
+        cd.extension_id IS NULL
+        OR (
+            cd.extension_id NOT GLOB '*[^0-9]*'
+            AND cd.extension_id <> (SELECT CAST(m.extension_id AS TEXT) FROM main_entry m WHERE m.main_id = cd.main_id)
+        )
+      );
+
+reconcileMainEntryExtensionMirror:
+UPDATE content_details
+SET extension_id = (SELECT CAST(m.extension_id AS TEXT) FROM main_entry m WHERE m.main_id = content_details.main_id),
+    source_id = COALESCE(
+        (SELECT m.source_id FROM main_entry m WHERE m.main_id = content_details.main_id),
+        (SELECT m.extension_id FROM main_entry m WHERE m.main_id = content_details.main_id)
+    )
+WHERE EXISTS (
+        SELECT 1 FROM main_entry m
+        WHERE m.main_id = content_details.main_id AND m.extension_id IS NOT NULL
+      )
+  AND (
+        content_details.extension_id IS NULL
+        OR (
+            content_details.extension_id NOT GLOB '*[^0-9]*'
+            AND content_details.extension_id <> (SELECT CAST(m.extension_id AS TEXT) FROM main_entry m WHERE m.main_id = content_details.main_id)
+        )
+      );
+
 countExtensionIdMismatches:
 SELECT COUNT(*) FROM content_details
 WHERE extension_id IS NOT NULL

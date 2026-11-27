@@ -239,9 +239,38 @@ class MalTracker(
     private fun toMalScore(appScore: Int): Int =
         (appScore.coerceIn(0, 100) / 10.0).let { kotlin.math.round(it) }.toInt().coerceIn(1, 10)
 
+    /**
+     * ROUND 179 (THE POPULATE): the user's FULL animelist — the Populate
+     * Library import. Fetches through [MalApi.userAnimelist] (paginated) and
+     * maps each row's list status through [mapFromMal]. Rows without a list
+     * status are skipped. Throws on a failed first page (the caller surfaces
+     * the reason); a mid-pagination failure keeps the rows fetched so far.
+     */
+    suspend fun userAnimelist(): List<MalListEntry> = withContext(Dispatchers.IO) {
+        if (!ensureFreshToken()) return@withContext emptyList()
+        val token = preferences.accessToken
+        val anime = api.userAnimelist(token)
+        anime.mapNotNull { row ->
+            val ls = row.my_list_status ?: return@mapNotNull null
+            val rawStatus = ls.status ?: "watching"
+            MalListEntry(row, mapFromMal(rawStatus), rawStatus)
+        }
+    }
+
     /** MAL dates: `YYYY-MM-DD` (or null). */
     private fun isoToMillis(date: String?): Long? = runCatching {
         java.time.LocalDate.parse(date!!.substringBefore("T"))
             .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
     }.getOrNull()
 }
+
+/**
+ * ROUND 179 (THE POPULATE): one row of the user's MAL animelist — the anime
+ * node + its list status mapped to the app's [TrackStatus] (the raw status
+ * rides along for the category mapping).
+ */
+data class MalListEntry(
+    val anime: MalListAnime,
+    val status: TrackStatus,
+    val rawStatus: String,
+)

@@ -65,6 +65,11 @@ getScheduleByMainId:
 SELECT * FROM episode_schedule WHERE main_id = ? ORDER BY scheduled_at ASC;
 
 -- Update the actual_at (when UpdateEngine finds the episode on a source — Phase SC-2).
+-- ROUND 179 (S4 — the audit): the WHERE is INTENTIONALLY variant-agnostic
+-- (one air time per (main_id, episode_number); the audio variant is not part
+-- of the air-time semantics — SUB and DUB detections stamp the same row).
+-- The episode_number match is EXACT (the callers pass the source's REAL
+-- number — a fractional 12.5 stamps a 12.5 row, never the integer row).
 updateActualAt:
 UPDATE episode_schedule
 SET actual_at = :actual_at

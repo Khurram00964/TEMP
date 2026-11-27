@@ -695,6 +695,16 @@ class ContentRepository(
         if (mismatched == 0L) return
         contentQueries.reconcileExtensionIds()
         Logger.i(TAG) { "DB WRITE content_details RECONCILE ext ids (B7) — realigned $mismatched row(s)" }
+        // ROUND 179 (S8 — the audit): the CROSS-TABLE mirror — main_entry's
+        // INTEGER id is canonical; a NULL/stale NUMERIC TEXT copy in
+        // content_details (the mixed-era restore window + any writer gap)
+        // mirrors it at startup. The non-numeric TEXT escape hatch (B7) is
+        // never clobbered; the choke-point writes above keep healthy devices
+        // at zero.
+        val drifted = contentQueries.countMainEntryExtensionMirrors().executeAsOne()
+        if (drifted == 0L) return
+        contentQueries.reconcileMainEntryExtensionMirror()
+        Logger.i(TAG) { "DB WRITE content_details RECONCILE ext ids (S8 mirror) — mirrored $drifted row(s) from main_entry" }
     }
 
     fun healCloudstreamEcosystem() {

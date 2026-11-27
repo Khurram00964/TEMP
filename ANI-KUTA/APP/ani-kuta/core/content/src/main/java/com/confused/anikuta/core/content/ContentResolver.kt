@@ -444,18 +444,23 @@ class ContentResolver(
             // Store the extension metadata on the ext_* axis (partial UPDATE —
             // data_* fields untouched). The denormalized extension_id + source_id +
             // anime_url columns on main_entry are kept in sync via updateMainEntrySources.
-            if (extensionDetail != null) {
-                repo.updateExtensionAxis(
-                    extensionDetail.copy(
-                        mainId = mainId,
-                        extensionType = extensionDetail.extensionType ?: ecosystemName,
-                        extensionId = extensionDetail.extensionId ?: extensionId.toString(),
-                        sourceId = extensionDetail.sourceId ?: sourceId,
-                        animeUrl = extensionDetail.animeUrl ?: animeUrl,
-                        extUpdatedAt = extensionDetail.extUpdatedAt ?: now,
-                    ),
-                )
-            }
+            // ROUND 179 (S8 — the audit's Window B): the axis write is now
+            // UNCONDITIONAL — with extensionDetail == null the old shape
+            // updated main_entry.extension_id but left content_details
+            // carrying the PREVIOUS source's id (the two columns actively
+            // disagreed; the derived source_id pointed at the old source
+            // too). A minimal identity triplet mirrors the new link; the
+            // COALESCE merge preserves the axis's data fields.
+            repo.updateExtensionAxis(
+                (extensionDetail ?: ContentDetails(mainId = mainId)).copy(
+                    mainId = mainId,
+                    extensionType = extensionDetail?.extensionType ?: ecosystemName,
+                    extensionId = extensionDetail?.extensionId ?: extensionId.toString(),
+                    sourceId = extensionDetail?.sourceId ?: sourceId,
+                    animeUrl = extensionDetail?.animeUrl ?: animeUrl,
+                    extUpdatedAt = extensionDetail?.extUpdatedAt ?: now,
+                ),
+            )
             // ROUND 123 (R9/F5): TITLE SYNC — the Library row shows
             // main_entry.title, which this flow NEVER wrote (the KDoc claimed
             // it did). A relink to a source whose title differs left the

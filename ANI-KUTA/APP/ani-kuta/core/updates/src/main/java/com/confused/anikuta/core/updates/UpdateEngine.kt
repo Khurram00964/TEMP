@@ -581,7 +581,11 @@ class UpdateEngine(
                             notifiedSubTenths = maxOf(notifiedSubTenths, epTenths.toLong())
                         }
                         val sourceDateUpload = ep.date_upload
-                        actualReleaseUpdater?.updateActualAt(mainId, epNum.toDouble(),
+                        // ROUND 179 (S4 — the audit's truncation): the source's
+                        // REAL episode number rides to the schedule — a
+                        // fractional 12.5 stamps a 12.5 row, never the integer
+                        // row (epNum stays for the epKey/notification paths).
+                        actualReleaseUpdater?.updateActualAt(mainId, ep.episode_number.toDouble(),
                             if (sourceDateUpload > 0) sourceDateUpload else now)
                     }
                 }
@@ -613,7 +617,11 @@ class UpdateEngine(
                             notifiedDubTenths = maxOf(notifiedDubTenths, epTenths.toLong())
                         }
                         val sourceDateUpload = ep.date_upload
-                        actualReleaseUpdater?.updateActualAt(mainId, epNum.toDouble(),
+                        // ROUND 179 (S4 — the audit's truncation): the source's
+                        // REAL episode number rides to the schedule — a
+                        // fractional 12.5 stamps a 12.5 row, never the integer
+                        // row (epNum stays for the epKey/notification paths).
+                        actualReleaseUpdater?.updateActualAt(mainId, ep.episode_number.toDouble(),
                             if (sourceDateUpload > 0) sourceDateUpload else now)
                     }
                 }

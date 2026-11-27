@@ -544,8 +544,47 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10214
-    const val versionName = "1.1.114"
+    const val versionCode = 10215
+    const val versionName = "1.1.115"
+    // ROUND 179 (v1.1.115): THE DEFERRED-LEDGER ROUND — the user ordered the
+    // whole remaining ledger, understood first (three investigation agents):
+    // S4 the narrow fix (NO schema bump — the season-axis migration is
+    //   DEFERRED with the pre-designed checklist: no writer can produce
+    //   colliding schedule rows today): the actual_at WIPE fixed (the
+    //   re-upsert preserved it), the fractional-episode truncation fixed,
+    //   episode_schedule joined the daily maintenance sweeps (the doc's
+    //   "their own prunes exist" was a lie — zero callers).
+    // S5 the SCHEMA.md drift repaired (round 126 → v8, 27 tables, the
+    //   content_identity doctrine).
+    // S8 the extension_id duality enforced at the choke points (NO schema
+    //   bump): linkExtensionToExisting ALWAYS writes the ext-axis identity
+    //   triplet, resolveContentForExtension writes it on the fetch-failure
+    //   path too, and the startup reconcile gained the CROSS-TABLE mirror
+    //   (numeric-only — the B7 non-numeric escape hatch is never clobbered;
+    //   two lock tests).
+    // THE REVERSE-INDEX REOPEN WIRING: the packed decode stays primary; the
+    //   (kind, ref) lookup adopts the ACTUAL main (the legacy coarse rows +
+    //   any duplicate-main cohort, GENERICALLY — both the loader and the
+    //   persist side; the coarse block stays as the fallback).
+    // THE N-WAY DISPLAY MERGE: the identity rows' PAYLOAD snapshots drive
+    //   the display — the base-less mal/simkl chips become real display
+    //   slots (the payload IS the display), the base-ful kinds fill nulls
+    //   only (never overwriting the fresher enrichment data).
+    // THE POPULATE LIBRARY (Simkl + MAL — the user's yes): the AniList
+    //   D-221 machinery on all three trackers — the Simkl userLibrary()
+    //   fetch (the 15 bounded allItems reads), the MAL userAnimelist()
+    //   (paginated, the dedicated list_status DTO — the per-anime endpoint's
+    //   my_list_status key is untouched), the reverse-index dedupe, the
+    //   shared 5 categories, the tracking seeds, the Populate Library
+    //   buttons on both cards + the AppToast result surfacing (the D-221
+    //   summary was discarded before — the import completed silently).
+    // THE DEBUG UPDATER REPO (the user's order): the debug line's in-app
+    //   updater checks Khurram00964/TEMP (the live debug-release line) —
+    //   the dead testplay-byte owner retired; the release URL in the sheet
+    //   follows the same rule (the release line points at the official repo).
+    // F10 the link-sheet polish: VERIFIED COMPLETE (the unified sheet is the
+    //   single surface — the error state, the Search again, the IME action,
+    //   the rating/year meta; the legacy sheets are dead paths).
     // ROUND 178 (v1.1.114): the SELF-VERIFICATION round — three read-only
     // auditors swept the schema v8 layer + both checklist stations, and every
     // finding was fixed in the same round:

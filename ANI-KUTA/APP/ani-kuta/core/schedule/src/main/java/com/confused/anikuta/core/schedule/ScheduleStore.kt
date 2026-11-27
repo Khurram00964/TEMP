@@ -31,12 +31,27 @@ class ScheduleStore(
         source: String,
         fetchedAt: Long,
     ) {
+        // ROUND 179 (S4 — the audit's actual_at WIPE): both creators pass
+        // actualAt = null through INSERT OR REPLACE — an early DETECTED
+        // actual time (the source leaked the episode before AniList's
+        // airingAt passed) was ERASED by the next schedule fetch's re-upsert.
+        // Preserve: a null incoming keeps the stored value; an explicit
+        // non-null incoming still wins (the detection paths).
+        val preservedActualAt = if (actualAt == null) {
+            database.episodeScheduleQueries.getScheduleByMainId(mainId)
+                .executeAsList()
+                .firstOrNull {
+                    it.episode_number == episodeNumber && it.audio_variant == audioVariant
+                }?.actual_at
+        } else {
+            null
+        }
         database.episodeScheduleQueries.upsertEpisodeSchedule(
             main_id = mainId,
             anilist_id = anilistId,
             episode_number = episodeNumber,
             scheduled_at = scheduledAt,
-            actual_at = actualAt,
+            actual_at = actualAt ?: preservedActualAt,
             audio_variant = audioVariant,
             source = source,
             fetched_at = fetchedAt,

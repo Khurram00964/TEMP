@@ -228,7 +228,21 @@ fun UpdateBottomSheet(
                         },
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    val releaseUrl = "https://github.com/testplay-byte/ANI-KUTA/releases/tag/v${info.versionName}"
+                    // ROUND 179: the release URL follows the UPDATE SOURCE's
+                    // repo — the debug line checks Khurram00964/TEMP (the
+                    // same .debug-suffix rule the updater's DI uses); the
+                    // release line points at the OFFICIAL repo (the old
+                    // testplay-byte link was dead).
+                    val isDebugLine = try {
+                        context.packageName.endsWith(".debug")
+                    } catch (_: Exception) {
+                        false
+                    }
+                    val releaseUrl = if (isDebugLine) {
+                        "https://github.com/Khurram00964/TEMP/releases/tag/v${info.versionName}"
+                    } else {
+                        "https://github.com/Confused-Creature-180/ANI-KUTA/releases/tag/v${info.versionName}"
+                    }
                     Text(
                         text = "View full release on GitHub →",
                         fontFamily = RobotoFamily,

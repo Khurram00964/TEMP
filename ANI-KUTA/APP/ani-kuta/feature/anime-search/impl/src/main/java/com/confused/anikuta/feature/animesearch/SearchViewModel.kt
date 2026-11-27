@@ -2540,6 +2540,20 @@ class SearchViewModel(
         val now = System.currentTimeMillis()
         viewModelScope.launch {
             runCatching {
+                // ROUND 179 (THE REVERSE-INDEX WIRING — the persist side): the
+                // generic lookup replaces the hardcoded tmdb special case — the
+                // packed (kind, ref)'s ACTUAL main wins (the legacy coarse rows
+                // + any duplicate-main cohort). The coarse block below stays as
+                // the fallback for the identity-less cohorts.
+                if (fineType != "metadata") {
+                    val identityMain = runCatching {
+                        metadataContentRepository.lookupIdentityMain(fineType, result.remoteId.toString())
+                    }.getOrNull()
+                    if (identityMain != null && identityMain != targetId) {
+                        Logger.i(TAG) { "the reverse index re-pointed the persist: $targetId -> $identityMain" }
+                        targetId = identityMain
+                    }
+                }
                 if (fineType == "tmdb_movie" || fineType == "tmdb_tv") {
                     val coarseId = "tmdb:" + result.remoteId
                     val coarseExists = runCatching { metadataContentRepository.getContentDetails(coarseId) != null }

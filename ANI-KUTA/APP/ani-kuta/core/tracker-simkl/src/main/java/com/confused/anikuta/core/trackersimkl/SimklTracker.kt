@@ -373,6 +373,46 @@ class SimklTracker(
     private fun toSimklScore(appScore: Int): Int =
         ((appScore.coerceIn(0, 100) / 10.0).let { kotlin.math.round(it) }).toInt().coerceIn(1, 10)
 
+    /**
+     * ROUND 179 (THE POPULATE): the user's WHOLE Simkl library across the
+     * three kinds × the five statuses — the Populate Library import.
+     * allItems is one bounded read per (kind, status) — the fetchEntry
+     * pattern; a failing section logs and continues (a partial import beats
+     * a dead one). Distinct by the Simkl id (an item holds ONE status per
+     * kind; the cross-kind overlaps dedupe safely).
+     */
+    suspend fun userLibrary(): List<SimklListEntry> = withContext(Dispatchers.IO) {
+        if (!ensureFreshToken()) return@withContext emptyList()
+        val out = mutableListOf<SimklListEntry>()
+        for (kind in listOf("anime", "tv", "movie")) {
+            for (status in listOf("watching", "plantowatch", "completed", "hold", "dropped")) {
+                val items = try {
+                    api.allItems(kind, status, preferences.accessToken)
+                } catch (e: Exception) {
+                    Logger.w(TAG) { "userLibrary: $kind/$status failed: ${e.message}" }
+                    continue
+                }
+                for (item in items) {
+                    val id = item.ids?.simkl ?: continue
+                    val title = item.title ?: continue
+                    val rawStatus = item.status ?: status
+                    val progress = item.seasons
+                        .maxOfOrNull { season -> season.episodes.maxOfOrNull { it.number } ?: 0 } ?: 0
+                    out += SimklListEntry(
+                        simklId = id,
+                        title = title,
+                        posterUrl = item.poster_url,
+                        userRating = item.user_rating,
+                        status = mapFromSimkl(rawStatus),
+                        rawStatus = rawStatus,
+                        progress = progress,
+                    )
+                }
+            }
+        }
+        out.distinctBy { it.simklId }
+    }
+
     private fun jsonNumber(value: Long): kotlinx.serialization.json.JsonPrimitive =
         kotlinx.serialization.json.JsonPrimitive(value)
 
@@ -382,3 +422,18 @@ class SimklTracker(
     private fun isoToMillis(iso: String): Long? =
         runCatching { java.time.Instant.parse(iso).toEpochMilli() }.getOrNull()
 }
+
+/**
+ * ROUND 179 (THE POPULATE): one row of the user's Simkl library — the mapped
+ * [TrackStatus] + the raw status (the category mapping) + the watched-episode
+ * progress (the deepest numbered episode across the seasons).
+ */
+data class SimklListEntry(
+    val simklId: Long,
+    val title: String,
+    val posterUrl: String?,
+    val userRating: Int?,
+    val status: TrackStatus,
+    val rawStatus: String,
+    val progress: Int,
+)

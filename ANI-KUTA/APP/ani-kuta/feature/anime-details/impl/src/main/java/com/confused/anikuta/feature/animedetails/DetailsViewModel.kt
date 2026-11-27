@@ -642,19 +642,40 @@ class DetailsViewModel(
     val identityChips: kotlinx.coroutines.flow.StateFlow<List<Triple<String, String, Int?>>> =
         _identityChips.asStateFlow()
 
+    // ROUND 179 (THE N-WAY): the identity rows' PAYLOAD snapshots, keyed by
+    // kind — the link-time data each identity carries (title/cover/synopsis/
+    // score/episodes/status/genres/year). Published by refreshLinkedIdentities
+    // (which already reads every row) so remergeBases can build a REAL display
+    // slot for every chip — including the base-less mal/simkl kinds whose
+    // payloads are the only data they have. In-memory only: no extra DB reads.
+    internal val _identityPayloads = kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.confused.anikuta.core.content.ContentIdentity>>(emptyMap())
+    val identityPayloads: kotlinx.coroutines.flow.StateFlow<Map<String, com.confused.anikuta.core.content.ContentIdentity>> =
+        _identityPayloads.asStateFlow()
+
     /**
      * ROUND 174 (T2): the N-way display switch — the picked identity drives
      * the details page. The mapping-only identities (mal/simkl) carry no
      * display data: the pick is refused with the honest notice.
+     * ROUND 179 (THE N-WAY): the refusal is now PAYLOAD-driven — a mal/simkl
+     * identity WITH a payload snapshot (the unified-sheet pick writes the
+     * link-time title/cover/score/year) is a real display slot; an EMPTY
+     * payload stays refused (nothing to show).
      */
     fun selectDisplaySource(kind: String) {
         if (kind in setOf("mal", "simkl")) {
-            Logger.i(TAG) { "selectDisplaySource($kind) — a mapping-only identity, no display data" }
-            com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
-                "MyAnimeList/Simkl links are tracking links — no display data",
-                com.confused.anikuta.core.designsystem.component.toast.AppToastTone.NEUTRAL,
-            )
-            return
+            val payload = _identityPayloads.value[kind]
+            val hasDisplayData = payload != null &&
+                (!payload.displayTitle.isNullOrBlank() ||
+                    !payload.coverUrl.isNullOrBlank() ||
+                    !payload.synopsis.isNullOrBlank())
+            if (!hasDisplayData) {
+                Logger.i(TAG) { "selectDisplaySource($kind) — a mapping-only identity with an EMPTY payload, no display data" }
+                com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                    "MyAnimeList/Simkl links are tracking links — no display data",
+                    com.confused.anikuta.core.designsystem.component.toast.AppToastTone.NEUTRAL,
+                )
+                return
+            }
         }
         _displaySourceKind.value = kind
         val mid = currentMainId
@@ -1187,7 +1208,45 @@ class DetailsViewModel(
             coverUrl = primary.coverUrl,
         )
         _state.value = DetailsState.Success(merged)
-        Logger.d(TAG) { "remergeBases: priority=$priority, merged ${merged.displayName}" }
+        // ROUND 179 (THE N-WAY): the picked identity's PAYLOAD joins the
+        // display — the link-time snapshot of THAT source's data. Two
+        // directions, stated plainly:
+        // • the base-less kinds (mal/simkl — no base of their own): the
+        //   payload IS the display (the MAL/Simkl snapshot drives), the
+        //   merged base fills the payload's gaps;
+        // • every base-ful kind: the payload FILLS the base's nulls only —
+        //   it never overwrites a maintained value (the enrichment keeps
+        //   the axis fresher than any snapshot).
+        val payload = _identityPayloads.value[kind]
+        val payloadDisplay = if (payload != null && kind in setOf("mal", "simkl")) {
+            merged.copy(
+                title = payload.displayTitle ?: merged.title,
+                coverUrl = payload.coverUrl ?: merged.coverUrl,
+                description = payload.synopsis ?: merged.description,
+                averageScore = payload.score ?: merged.averageScore,
+                genres = payload.genres?.split(",")?.filter { it.isNotBlank() }
+                    ?.takeIf { it.isNotEmpty() } ?: merged.genres,
+                status = payload.status ?: merged.status,
+                episodes = payload.episodes ?: merged.episodes,
+                seasonYear = payload.year ?: merged.seasonYear,
+            )
+        } else if (payload != null) {
+            merged.copy(
+                coverUrl = merged.coverUrl ?: payload.coverUrl,
+                description = merged.description ?: payload.synopsis,
+                averageScore = merged.averageScore ?: payload.score,
+                genres = merged.genres.ifEmpty {
+                    payload.genres?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                },
+                status = merged.status ?: payload.status,
+                episodes = merged.episodes ?: payload.episodes,
+                seasonYear = merged.seasonYear ?: payload.year,
+            )
+        } else {
+            merged
+        }
+        _state.value = DetailsState.Success(payloadDisplay)
+        Logger.d(TAG) { "remergeBases: priority=$priority, merged ${payloadDisplay.displayName} (payload=${payload != null})" }
         // ROUND 173 (F3): the linked-identities refresh rides EVERY display
         // emit — the v1.1.108 bug: only the metadata path refreshed them, so
         // the library entries showed NO Unlink rows (F3.1) until an unrelated
@@ -1281,6 +1340,7 @@ class DetailsViewModel(
         _showMarkSeriesPrompt.value = false
         _isMetadataEntry.value = false
         _linkedIdentities.value = emptySet()
+        _identityPayloads.value = emptyMap() // ROUND 179 (the N-way): the payloads ride the reset
         _displaySourceKind.value = null // ROUND 175 (F6.1): the pick never leaks across screens
         Logger.d(TAG) { "resetState: all per-anime state cleared (loadGeneration=$loadGeneration)" }
     }
@@ -1413,6 +1473,10 @@ class DetailsViewModel(
                 Logger.d(TAG) { "the identities refresh discarded (stale generation)" }
                 return@launch
             }
+            // ROUND 179 (THE N-WAY): the payload snapshots ride the same
+            // guarded write as the chips (one read, one publish — the merge
+            // reads them from memory).
+            _identityPayloads.value = rows.associateBy { it.sourceKind }
             _identityChips.value = ordered
             // ROUND 175 (F6.1): the stale-kind safety — a picked kind that
             // no longer exists (the unlink) clears the display pick.
@@ -1509,6 +1573,24 @@ class DetailsViewModel(
             // row wins: its history + library placement ride it), so this
             // only fires for a coarse row the persist just enriched.
             var mainId = packedMainId
+            // ROUND 179 (THE REVERSE-INDEX REOPEN WIRING): the decode is the
+            // PRIMARY; the packed (kind, ref) is looked up in content_identity
+            // and the row's ACTUAL main ADOPTED — the legacy coarse rows
+            // (7.sqm re-split the kind but never the main_id, so
+            // lookupIdentityMain('tmdb_movie','123') returns 'tmdb:123' — the
+            // exact adoption signal) and ANY duplicate-main cohort resolves
+            // GENERICALLY now, no tmdb special case needed. The round-178
+            // coarse block below STAYS as the fallback for the identity-less
+            // cohorts (the OR-IGNORE losers, the missing content_details).
+            if (kind != "metadata") {
+                val identityMain = runCatching {
+                    contentRepository.lookupIdentityMain(kind, remoteId.toString())
+                }.getOrNull()
+                if (identityMain != null && identityMain != packedMainId) {
+                    Logger.i(TAG) { "the reverse index re-pointed the reopen: $packedMainId -> $identityMain" }
+                    mainId = identityMain
+                }
+            }
             if (kind == "tmdb_movie" || kind == "tmdb_tv") {
                 val coarseId = "tmdb:$remoteId"
                 val fineExists = runCatching { contentRepository.getContentDetails(mainId) != null }
@@ -3230,6 +3312,25 @@ class DetailsViewModel(
                     ),
                 )
                 Logger.i(TAG) { "Extension detail stored with coverUrl=${unifiedAnime.coverUrl?.take(60)}" }
+            } else {
+                // ROUND 179 (S8 — the audit's Window A): the fetch failure left
+                // main_entry.extension_id SET (resolveOrCreateForExtension) with
+                // content_details.extension_id NULL indefinitely — the two
+                // columns disagreed until a later reopen enrichment. The minimal
+                // identity triplet mirrors the link at creation time; the
+                // COALESCE merge preserves the (still-empty) axis data — the
+                // enrichment fills it when the source responds.
+                contentRepository.updateExtensionAxis(
+                    com.confused.anikuta.core.content.ContentDetails(
+                        mainId = mainId,
+                        extensionType = ecosystemName,
+                        extensionId = sourceId.toString(),
+                        sourceId = sourceId,
+                        animeUrl = animeUrl,
+                        extUpdatedAt = System.currentTimeMillis(),
+                    ),
+                )
+                Logger.i(TAG) { "Extension identity triplet stored (sparse — the fetch failed; the enrichment fills the data later)" }
             }
 
             refreshContentAndLibraryStatus(mainId)

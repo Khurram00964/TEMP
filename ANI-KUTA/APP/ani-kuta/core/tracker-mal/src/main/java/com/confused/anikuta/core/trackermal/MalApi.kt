@@ -186,6 +186,34 @@ class MalApi(
         }
     }
 
+    /**
+     * ROUND 179 (THE POPULATE): GET /users/@me/animelist — the user's FULL
+     * list, the Populate Library import. Paginates (limit 100/page, max
+     * [maxPages] pages = 1000 entries) following paging.next's offset.
+     * Throws MalRequestException on a failed/parse-broken page.
+     */
+    fun userAnimelist(accessToken: String, maxPages: Int = 10): List<MalListAnime> {
+        val fields = "id,title,main_picture,num_episodes,mean,start_season,list_status"
+        val out = mutableListOf<MalListAnime>()
+        var offset = 0
+        repeat(maxPages) {
+            val raw = getStrict("/users/@me/animelist", "fields=$fields&limit=100&offset=$offset", accessToken)
+            val page = try {
+                json.decodeFromString(MalListResponse.serializer(), raw)
+            } catch (e: Exception) {
+                throw MalRequestException("MAL animelist parse failed: ${e.message}")
+            }
+            out += page.data.map { it.node }
+            val nextOffset = page.paging?.next
+                ?.substringAfter("offset=", "")
+                ?.substringBefore("&")
+                ?.toIntOrNull()
+                ?: return out
+            offset = nextOffset
+        }
+        return out
+    }
+
     // ── the list-status family (all user-token) ──
 
     /**

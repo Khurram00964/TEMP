@@ -1,5 +1,6 @@
 package com.confused.anikuta.core.trackermal
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -99,6 +100,42 @@ data class MalSearchResponse(
 @Serializable
 data class MalSearchRow(
     val node: MalAnime,
+)
+
+// ── ROUND 179 (THE POPULATE): the /users/@me/animelist shape ──
+// The animelist endpoint names the list state `list_status` while the
+// per-anime endpoint (animeWithListStatus) uses `my_list_status` — a shared
+// DTO with a SerialName remap would break the latter's parse. Dedicated
+// node/row types keep both shapes exact.
+
+/** The animelist node — MalAnime's fields with the `list_status` key. */
+@Serializable
+data class MalListAnime(
+    val id: Int,
+    val title: String? = null,
+    val main_picture: MalMainPicture? = null,
+    val num_episodes: Int? = null,
+    val mean: Float? = null,
+    val start_season: MalStartSeason? = null,
+    @SerialName("list_status")
+    val my_list_status: MalMyListStatus? = null,
+)
+
+@Serializable
+data class MalListRow(
+    val node: MalListAnime,
+)
+
+@Serializable
+data class MalListResponse(
+    val data: List<MalListRow> = emptyList(),
+    val paging: MalPaging? = null,
+)
+
+/** The MAL list pagination envelope (paging.next = the full next URL). */
+@Serializable
+data class MalPaging(
+    val next: String? = null,
 )
 
 @Serializable

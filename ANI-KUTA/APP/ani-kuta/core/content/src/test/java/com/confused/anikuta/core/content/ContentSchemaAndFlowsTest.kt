@@ -234,6 +234,77 @@ class ContentSchemaAndFlowsTest {
         assertEquals(777L, repo.getContentDetails("m1")!!.sourceId)
     }
 
+    // ── ROUND 179 (S8): the CROSS-TABLE mirror — the lock tests ───────────
+    //
+    // The audit's Window C: main_entry.extension_id (INTEGER, canonical) and
+    // content_details.extension_id (TEXT, the mirror) could disagree after a
+    // mixed-era restore. reconcileExtensionIds now mirrors a NULL/stale
+    // NUMERIC TEXT id from main_entry — and NEVER clobbers a non-numeric
+    // TEXT id (the B7 CloudStream-names escape hatch).
+
+    @Test
+    fun `the S8 mirror reconciles a NULL or stale numeric TEXT id from main_entry`() {
+        seedAniListContent("m1", 171018, "Mirror Row")
+        repo.updateMainEntrySources(
+            mainId = "m1",
+            dataSourceId = null,
+            systemId = null,
+            extensionRepoId = null,
+            extensionId = 99L,
+            sourceId = 99L,
+            animeUrl = "https://ext/a",
+            contentId = "test-m1",
+        )
+        repo.upsertContentDetails(
+            ContentDetails(mainId = "m1", dataSourceType = "anilist", dataSourceRefId = "171018"),
+        )
+        // The NULL TEXT copy mirrors.
+        repo.reconcileExtensionIds()
+        assertEquals("99", repo.getContentDetails("m1")!!.extensionId)
+        assertEquals(99L, repo.getContentDetails("m1")!!.sourceId)
+
+        // A STALE numeric copy mirrors to the new id (the switch window).
+        repo.updateMainEntrySources(
+            mainId = "m1",
+            dataSourceId = null,
+            systemId = null,
+            extensionRepoId = null,
+            extensionId = 100L,
+            sourceId = 100L,
+            animeUrl = "https://ext/b",
+            contentId = "test-m1",
+        )
+        repo.reconcileExtensionIds()
+        assertEquals("100", repo.getContentDetails("m1")!!.extensionId)
+        assertEquals(100L, repo.getContentDetails("m1")!!.sourceId)
+    }
+
+    @Test
+    fun `the S8 mirror never clobbers a NON-NUMERIC TEXT id (the B7 escape hatch)`() {
+        seedAniListContent("m2", 555, "Non Numeric")
+        repo.updateMainEntrySources(
+            mainId = "m2",
+            dataSourceId = null,
+            systemId = null,
+            extensionRepoId = null,
+            extensionId = 77L,
+            sourceId = 77L,
+            animeUrl = "https://ext/c",
+            contentId = "test-m2",
+        )
+        repo.upsertContentDetails(
+            ContentDetails(mainId = "m2", extensionId = "com.lagradost.cloudstream3"),
+        )
+
+        repo.reconcileExtensionIds()
+
+        assertEquals(
+            "the designed non-numeric TEXT id survives the mirror",
+            "com.lagradost.cloudstream3",
+            repo.getContentDetails("m2")!!.extensionId,
+        )
+    }
+
     // ── B1: the scanner's insert can no longer clobber (D-791) ────────────
 
     @Test

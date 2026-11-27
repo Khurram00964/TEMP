@@ -72,7 +72,11 @@ val appUpdateModule = module {
         }
         GitHubUpdateSource(
             owner = if (isDebugBuild) DEV_UPDATE_REPO_OWNER else PUBLISHED_UPDATE_REPO_OWNER,
-            repo = "ANI-KUTA",
+            // ROUND 179 (the user's order): the DEBUG line checks the TEMP
+            // mirror — the debug releases (v1.1.114 etc.) LIVE there; the
+            // in-app update now reaches the latest debug build. The release
+            // line keeps the official ANI-KUTA repo.
+            repo = if (isDebugBuild) DEV_UPDATE_REPO_NAME else "ANI-KUTA",
             client = get(named("appUpdate")),
         )
     }
@@ -100,8 +104,14 @@ val appUpdateModule = module {
     }
 }
 
-/** D-440: the dev repository — debug builds' update source. */
-private const val DEV_UPDATE_REPO_OWNER = "testplay-byte"
+/** D-440: the dev repository — debug builds' update source.
+ *  ROUND 179 (the user's order): TEMP is the LIVE debug-release line — the
+ *  debug builds' in-app updater checks it for the latest debug tag. The old
+ *  testplay-byte owner is DEAD (the account flagged, the PAT expired). */
+private const val DEV_UPDATE_REPO_OWNER = "Khurram00964"
+
+/** ROUND 179: the debug line's repo NAME (the mirror repo). */
+private const val DEV_UPDATE_REPO_NAME = "TEMP"
 
 /** D-440: the published repository — release builds' update source. */
 private const val PUBLISHED_UPDATE_REPO_OWNER = "Confused-Creature-180"
