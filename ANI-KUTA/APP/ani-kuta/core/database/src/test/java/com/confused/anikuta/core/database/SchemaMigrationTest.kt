@@ -385,6 +385,42 @@ class SchemaMigrationTest {
             """.trimMargin(),
             0,
         )
+        // ROUND 176: track_entry/content_tracking_state (the PRE-5 shapes —
+        // 5.sqm rebuilds both FROM these; the 3→8 chains reach 5.sqm).
+        driver.execute(
+            null,
+            """
+            CREATE TABLE track_entry (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracker_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                score INTEGER,
+                progress INTEGER NOT NULL,
+                total_episodes INTEGER,
+                list_id INTEGER,
+                started_at INTEGER,
+                completed_at INTEGER,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type),
+                FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_tracking_state (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracked INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type)
+            )
+            """.trimMargin(),
+            0,
+        )
         driver.execute(
             null,
             """
