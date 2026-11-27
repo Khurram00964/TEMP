@@ -544,8 +544,25 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10212
-    const val versionName = "1.1.112"
+    const val versionCode = 10213
+    const val versionName = "1.1.113"
+    // ROUND 177 (v1.1.113): the DB advisory — every claim verified in code
+    // before the build (the user's dont-trust-blindly honored). S2: 6.sqm's
+    // seed → INSERT OR IGNORE (the brick path: the duplicate (kind, ref)
+    // pairs aborted onUpgrade → the version-stays-old crash-loop). S3: THE
+    // TEST-SUITE REPAIR — the discovery: CI never ran the tests, so the
+    // suite was silently broken since round 163 (the double-quoted names,
+    // the missing fixture tables, the off-by-one chains) — 6 CI rounds of
+    // archaeology, ALL single-cause disclosed; THE LOCK TESTS LIVE (the S2
+    // duplicate-seed survival + the S1 coarse→fine re-split). S1: THE TMDB
+    // MOVIE/TV COLLISION — the packed indices 5/6 (tmdb_movie/tmdb_tv), the
+    // mediaType through the unified sheet, the FINE identity/data-axis
+    // writes (the enrichment's switch works again), 7.sqm (v7→v8) re-
+    // normalizing the seeded rows. THE SCHEMA IS NOW v8. The ride-alongs:
+    // WAL (the player's writes stop serializing against the readers), S7
+    // (the trending write's 12h TTL), S6 (the honest backup label). The
+    // one-off db-tests.yml workflow (dispatch-only) makes the DB tests
+    // runnable on CI forever — DB Tests run 46070969505 GREEN.
     // ROUND 176 (v1.1.112): the v1.1.111 device report. THE PULL INDICATOR
     // (the user's EXACT model): the small drag = ONE dot cycling the three
     // colors growing with the drag; the full drag = the three dots STATIC;
