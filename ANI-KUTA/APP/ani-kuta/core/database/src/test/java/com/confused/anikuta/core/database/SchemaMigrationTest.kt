@@ -309,7 +309,7 @@ class SchemaMigrationTest {
         driver.execute(
             null,
             """
-            CREATE TABLE main_entry (
+            CREATE TABLE IF NOT EXISTS main_entry (
                 main_id TEXT NOT NULL PRIMARY KEY,
                 content_id TEXT NOT NULL,
                 title TEXT NOT NULL,
@@ -459,7 +459,7 @@ class SchemaMigrationTest {
         driver.execute(
             null,
             """
-            CREATE TABLE main_entry (
+            CREATE TABLE IF NOT EXISTS main_entry (
                 main_id TEXT NOT NULL PRIMARY KEY,
                 content_id TEXT NOT NULL,
                 title TEXT NOT NULL,
@@ -750,6 +750,12 @@ class SchemaMigrationTest {
     @Test
     fun `the WS-A v5 cohort shape is recoverable by 5 sqm after the detector adds season_number`() {
         // The faithful WS-A-v5 shape: 13 columns — the v4 table + episode_number.
+        // ROUND 176: the era fixture drops the setUp's tables it recreates.
+        driver.execute(null, "DROP TABLE IF EXISTS watch_progress", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS track_entry", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS content_tracking_state", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS content_details", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS browse_cache", 0)
         driver.execute(
             null,
             """
