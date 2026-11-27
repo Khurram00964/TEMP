@@ -618,6 +618,10 @@ fun DetailsViewModel.searchUnifiedLink(source: String, query: String) {
                         posterUrl = item.posterUrl,
                         rating = item.rating,
                         year = item.year,
+                        // ROUND 176 (S1): the mediaType rides — the pick
+                        // writes the FINE identity kind from it (the movie/
+                        // TV id sequences overlap; the coarse key collided).
+                        mediaType = item.mediaType,
                     )
                 }
                 "tvmaze" -> tvmazeApi?.search(query).orEmpty().map { show ->
@@ -721,10 +725,19 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                 viewModelScope.launch {
                     runCatching {
                         val now = System.currentTimeMillis()
+                        // ROUND 176 (S1): the FINE identity kind — the TMDB
+                        // pick writes tmdb_movie/tmdb_tv from the result's
+                        // mediaType (the coarse (tmdb, id) key collided
+                        // across the overlapping movie/TV id sequences).
+                        val fineKind = if (source == "tmdb") {
+                            if (result.mediaType == "tv") "tmdb_tv" else "tmdb_movie"
+                        } else {
+                            source
+                        }
                         identityRepo.upsertIdentity(
                             com.confused.anikuta.core.content.ContentIdentity(
                                 mainId = mid,
-                                sourceKind = source,
+                                sourceKind = fineKind,
                                 sourceRefId = result.id.toString(),
                                 displayTitle = result.title,
                                 coverUrl = result.posterUrl,
@@ -739,7 +752,7 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                                 updatedAt = now,
                             ),
                         )
-                        Logger.i(TAG_MT) { "the $source identity linked: " + result.title }
+                        Logger.i(TAG_MT) { "the $fineKind identity linked: " + result.title }
                     }
                     refreshLinkedIdentities()
                 }
@@ -776,7 +789,13 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                 // device approved). The audit landmine 6: the old full-row
                 // upsert WIPED the ext axis on a linked row — gone.
                 val ownKind = mid.substringBefore(":")
-                if (source == ownKind) {
+                // ROUND 176 (S1): the fine mainIds (tmdb_movie:/tmdb_tv:) —
+                // the own-kind check matches the fine prefix; the data-axis
+                // write carries the FINE type (the enrichment's
+                // tmdb_movie/tmdb_tv switch works for these rows again —
+                // the v1.1.109 bare-tmdb write silently broke it).
+                if (source == ownKind || ownKind.startsWith("tmdb")) {
+                    val fineAxisKind = if (ownKind == "tmdb_tv" || result.mediaType == "tv") "tmdb_tv" else "tmdb_movie"
                     viewModelScope.launch {
                         runCatching {
                             val repo = contentRepository ?: return@launch
@@ -784,7 +803,7 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                             repo.upsertContentDetails(
                                 com.confused.anikuta.core.content.ContentDetails(
                                     mainId = mid,
-                                    dataSourceType = source,
+                                    dataSourceType = fineAxisKind,
                                     dataSourceRefId = result.id.toString(),
                                     dataCoverUrl = result.posterUrl,
                                     dataUpdatedAt = now,

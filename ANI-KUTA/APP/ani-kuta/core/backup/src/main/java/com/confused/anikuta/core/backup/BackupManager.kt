@@ -232,7 +232,11 @@ class BackupManager(
         "watch_session" -> "Watch sessions"
         "user_rating", "user_episode_rating" -> "Ratings"
         "track_entry", "content_tracking_state" -> "Tracking"
-        "app_settings" -> "App settings"
+        // ROUND 176 (S6): the honest label — the app_settings MIRROR never
+        // writes (the only touch is a read); the real settings backup is the
+        // anikuta_prefs file (the BackupPreferences store). The category
+        // stays for the format stability but says what it is.
+        "app_settings" -> "App settings (mirror — the prefs file is the real backup)"
         "downloaded_episode" -> "Downloads"
         "notification_config" -> "Notifications"
         "anime_update_state", "episode_schedule", "episode_update" -> "Schedules"

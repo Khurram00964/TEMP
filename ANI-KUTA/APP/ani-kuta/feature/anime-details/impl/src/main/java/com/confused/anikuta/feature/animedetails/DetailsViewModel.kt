@@ -1131,7 +1131,7 @@ class DetailsViewModel(
         val effectivePriority = if (
             kind == null &&
             metadataBase != null &&
-            currentMainId?.substringBefore(":") in setOf("tmdb", "tvmaze", "mal", "simkl")
+            currentMainId?.substringBefore(":") in setOf("tmdb", "tmdb_movie", "tmdb_tv", "tvmaze", "mal", "simkl")
         ) {
             Logger.i(TAG) { "remergeBases: the metadata row's fallback coerced to ANILIST" }
             com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST
@@ -1355,7 +1355,10 @@ class DetailsViewModel(
                     "anilist" -> "AniList"
                     "mal" -> "MyAnimeList"
                     "simkl" -> "Simkl"
-                    "tmdb" -> "TMDB"
+                    // ROUND 176 (S1): the fine TMDB kinds label as TMDB (the
+                    // fine kind separates the movie/TV identities; the chip
+                    // shows the SOURCE).
+                    "tmdb", "tmdb_movie", "tmdb_tv" -> "TMDB"
                     "tvmaze" -> "TVMaze"
                     "aniyomi", "cloudstream" -> {
                         val srcId = row.sourceRefId.substringBefore(":").toLongOrNull()
@@ -1372,7 +1375,7 @@ class DetailsViewModel(
                     "anilist" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist
                     "mal" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal
                     "simkl" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl
-                    "tmdb" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb
+                    "tmdb", "tmdb_movie", "tmdb_tv" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb
                     "tvmaze" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze
                     // The AnimeSource interface exposes no icon through
                     // ExtensionManager.getSource — the fallback glyph renders
@@ -1386,7 +1389,7 @@ class DetailsViewModel(
             // the approved pair never re-ordered on selection): the known
             // kinds in the user's order, the unknowns before the extension,
             // the extension LAST.
-            val chipOrder = listOf("anilist", "mal", "simkl", "tmdb", "tvmaze")
+            val chipOrder = listOf("anilist", "mal", "simkl", "tmdb", "tmdb_movie", "tmdb_tv", "tvmaze")
             val ordered = chips.sortedBy { chip ->
                 when {
                     chip.first in chipOrder -> chipOrder.indexOf(chip.first)
@@ -1435,11 +1438,17 @@ class DetailsViewModel(
     private fun loadMetadataContent(packedId: Int, title: String?, coverUrl: String?) {
         val kindIndex = (-packedId) % 8
         val remoteId = (-packedId) / 8
+        // ROUND 176 (S1): the FINE TMDB kinds join the encoding — the movie
+        // and TV id sequences numerically overlap; the coarse (tmdb, id)
+        // key collided across media types (the audit's silent-identity-theft
+        // bug). The legacy coarse mains keep resolving (1 = tmdb).
         val kind = when (kindIndex) {
             1 -> "tmdb"
             2 -> "tvmaze"
             3 -> "mal"
             4 -> "simkl"
+            5 -> "tmdb_movie"
+            6 -> "tmdb_tv"
             else -> "metadata"
         }
         // ROUND 171: the mainId prefix matches the persist side's coarse kind
@@ -2682,9 +2691,11 @@ class DetailsViewModel(
                 if (resolvedMainId != null) {
                     val kindPrefix = resolvedMainId.substringBefore(":")
                     val remoteIdPart = resolvedMainId.substringAfter(":").toLongOrNull()
-                    if (kindPrefix in setOf("tmdb", "tvmaze", "mal", "simkl") && remoteIdPart != null) {
+                    if (kindPrefix in setOf("tmdb", "tmdb_movie", "tmdb_tv", "tvmaze", "mal", "simkl") && remoteIdPart != null) {
                         val kindIndex = when (kindPrefix) {
                             "tmdb" -> 1
+                            "tmdb_movie" -> 5
+                            "tmdb_tv" -> 6
                             "tvmaze" -> 2
                             "mal" -> 3
                             "simkl" -> 4
@@ -3985,6 +3996,8 @@ class DetailsViewModel(
             "tvmaze" -> 2
             "mal" -> 3
             "simkl" -> 4
+            "tmdb_movie" -> 5
+            "tmdb_tv" -> 6
             else -> 0
         }
         val packedId = -(remoteId * 8 + kindIndex).toInt()

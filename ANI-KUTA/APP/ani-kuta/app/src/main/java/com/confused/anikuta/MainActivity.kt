@@ -1651,9 +1651,11 @@ fun AppRoot() {
                     // target") and ext-linked ones lost the TMDB identity.
                     val libKindPrefix = entry.mainId.substringBefore(":")
                     val libRemoteId = entry.mainId.substringAfter(":").toLongOrNull()
-                    if (libKindPrefix in setOf("tmdb", "tvmaze", "mal", "simkl") && libRemoteId != null) {
+                    if (libKindPrefix in setOf("tmdb", "tmdb_movie", "tmdb_tv", "tvmaze", "mal", "simkl") && libRemoteId != null) {
                         val libKindIndex = when (libKindPrefix) {
                             "tmdb" -> 1
+                            "tmdb_movie" -> 5
+                            "tmdb_tv" -> 6
                             "tvmaze" -> 2
                             "mal" -> 3
                             "simkl" -> 4

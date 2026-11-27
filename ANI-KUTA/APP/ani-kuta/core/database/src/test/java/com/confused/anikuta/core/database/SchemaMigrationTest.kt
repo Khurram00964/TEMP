@@ -96,6 +96,84 @@ class SchemaMigrationTest {
                 "VALUES ('main-1', 'cid-1', 'Test Anime', 1, 1)",
             0,
         )
+        // ROUND 176 (S3 — THE FIXTURE REPAIR): the chains to v8 run 5.sqm
+        // (the track_entry/content_tracking_state REBUILDS) and 6.sqm (the
+        // content_identity seeds FROM content_details/main_entry/track_entry)
+        // — the v1.1.109-112 fixtures lacked these tables, so every chain
+        // reaching v7/v8 THREW (silently: CI never runs the tests, D-465).
+        // The shapes: content_details = the CURRENT .sq shape (no sqm alters
+        // it); track_entry/content_tracking_state = the PRE-5 shapes 5.sqm
+        // rebuilds FROM (the old columns + the cascade FK).
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_details (
+                main_id TEXT NOT NULL PRIMARY KEY,
+                data_source_type   TEXT,
+                data_source_ref_id TEXT,
+                data_score          INTEGER,
+                data_episodes       INTEGER,
+                data_season         TEXT,
+                data_season_year    INTEGER,
+                data_status         TEXT,
+                data_genres         TEXT,
+                data_synopsis       TEXT,
+                data_cover_url      TEXT,
+                data_banner_url     TEXT,
+                data_extra_json     TEXT,
+                data_updated_at     INTEGER,
+                extension_type      TEXT,
+                extension_id        TEXT,
+                source_id           INTEGER,
+                anime_url           TEXT,
+                ext_description     TEXT,
+                ext_genres          TEXT,
+                ext_status          TEXT,
+                ext_author          TEXT,
+                ext_artist          TEXT,
+                ext_thumbnail_url   TEXT,
+                ext_extra_json      TEXT,
+                ext_updated_at      INTEGER,
+                cover_accent_argb   INTEGER,
+                FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE track_entry (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracker_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                score INTEGER,
+                progress INTEGER NOT NULL,
+                total_episodes INTEGER,
+                list_id INTEGER,
+                started_at INTEGER,
+                completed_at INTEGER,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type),
+                FOREIGN KEY (main_id) REFERENCES main_entry(main_id) ON DELETE CASCADE
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_tracking_state (
+                main_id TEXT NOT NULL,
+                tracker_type TEXT NOT NULL,
+                tracked INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, tracker_type)
+            )
+            """.trimMargin(),
+            0,
+        )
     }
 
     @After
@@ -128,12 +206,15 @@ class SchemaMigrationTest {
 
     @Test
     fun `migration 1 to 2 preserves existing watch progress data`() {
-        // ROUND 163 review fix: the chain runs to the CURRENT version (6) —
+        // ROUND 163 review fix: the chain runs to the CURRENT version (8 —
+        // ROUND 176: 6.sqm v7 + 7.sqm v8 joined; the comment's "6" was
+        // stale since round 173 and no test caught it — CI never runs the
+        // tests, D-465) —
         // the generated row mapper reads the FULL v6 shape positionally, so a
         // chain that stops at v2 hands it a 12-column table (the reviewer's
         // P1: "tests that read through the generated code must end the chain
         // at the CURRENT schema version").
-        AnikutaDatabase.Schema.migrate(driver, 1, 6)
+        AnikutaDatabase.Schema.migrate(driver, 1, 8)
 
         val database = AnikutaDatabase(driver)
         val row = database.watchQueries.getWatchProgress("main-1|00001").executeAsOneOrNull()
@@ -148,7 +229,7 @@ class SchemaMigrationTest {
 
     @Test
     fun `migrated database is fully usable by the generated code`() {
-        AnikutaDatabase.Schema.migrate(driver, 1, 6)
+        AnikutaDatabase.Schema.migrate(driver, 1, 8)
 
         val database = AnikutaDatabase(driver)
         // A save through the typed API on the MIGRATED database must work —
@@ -466,6 +547,43 @@ class SchemaMigrationTest {
             "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-1', 'cid-1', 'Test Anime', 1, 1)",
             0,
         )
+        // ROUND 176 (S3): the 4→8 chains run 6.sqm (the identity seeds FROM
+        // content_details) — the v4 fixture needed the table.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_details (
+                main_id TEXT NOT NULL PRIMARY KEY,
+                data_source_type   TEXT,
+                data_source_ref_id TEXT,
+                data_score          INTEGER,
+                data_episodes       INTEGER,
+                data_season         TEXT,
+                data_season_year    INTEGER,
+                data_status         TEXT,
+                data_genres         TEXT,
+                data_synopsis       TEXT,
+                data_cover_url      TEXT,
+                data_banner_url     TEXT,
+                data_extra_json     TEXT,
+                data_updated_at     INTEGER,
+                extension_type      TEXT,
+                extension_id        TEXT,
+                source_id           INTEGER,
+                anime_url           TEXT,
+                ext_description     TEXT,
+                ext_genres          TEXT,
+                ext_status          TEXT,
+                ext_author          TEXT,
+                ext_artist          TEXT,
+                ext_thumbnail_url   TEXT,
+                ext_extra_json      TEXT,
+                ext_updated_at      INTEGER,
+                cover_accent_argb   INTEGER
+            )
+            """.trimMargin(),
+            0,
+        )
     }
 
     @Test
@@ -473,7 +591,7 @@ class SchemaMigrationTest {
         createV4Shape()
         assertTrue("precondition: no season_number", "season_number" !in columnNames("watch_progress"))
 
-        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+        AnikutaDatabase.Schema.migrate(driver, 4, 8)
 
         assertTrue("season_number must exist", "season_number" in columnNames("watch_progress"))
         assertTrue("episode_number must exist", "episode_number" in columnNames("watch_progress"))
@@ -493,7 +611,7 @@ class SchemaMigrationTest {
             foreignKeysOf("track_entry").contains("main_entry"),
         )
 
-        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+        AnikutaDatabase.Schema.migrate(driver, 4, 8)
 
         assertTrue(
             "v6 track_entry must have NO foreign keys",
@@ -510,7 +628,7 @@ class SchemaMigrationTest {
         createV4Shape()
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
-        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+        AnikutaDatabase.Schema.migrate(driver, 4, 8)
 
         // THE device-critical scenario: library removal deletes the identity
         // row — the tracker link + the user's opt-in flag MUST survive (the
@@ -544,7 +662,7 @@ class SchemaMigrationTest {
             0,
         )
 
-        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+        AnikutaDatabase.Schema.migrate(driver, 4, 8)
 
         val database = AnikutaDatabase(driver)
         val rows = database.trackQueries.getTrackEntryByTrackerId("anilist", 555L)
@@ -577,7 +695,7 @@ class SchemaMigrationTest {
     @Test
     fun "migration 4 to 6 keeps the browse sweep usable and data intact"() {
         createV4Shape()
-        AnikutaDatabase.Schema.migrate(driver, 4, 6)
+        AnikutaDatabase.Schema.migrate(driver, 4, 8)
         val database = AnikutaDatabase(driver)
         // The expired row sweeps away; the table stays queryable.
         database.dataCacheQueries.deleteExpiredBrowseCache(10L)
@@ -709,5 +827,96 @@ class SchemaMigrationTest {
         )
         val entry = database.trackQueries.getTrackEntry("main-1", "anilist").executeAsOneOrNull()
         assertNotNull("the tracker link survives", entry)
+    }
+
+    // ── ROUND 176 (S2+S1): THE v7/v8 LOCK TESTS ─────────────────────────────
+    //
+    // S2 (the audit's upgraded finding): 6.sqm's data-axis seed was a plain
+    // INSERT — two content_details rows sharing (kind, ref) threw the UNIQUE
+    // violation INSIDE onUpgrade → the version stayed old → the upgrade
+    // retried every launch (the crash-loop class). The fix = OR IGNORE (the
+    // 5.sqm dedup doctrine); THIS test pins it — the duplicate seed must
+    // migrate cleanly with the first main keeping its identity.
+    //
+    // S1: the seeded identity rows collapsed the fine TMDB kinds (tmdb_movie/
+    // tmdb_tv) to 'tmdb' — the movie and TV id sequences numerically overlap,
+    // so the coarse key collided across media types. 7.sqm re-splits the kind
+    // from content_details' preserved fine type; THIS test pins the round
+    // trip (coarse at v7 → fine at v8).
+
+    @Test
+    fun `migration 6 to 8 survives duplicate (kind, ref) seed pairs without aborting`() {
+        createV4Shape()
+        // Two contents tracked to the SAME (tmdb, 123) pair — the shape a
+        // restored backup produces (the audit's reachability chain:
+        // resolveOrCreateForExtension's ext-only rows + linkAniList's
+        // no-claim-check merge).
+        driver.execute(
+            null,
+            "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-2', 'cid-2', 'The Same TMDB Id', 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO content_details(main_id, data_source_type, data_source_ref_id, data_updated_at) VALUES ('main-1', 'tmdb', '123', 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO content_details(main_id, data_source_type, data_source_ref_id, data_updated_at) VALUES ('main-2', 'tmdb', '123', 1)",
+            0,
+        )
+
+        // The v1.1.109-112 shape THREW right here (the UNIQUE violation
+        // inside onUpgrade). The chain must complete.
+        AnikutaDatabase.Schema.migrate(driver, 6, 8)
+
+        val database = AnikutaDatabase(driver)
+        val main1 = database.contentQueries.getIdentitiesForContent("main-1").executeAsList()
+        val main2 = database.contentQueries.getIdentitiesForContent("main-2").executeAsList()
+        assertEquals("main-1 keeps its identity (the first seed wins)", 1, main1.size)
+        assertEquals("main-2's duplicate was SKIPPED, not aborted", 0, main2.size)
+        assertEquals(
+            "the skipped duplicate's kind is what collided",
+            "tmdb",
+            main1.first().sourceKind,
+        )
+    }
+
+    @Test
+    fun `migration 7 to 8 re-splits the coarse tmdb identity kind from the fine content_details type`() {
+        createV4Shape()
+        driver.execute(
+            null,
+            "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-1', 'cid-1', 'Tokyo Ghoul', 1, 1)",
+            0,
+        )
+        // The fine type PRESERVED in content_details (the audit's "the fix
+        // data already exists and is being dropped").
+        driver.execute(
+            null,
+            "INSERT INTO content_details(main_id, data_source_type, data_source_ref_id, data_updated_at) VALUES ('main-1', 'tmdb_movie', '123', 1)",
+            0,
+        )
+
+        // v6 → v7: 6.sqm seeds the identity row with the COARSE kind (its
+        // SELECT normalizes 'tmdb%' → 'tmdb').
+        AnikutaDatabase.Schema.migrate(driver, 6, 7)
+        val atV7 = AnikutaDatabase(driver)
+            .contentQueries.getIdentitiesForContent("main-1")
+            .executeAsList()
+        assertEquals("the v7 row is coarse (the documented collapse)", "tmdb", atV7.first().sourceKind)
+
+        // v7 → v8: 7.sqm re-splits the kind from the preserved fine type.
+        AnikutaDatabase.Schema.migrate(driver, 7, 8)
+        val atV8 = AnikutaDatabase(driver)
+            .contentQueries.getIdentitiesForContent("main-1")
+            .executeAsList()
+        assertEquals(
+            "the identity re-splits to the FINE kind (the collision fix)",
+            "tmdb_movie",
+            atV8.first().sourceKind,
+        )
+        assertEquals("the ref stays numeric (the fine KIND separates)", "123", atV8.first().sourceRefId)
     }
 }

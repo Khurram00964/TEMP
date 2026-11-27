@@ -26,7 +26,13 @@ CREATE INDEX idx_identity_main ON content_identity(main_id);
 
 -- The data axis → the identity rows (the fine tmdb_movie/tmdb_tv kinds
 -- normalize to 'tmdb'; the 'metadata' fallback kind is skipped).
-INSERT INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
+-- ROUND 176 (S2 — THE BRICK-PATH FIX): the plain INSERT aborted the WHOLE
+-- migration when two content_details rows shared (kind, ref) — the UNIQUE
+-- index threw inside onUpgrade → the version stayed old → the upgrade
+-- retried EVERY launch (the documented crash-loop class; the audit's S2).
+-- OR IGNORE skips the conflicting pair (the first main wins) exactly like
+-- 5.sqm's dedup-before-unique doctrine; the lock test pins it.
+INSERT OR IGNORE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
 SELECT
     cd.main_id,
     CASE WHEN cd.data_source_type LIKE 'tmdb%' THEN 'tmdb' ELSE cd.data_source_type END,

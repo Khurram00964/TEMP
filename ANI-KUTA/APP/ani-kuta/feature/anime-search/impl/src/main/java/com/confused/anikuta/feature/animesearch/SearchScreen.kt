@@ -1044,8 +1044,11 @@ ResultCard(anime, onResultTap, titleStyle, showRating, showDetails)
 //    the details VM decodes it, reads the content_details' data axis (the
 //    DB linking from the tap), and renders THE ONE details page.
 fun DataSourceResult.syntheticAniListId(): Int {
+    // ROUND 176 (S1): the FINE TMDB kinds — the movie and TV id sequences
+    // numerically overlap; the packed id carries the media type (5 =
+    // tmdb_movie, 6 = tmdb_tv) so the two contents never share a main.
     val kindIndex = when (source) {
-        DataSourceKind.TMDB -> 1
+        DataSourceKind.TMDB -> if (mediaType == "tv") 6 else 5
         DataSourceKind.TVMAZE -> 2
         DataSourceKind.MAL -> 3
         DataSourceKind.SIMKL -> 4

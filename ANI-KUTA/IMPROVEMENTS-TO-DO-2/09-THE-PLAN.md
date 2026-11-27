@@ -603,3 +603,49 @@ identical; fix the CLASS not the symptom); the error display at every layer.
 8. **F9 the relay gaps:** the rating notice, the AniList failure's REAL
    reason (+ the refresh-and-retry-once), the connectivity-triggered sweep.
 9. **F10 the link-sheet polish pass.**
+
+---
+
+## P. THE ROUND-177 ORDER (the DB advisory — the user's "go, complete everything")
+
+**THE VERIFICATION (every claim checked against the code — the user's
+"dont trust blindly" honored):** S2 CONFIRMED (the plain INSERT + the
+pre-created UNIQUE index + the reachable duplicates via
+resolveOrCreateForExtension's ext-only rows and linkAniList's
+no-claim-check merge + verifyMigrations never referenced + the stale
+"version (6)" comment + 5.sqm's dedup pattern proving the doctrine
+existed); S1 CONFIRMED (the INSERT OR REPLACE identity write + the
+mediaType dropped from UnifiedLinkResult + the enrichment's
+tmdb_movie/tmdb_tv switch vs the bare-tmdb pick write + lookupIdentityMain
+dormant); the WAL absence CONFIRMED (only foreign_keys = ON); the
+app_settings mirror CONFIRMED write-dead (the only touch is a read);
+S7's TTL mismatch CONFIRMED (the round-176 write used the 6h default vs
+the 12h read gate).
+
+**THE BUILDS:**
+1. **S2** the 6.sqm data-axis seed → INSERT OR IGNORE (the 5.sqm doctrine;
+   the first main wins, nothing aborts).
+2. **S3** THE TEST-SUITE REPAIR (the discovery: CI never ran the tests —
+   the fixtures lacked content_details/track_entry/content_tracking_state,
+   so EVERY chain reaching v7/v8 threw silently since round 173): the
+   fixtures repaired (the setUp + createV4Shape), ALL the migrate
+   end-versions bumped 6 → 8, the stale comment fixed, THE LOCK TESTS
+   appended (the S2 duplicate-seed survival + the S1 coarse→fine
+   re-split).
+3. **S1** the fine-kind fix: the packed-id indices 5 = tmdb_movie /
+   6 = tmdb_tv (the decode + the search-tap encode + the routing prefixes
+   + the unlink decode), UnifiedLinkResult.mediaType, the pick writes the
+   FINE identity kind (the enrichment's switch works again), the data-axis
+   writes the fine type, the chips' labels/order updated, **7.sqm (v7→v8)**
+   re-normalizes the seeded coarse rows from content_details' preserved
+   fine types. THE SCHEMA IS NOW v8.
+4. **The ride-alongs:** WAL (PRAGMA journal_mode = WAL — the player's
+   writes stop serializing against the readers), S7 (the search's trending
+   write → upsertBrowseCacheWithTtl 12h, matching the read gate), S6 (the
+   honest backup label: "App settings (mirror — the prefs file is the real
+   backup)").
+5. **THE DB TESTS RUN EXPLICITLY** (the user's order this round — the
+   schema-touching paths get the pass).
+**DEFERRED (the user's answers pending):** S4 (the updateActualAt sweep),
+S5 (the doc drift), S8 (the extension_id duality), F10 (the link-sheet
+polish).

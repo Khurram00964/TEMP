@@ -1,0 +1,23 @@
+-- ROUND 176 (S1): THE TMDB MOVIE/TV IDENTITY COLLISION FIX — v7 → v8.
+-- The movie and TV id sequences numerically overlap; the seeded identity
+-- rows collapsed the fine kinds to 'tmdb' (the coarse (tmdb, id) key
+-- collided across media types — linking B to "TMDB #123 (TV)" silently
+-- deleted A's "TMDB #123 (movie)" identity row). content_details
+-- PRESERVED the fine types (tmdb_movie/tmdb_tv) — this migration re-splits
+-- the identity kind from them. The rows without fine info stay 'tmdb'
+-- (the legacy coarse mains keep resolving — the packed-id decode accepts
+-- both).
+UPDATE content_identity
+SET source_kind = (
+    SELECT cd.data_source_type
+    FROM content_details cd
+    WHERE cd.main_id = content_identity.main_id
+      AND cd.data_source_type LIKE 'tmdb%'
+    LIMIT 1
+)
+WHERE source_kind = 'tmdb'
+  AND EXISTS (
+    SELECT 1 FROM content_details cd
+    WHERE cd.main_id = content_identity.main_id
+      AND cd.data_source_type LIKE 'tmdb%'
+  );

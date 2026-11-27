@@ -69,6 +69,9 @@ data class UnifiedLinkResult(
     val posterUrl: String?,
     val rating: Double? = null,
     val year: Int? = null,
+    // ROUND 176 (S1): the TMDB movie/TV distinction — the id sequences
+    // numerically overlap; the pick writes the FINE identity kind from it.
+    val mediaType: String? = null,
 )
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)

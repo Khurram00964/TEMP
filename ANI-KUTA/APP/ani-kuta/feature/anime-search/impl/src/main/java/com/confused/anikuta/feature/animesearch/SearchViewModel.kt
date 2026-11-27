@@ -1481,9 +1481,14 @@ class SearchViewModel(
                     // search page never wrote the trending row).
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            dataCacheRepository.upsertBrowseCache(
+                            // ROUND 176 (S7): the 12h TTL — matching the
+                            // read gate's own horizon (the v1.1.110 write
+                            // used the 6h default; the row expired at 6h →
+                            // the offline-after-6h window lost the cache).
+                            dataCacheRepository.upsertBrowseCacheWithTtl(
                                 BrowseCacheCodec.SECTION_TRENDING,
                                 BrowseCacheCodec.encode(results),
+                                SEARCH_DEFAULTS_TTL_MS,
                             )
                         }
                     }

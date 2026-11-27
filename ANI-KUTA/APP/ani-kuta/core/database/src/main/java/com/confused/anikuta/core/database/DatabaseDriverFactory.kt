@@ -39,6 +39,12 @@ class DatabaseDriverFactory(private val context: Context) {
                     // All ON DELETE CASCADE clauses are now active. Safe for existing data —
                     // FK checks only apply to new INSERT/UPDATE/DELETE, not retroactively.
                     db.execSQL("PRAGMA foreign_keys = ON")
+                    // ROUND 176 (the audit's recommendation): WAL — the
+                    // player's 10-second watch_progress writes no longer
+                    // serialize against the readers (the Library batch
+                    // loads, the reactive queries). The standard modern
+                    // SQLite posture; persisted per-database.
+                    db.execSQL("PRAGMA journal_mode = WAL")
                     migrateSchemaIfNeeded(db)
                 }
 
