@@ -96,6 +96,21 @@ class SchemaMigrationTest {
                 "VALUES ('main-1', 'cid-1', 'Test Anime', 1, 1)",
             0,
         )
+        // ROUND 176: browse_cache too — 5.sqm:70 CREATEs an INDEX on it;
+        // the missing table threw 'no such table: main.browse_cache' on
+        // every chain (the first device-class failure the run surfaced).
+        driver.execute(
+            null,
+            """
+            CREATE TABLE browse_cache (
+                section_key TEXT NOT NULL PRIMARY KEY,
+                data_json TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """.trimMargin(),
+            0,
+        )
         // ROUND 176 (S3 — THE FIXTURE REPAIR): the chains to v8 run 5.sqm
         // (the track_entry/content_tracking_state REBUILDS) and 6.sqm (the
         // content_identity seeds FROM content_details/main_entry/track_entry)
@@ -283,6 +298,14 @@ class SchemaMigrationTest {
 
     /** The faithful v3 shape: both tracking tables WITH the cascade FK. */
     private fun createV3Shape() {
+        // ROUND 176: the era-shape functions DROP the tables they own (the
+        // setUp already created main_entry/watch_progress — the double
+        // CREATE threw 'table main_entry already exists' before any
+        // migration ran).
+        driver.execute(null, "DROP TABLE IF EXISTS content_details", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS watch_progress", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS track_entry", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS content_tracking_state", 0)
         driver.execute(
             null,
             """
@@ -427,6 +450,12 @@ class SchemaMigrationTest {
 
     /** The faithful v4 shape: the tracking tables still WITH the cascade FK. */
     private fun createV4Shape() {
+        // ROUND 176: the same era-shape drops (the setUp collisions).
+        driver.execute(null, "DROP TABLE IF EXISTS content_details", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS watch_progress", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS track_entry", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS content_tracking_state", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS browse_cache", 0)
         driver.execute(
             null,
             """
