@@ -544,8 +544,29 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10213
-    const val versionName = "1.1.113"
+    const val versionCode = 10214
+    const val versionName = "1.1.114"
+    // ROUND 178 (v1.1.114): the SELF-VERIFICATION round — three read-only
+    // auditors swept the schema v8 layer + both checklist stations, and every
+    // finding was fixed in the same round:
+    // DB: 6.sqm's bare CREATE + both OR REPLACE seeds (the pre-created-table
+    // crash-loop + the rich-row clobber), the runtime identity-theft (the
+    // upsert claim guard + the "Already linked" notices), content_identity
+    // missing from BACKUP_TABLES, the v5-cohort's missing index, and the
+    // DB-1 duplicate-main fix (the persist side now mints the FINE prefix,
+    // both sides ADOPT a legacy coarse row, the idempotent on-open twin
+    // merge).
+    // DETAILS: the own-kind identity seed (the chips could never render on
+    // fresh entries), the EXPLICIT rank-0 restore (the manual-link auto-flip),
+    // the pre-remerge display-kind restore (the reopen mismatch), the
+    // fine-kind TMDB unlink (dead for tmdb_movie/tmdb_tv), the double pull
+    // haptic, the silent enrichment failure, the swallowed auto-search error.
+    // SEARCH: the pull threshold corrected to M3's actual commit (0.5 — the
+    // static-dots+haptic model now agrees with every refreshing lift), the
+    // offline-open toast (the auto path stays silent), the Loading-forever
+    // hang, the CS pull wipe, the MAL/Simkl notice swallow, the dead
+    // refreshJob guard, the missing paging context on the 12h-gated serve,
+    // the mediaType grid-key/dedupe, the no-emission dismissal (refreshEpoch).
     // ROUND 177 (v1.1.113): the DB advisory — every claim verified in code
     // before the build (the user's dont-trust-blindly honored). S2: 6.sqm's
     // seed → INSERT OR IGNORE (the brick path: the duplicate (kind, ref)

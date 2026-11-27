@@ -53,8 +53,17 @@ import kotlinx.coroutines.delay
 //  HapticHelper pattern — the user's explicit order).
 // ════════════════════════════════════════════════════════════════════════════
 
-/** The pull's refresh threshold — the same fraction M3 treats as committed. */
-private const val PULL_THRESHOLD = 0.92f
+/**
+ * The pull's refresh threshold — ROUND 178 (the audit, S1-A): M3 1.3.1's
+ * onRelease commits the refresh when the RAW pull crosses its 80dp
+ * threshold, which reads as distanceFraction ≈ 0.5 (the state halves the
+ * raw distance while mapping it to the fraction). The old 0.92 let a
+ * medium pull (0.5-0.92) refresh on lift with ONLY the single dot — no
+ * static three, no vibration: the model broke exactly at the commit point.
+ * At 0.5 the three static dots + the haptic fire exactly when a lift WILL
+ * refresh — the visual model and the actual commit agree everywhere.
+ */
+private const val PULL_THRESHOLD = 0.5f
 
 /**
  * The capsule-hosted pull/refresh indicator.
@@ -80,7 +89,7 @@ fun RefreshCapsuleIndicator(
             HapticHelper.stageCross(context)
             hapticFired = true
         }
-        if (dragFraction < 0.5f) hapticFired = false
+        if (dragFraction < PULL_THRESHOLD / 2f) hapticFired = false
     }
 
     // The capsule's follow — the bouncy spring toward the drag distance (the

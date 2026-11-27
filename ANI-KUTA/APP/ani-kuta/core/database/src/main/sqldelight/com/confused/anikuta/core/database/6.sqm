@@ -4,7 +4,13 @@
 -- track_entry identity rows (tmdb/tvmaze kinds) so every link the user made
 -- survives. display_rank 0 = the currently-displayed axis (from
 -- main_entry.display_source).
-CREATE TABLE content_identity (
+-- ROUND 178 (the audit): IF NOT EXISTS — the onUpgrade pre-flight's probe
+-- onCreate runs the FULL current .sq schema BEFORE this chain on any device
+-- missing even one probe table, so content_identity (+ both indexes) can
+-- ALREADY exist here; the bare CREATE threw inside onUpgrade → rollback →
+-- the crash-loop class again. Safe to edit post-release: a device already
+-- at v8 never re-runs this file (user_version gates the chain).
+CREATE TABLE IF NOT EXISTS content_identity (
     main_id        TEXT NOT NULL,
     source_kind    TEXT NOT NULL,
     source_ref_id  TEXT NOT NULL,
@@ -21,8 +27,8 @@ CREATE TABLE content_identity (
     updated_at     INTEGER NOT NULL,
     PRIMARY KEY (main_id, source_kind)
 );
-CREATE UNIQUE INDEX idx_identity_remote ON content_identity(source_kind, source_ref_id);
-CREATE INDEX idx_identity_main ON content_identity(main_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_remote ON content_identity(source_kind, source_ref_id);
+CREATE INDEX IF NOT EXISTS idx_identity_main ON content_identity(main_id);
 
 -- The data axis → the identity rows (the fine tmdb_movie/tmdb_tv kinds
 -- normalize to 'tmdb'; the 'metadata' fallback kind is skipped).
@@ -56,7 +62,11 @@ WHERE cd.data_source_type IS NOT NULL
   AND cd.data_source_ref_id != '';
 
 -- The extension axis → the identity rows (the ref = <extensionId>:<url>).
-INSERT OR REPLACE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
+-- ROUND 178 (the audit): OR IGNORE — OR REPLACE DELETED the conflicting
+-- row first, so two mains sharing one extension link silently MOVED the
+-- identity to the second main at migration time (the runtime claim guard's
+-- migration-time twin). First-wins, same as the data axis.
+INSERT OR IGNORE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
 SELECT
     cd.main_id,
     cd.extension_type,
@@ -81,7 +91,12 @@ WHERE cd.extension_type IS NOT NULL
 -- The v1.1.107-era track_entry IDENTITY rows (the tmdb/tvmaze kinds — the
 -- round-172 unified-sheet picks) become identity rows; the MAL/Simkl
 -- mappings STAY in track_entry (they double as the tracking seeds).
-INSERT OR REPLACE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
+-- ROUND 178 (the audit): OR IGNORE — the OR REPLACE here CLOBBERED the
+-- data-axis seed above: a main whose data axis is TMDB got its RICH row
+-- (synopsis/cover/score, rank 0/1) deleted and replaced by this BARE one
+-- (all-NULL metadata, rank 2) — and cross-main, the REPLACE deleted the
+-- OTHER main's row outright. First-wins everywhere.
+INSERT OR IGNORE INTO content_identity(main_id, source_kind, source_ref_id, display_title, cover_url, synopsis, score, episodes, status, genres, year, display_rank, created_at, updated_at)
 SELECT
     te.main_id,
     te.tracker_type,

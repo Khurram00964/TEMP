@@ -271,7 +271,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun `fresh install creates the v2 schema directly`() {
+    fun `fresh install creates the current schema directly`() {
         // A fresh JdbcSqliteDriver + Schema.create = a brand-new install: the
         // column is there without any migration.
         val fresh = JdbcSqliteDriver("jdbc:sqlite::memory:")
@@ -901,6 +901,44 @@ class SchemaMigrationTest {
             """.trimMargin(),
             0,
         )
+        // ROUND 178 (the P1 doctrine — the chain now runs to v8): 6.sqm's
+        // seeds SELECT FROM content_details (the setUp's copy was dropped
+        // above) — the era fixture carries the v4-era shape.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_details (
+                main_id TEXT NOT NULL PRIMARY KEY,
+                data_source_type   TEXT,
+                data_source_ref_id TEXT,
+                data_score          INTEGER,
+                data_episodes       INTEGER,
+                data_season         TEXT,
+                data_season_year    INTEGER,
+                data_status         TEXT,
+                data_genres         TEXT,
+                data_synopsis       TEXT,
+                data_cover_url      TEXT,
+                data_banner_url     TEXT,
+                data_extra_json     TEXT,
+                data_updated_at     INTEGER,
+                extension_type      TEXT,
+                extension_id        TEXT,
+                source_id           INTEGER,
+                anime_url           TEXT,
+                ext_description     TEXT,
+                ext_genres          TEXT,
+                ext_status          TEXT,
+                ext_author          TEXT,
+                ext_artist          TEXT,
+                ext_thumbnail_url   TEXT,
+                ext_extra_json      TEXT,
+                ext_updated_at      INTEGER,
+                cover_accent_argb   INTEGER
+            )
+            """.trimMargin(),
+            0,
+        )
         driver.execute(
             null,
             "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, score, progress, total_episodes, list_id, started_at, completed_at, updated_at) " +
@@ -921,8 +959,10 @@ class SchemaMigrationTest {
             0,
         )
 
-        // The cohort's chain: 4.sqm is SKIPPED (oldVersion 5) — only 5.sqm runs.
-        AnikutaDatabase.Schema.migrate(driver, 5, 6)
+        // The cohort's chain: 4.sqm is SKIPPED (oldVersion 5) — then 5→8.
+        // ROUND 178 (the P1 doctrine): the chain ends at the CURRENT version —
+        // the mapper reads below must describe the shipped shape (v8).
+        AnikutaDatabase.Schema.migrate(driver, 5, 8)
 
         val database = AnikutaDatabase(driver)
         val row = database.watchQueries.getWatchProgress("main-1|00003").executeAsOneOrNull()
@@ -1023,5 +1063,103 @@ class SchemaMigrationTest {
             atV8.first().source_kind,
         )
         assertEquals("the ref stays numeric (the fine KIND separates)", "123", atV8.first().source_ref_id)
+    }
+
+    // ── ROUND 178 (the audit): the 6.sqm HARDENING LOCKS ─────────────────────
+    //
+    // The round-178 audit found two more ways the shipped 6.sqm could abort
+    // or corrupt on real cohorts, both fixed in place:
+    // 1. the bare CREATE TABLE threw when the onUpgrade pre-flight's probe
+    //    onCreate had ALREADY created content_identity (the full .sq schema
+    //    runs before the chain on any device missing one probe table) →
+    //    rollback → the S2 crash-loop class; IF NOT EXISTS closes it.
+    // 2. the ext/track seeds were INSERT OR REPLACE — REPLACE DELETES the
+    //    conflicting row first, so the track seed CLOBBERED the rich
+    //    data-axis row (same PK) and MOVED identities cross-main (the remote
+    //    UNIQUE) at migration time; OR IGNORE makes first-wins universal.
+
+    @Test
+    fun `migration 6 to 8 survives a pre-created content_identity from the probe onCreate`() {
+        createV4Shape()
+        driver.execute(
+            null,
+            "INSERT INTO content_details(main_id, data_source_type, data_source_ref_id, data_updated_at) VALUES ('main-1', 'tmdb_movie', '123', 1)",
+            0,
+        )
+        // The pre-flight cohort: the probe onCreate ran the FULL .sq schema
+        // BEFORE the chain — content_identity ALREADY exists (empty) when
+        // 6.sqm runs. The shipped bare CREATE threw right here.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_identity (
+                main_id TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                source_ref_id TEXT NOT NULL,
+                display_title TEXT,
+                cover_url TEXT,
+                synopsis TEXT,
+                score INTEGER,
+                episodes INTEGER,
+                status TEXT,
+                genres TEXT,
+                year INTEGER,
+                display_rank INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (main_id, source_kind)
+            )
+            """.trimMargin(),
+            0,
+        )
+
+        AnikutaDatabase.Schema.migrate(driver, 6, 8)
+
+        val database = AnikutaDatabase(driver)
+        val rows = database.contentQueries.getIdentitiesForContent("main-1").executeAsList()
+        assertEquals("the seed lands INTO the pre-created table (no abort)", 1, rows.size)
+        assertEquals("the kind re-splits fine at v8 as usual", "tmdb_movie", rows.first().source_kind)
+    }
+
+    @Test
+    fun `migration 6 to 8 first-wins keeps the rich data-axis seed over the track seed`() {
+        createV4Shape()
+        // main-1: the RICH data axis (the search-persisted metadata row).
+        driver.execute(
+            null,
+            "INSERT INTO content_details(main_id, data_source_type, data_source_ref_id, data_synopsis, data_updated_at) VALUES ('main-1', 'tmdb_movie', '123', 'rich synopsis', 1)",
+            0,
+        )
+        // main-2: the SAME TMDB id via a v1.1.107-era track_entry pick — the
+        // shipped OR REPLACE seed deleted main-1's rich row (the remote
+        // UNIQUE conflict resolves by DELETE-then-INSERT) and installed a
+        // bare all-NULL one in its place.
+        driver.execute(
+            null,
+            "INSERT INTO main_entry(main_id, content_id, title, created_at, updated_at) VALUES ('main-2', 'cid-2', 'Second', 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO track_entry(main_id, tracker_type, tracker_id, status, progress, updated_at) VALUES ('main-2', 'tmdb', 123, 'PLAN_TO_WATCH', 0, 1)",
+            0,
+        )
+
+        AnikutaDatabase.Schema.migrate(driver, 6, 8)
+
+        val database = AnikutaDatabase(driver)
+        val main1 = database.contentQueries.getIdentitiesForContent("main-1").executeAsList()
+        assertEquals("main-1 keeps its identity", 1, main1.size)
+        assertEquals(
+            "the RICH data-axis row survives (first-wins, never clobbered)",
+            "rich synopsis",
+            main1.first().synopsis,
+        )
+        val main2 = database.contentQueries.getIdentitiesForContent("main-2").executeAsList()
+        assertEquals(
+            "main-2's duplicate track pick is SKIPPED (the remote index is claimed)",
+            0,
+            main2.size,
+        )
     }
 }

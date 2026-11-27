@@ -1192,22 +1192,14 @@ fun DetailsScreen(
                 // refreshed using the refresh button"). The themed M3 indicator
                 // appears while isRefreshing is true (driven by refreshAll).
                 val ptrState = rememberPullToRefreshState()
-                val ptrContext = LocalContext.current
-                // One haptic the moment the pull first crosses the refresh
-                // threshold. derivedStateOf: reading distanceFraction directly
-                // here would invalidate the whole Success branch every pull
-                // frame. The !isRefreshing gate skips the snap-to-1 that M3
-                // applies on button-triggered refreshes (haptic = pull only).
-                val ptrThresholdCrossed by remember {
-                    androidx.compose.runtime.derivedStateOf {
-                        ptrState.distanceFraction >= 1f && !isRefreshing
-                    }
-                }
-                LaunchedEffect(ptrThresholdCrossed) {
-                    if (ptrThresholdCrossed) {
-                        HapticHelper.stageCross(ptrContext)
-                    }
-                }
+                // ROUND 178 (the audit — E): ptrContext + the screen-level
+                // threshold haptic removed — the capsule owns the vibration.
+                // ROUND 178 (the audit — E): the screen-level threshold haptic
+                // is GONE — RefreshCapsuleIndicator owns the vibration (it
+                // fires at ITS threshold cross, once per upward crossing).
+                // This block vibrated a SECOND time at >=1.0 (the double
+                // haptic the audit measured: capsule 0.92-threshold + this
+                // 1.0-threshold on every pull).
 
                 // D-228: onEpisodeClick is now hoisted to screen level (before
                 // MaterialTheme) so both the Success branch + EpisodeSearchSheet
@@ -3235,7 +3227,7 @@ private fun EpisodesSection(
                             }
                         }
                     }
-                    is ReverseAutoLinkState.Idle, is ReverseAutoLinkState.Error -> {
+                    is ReverseAutoLinkState.Idle -> {
                         // No reverse auto-link active — show the original placeholder.
                         Box(
                             modifier = Modifier
@@ -3256,6 +3248,54 @@ private fun EpisodesSection(
                                     fontFamily = RobotoFamily,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Tap the source selector above to search\nand link an extension source.",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                    is ReverseAutoLinkState.Error -> {
+                        // ROUND 178 (the audit — G): the failure SURFACES — the
+                        // Error state rendered the Idle placeholder above, so an
+                        // offline auto-search looked EXACTLY like "no source
+                        // linked" (the reason swallowed, the honest-failure
+                        // doctrine broken). The real reason + the tap-hint.
+                        val linkError = reverseAutoLinkState as? ReverseAutoLinkState.Error
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Filled.HourglassEmpty,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(48.dp),
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    text = "Source search failed",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = linkError?.message ?: "The search could not complete.",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center,
                                 )

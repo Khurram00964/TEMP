@@ -297,7 +297,11 @@ fun DetailsActionMenu(
                         Triple("tvmaze", "Unlink TVMaze", onUnlinkTvmaze),
                     )
                     unlinkTargets.forEach { (key, label, onUnlink) ->
-                        if (key in linkedIdentities) {
+                        // ROUND 178 (the audit — C): the FINE kinds match their
+                        // parent key — the v8 TMDB picks wrote tmdb_movie/
+                        // tmdb_tv rows and the exact "tmdb" test hid the Unlink
+                        // row forever.
+                        if (linkedIdentities.any { it == key || it.startsWith("${key}_") }) {
                             MenuDiscRow(
                                 icon = Icons.Filled.LinkOff,
                                 label = label,

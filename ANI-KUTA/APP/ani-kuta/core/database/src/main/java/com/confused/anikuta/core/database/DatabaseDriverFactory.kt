@@ -293,6 +293,11 @@ class DatabaseDriverFactory(private val context: Context) {
                     // watch_progress: continue-watching partial + completed_at
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_progress_continue ON watch_progress(last_watched_at DESC) WHERE completed = 0 AND auto_mark_suppressed = 0 AND position > 0")
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_progress_completed_at ON watch_progress(completed_at DESC)")
+                    // ROUND 178 (the audit): the WS-A-v5 cohort skips 4.sqm
+                    // (oldVersion 5) and this on-open block never created its
+                    // index — that cohort alone ran the season queries
+                    // unindexed, forever. Idempotent for every other cohort.
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_watch_progress_main_number ON watch_progress(main_id, season_number, episode_number)")
                     // episode_update: retention purge partial
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_episode_update_ack_at ON episode_update(acknowledged_at) WHERE acknowledged = 1")
                     // notification_sent: retention purge
@@ -312,6 +317,43 @@ class DatabaseDriverFactory(private val context: Context) {
                     // HERE — after the CREATE INDEX statements above. It moved to the top of
                     // migrateSchemaIfNeeded, above every index statement + onCreate(db) call,
                     // so the indexes' auto_mark_suppressed / main_id columns exist first.)
+
+                    // ── ROUND 178 (the audit — DB-1): the v1.1.113-window
+                    // twin merge. That build's search persist minted the
+                    // COARSE tmdb main while the details loader decoded the
+                    // FINE packed id → a second (childless) main per opened
+                    // TMDB entry. The fine convention is authoritative now;
+                    // the legacy coarse rows are ADOPTED at runtime (both
+                    // sides) — the leftover childless twins merge away here,
+                    // idempotently, every open. Guarded on content_identity
+                    // existing (v7+ — the pre-flight runs BEFORE the chain on
+                    // upgrading devices, where the table doesn't exist yet).
+                    if (hasColumn(db, "content_identity", "main_id")) {
+                        // Childless = no identity/track/watch/library rows
+                        // reference the twin (user data is never touched).
+                        db.execSQL(
+                            "DELETE FROM content_details WHERE main_id IN (" +
+                                "SELECT f.main_id FROM main_entry f " +
+                                "JOIN content_details fd ON fd.main_id = f.main_id " +
+                                "WHERE (substr(f.main_id, 1, 11) = 'tmdb_movie:' OR substr(f.main_id, 1, 8) = 'tmdb_tv:') " +
+                                "AND EXISTS (SELECT 1 FROM main_entry c WHERE c.main_id = 'tmdb:' || substr(f.main_id, instr(f.main_id, ':') + 1)) " +
+                                "AND NOT EXISTS (SELECT 1 FROM content_identity ci WHERE ci.main_id = f.main_id) " +
+                                "AND NOT EXISTS (SELECT 1 FROM track_entry te WHERE te.main_id = f.main_id) " +
+                                "AND NOT EXISTS (SELECT 1 FROM watch_progress wp WHERE wp.main_id = f.main_id) " +
+                                "AND NOT EXISTS (SELECT 1 FROM library_item li WHERE li.main_id = f.main_id))",
+                        )
+                        db.execSQL(
+                            "DELETE FROM main_entry WHERE main_id IN (" +
+                                "SELECT f.main_id FROM main_entry f " +
+                                "JOIN content_details fd ON fd.main_id = f.main_id " +
+                                "WHERE (substr(f.main_id, 1, 11) = 'tmdb_movie:' OR substr(f.main_id, 1, 8) = 'tmdb_tv:') " +
+                                "AND EXISTS (SELECT 1 FROM main_entry c WHERE c.main_id = 'tmdb:' || substr(f.main_id, instr(f.main_id, ':') + 1)) " +
+                                "AND NOT EXISTS (SELECT 1 FROM content_identity ci WHERE ci.main_id = f.main_id) " +
+                                "AND NOT EXISTS (SELECT 1 FROM track_entry te WHERE te.main_id = f.main_id) " +
+                                "AND NOT EXISTS (SELECT 1 FROM watch_progress wp WHERE wp.main_id = f.main_id) " +
+                                "AND NOT EXISTS (SELECT 1 FROM library_item li WHERE li.main_id = f.main_id))",
+                        )
+                    }
 
                     // ── D-193 v2: learned_offset_ms on anime_update_state (smart-release averaging) ──
                     // Existing dev installs get the column via ALTER TABLE; fresh installs get

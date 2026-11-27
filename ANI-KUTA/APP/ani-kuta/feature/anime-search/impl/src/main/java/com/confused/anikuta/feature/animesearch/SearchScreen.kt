@@ -369,6 +369,15 @@ fun SearchScreen(
             viewModel.clearRefreshNotice()
         }
     }
+    // ROUND 178 (the audit — S1-B): the no-emission dismissal — a refresh
+    // whose fresh data EQUALS the displayed state never emits (the StateFlow
+    // dedupes), so the signals above can't fire; the job-completion epoch
+    // does. The dots leave the moment the refresh finishes, and the 10s
+    // fallback keeps its role for the true hangs only.
+    val refreshEpoch by viewModel.refreshEpoch.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(refreshEpoch) {
+        if (refreshEpoch > 0L) pullRefreshing = false
+    }
     androidx.compose.runtime.LaunchedEffect(pullRefreshing) {
         if (pullRefreshing) {
             kotlinx.coroutines.delay(10_000)
@@ -1819,7 +1828,7 @@ private fun DataSourceResultsGrid(
                 )
             }
         }
-        items(results, key = { "${it.source.id}-${it.remoteId}" }) { result ->
+        items(results, key = { "${it.source.id}-${it.mediaType}-${it.remoteId}" }) { result ->
             DataSourceResultCard(result, onResultTap, titleStyle, showRating, showDetails)
         }
         if (loadingMore) {

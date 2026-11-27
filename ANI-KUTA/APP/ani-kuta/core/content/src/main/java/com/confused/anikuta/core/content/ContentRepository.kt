@@ -913,8 +913,27 @@ class ContentRepository(
         // (no row-type accessor).
         contentQueries.lookupIdentityMain(kind, refId).executeAsOneOrNull()
 
-    /** Insert-or-update ONE identity link (per mainId+kind). */
-    fun upsertIdentity(identity: ContentIdentity) {
+    /**
+     * Insert-or-update ONE identity link (per mainId+kind).
+     *
+     * ROUND 178 (the audit — the runtime claim guard): idx_identity_remote
+     * makes (source_kind, source_ref_id) unique ACROSS mains, and the
+     * underlying INSERT OR REPLACE DELETES the conflicting row first —
+     * linking the same id from a second content silently ERASED the first
+     * content's identity row (the migration-time twin of the S2 fix). A
+     * cross-main claim is REFUSED (returns false — the caller surfaces it);
+     * same-main re-writes (the display-rank re-stamps, the field updates)
+     * pass unchanged.
+     */
+    fun upsertIdentity(identity: ContentIdentity): Boolean {
+        val claimedBy = contentQueries.lookupIdentityMain(identity.sourceKind, identity.sourceRefId)
+            .executeAsOneOrNull()
+        if (claimedBy != null && claimedBy != identity.mainId) {
+            Logger.w(TAG) {
+                "upsertIdentity REFUSED: (${identity.sourceKind}, ${identity.sourceRefId}) already claimed by $claimedBy"
+            }
+            return false
+        }
         contentQueries.upsertIdentity(
             mainId = identity.mainId,
             sourceKind = identity.sourceKind,
@@ -931,6 +950,7 @@ class ContentRepository(
             createdAt = identity.createdAt,
             updatedAt = identity.updatedAt,
         )
+        return true
     }
 
     /** Remove ONE identity link (the unlink flows). */

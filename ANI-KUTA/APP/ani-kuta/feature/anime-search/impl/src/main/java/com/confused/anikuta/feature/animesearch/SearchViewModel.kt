@@ -978,8 +978,11 @@ class SearchViewModel(
         _uiState.value = current.copy(
             // ROUND 172: the dedup — the grid's LazyGrid keys are (source,
             // remoteId); overlapping pages would CRASH on a duplicate key
-            // (the v1.1.105 Simkl lesson).
-            results = (current.results + more).distinctBy { "${it.source.id}:${it.remoteId}" },
+            // (the v1.1.105 Simkl lesson). ROUND 178 (the audit — S2-G): the
+            // mediaType rides too — the TMDB movie/TV id sequences OVERLAP,
+            // so a page holding a movie and a TV item with the same numeric
+            // id deduped away the second item (and crashed the grid key).
+            results = (current.results + more).distinctBy { "${it.source.id}:${it.mediaType}:${it.remoteId}" },
             hasMore = hasMore,
             loadingMore = false,
         )
@@ -1018,6 +1021,12 @@ class SearchViewModel(
                     showingDefaults = true
                     // The paging kinds (TMDB/MAL) keep their load-more; the
                     // one-shot feeds (TVmaze/Simkl) end-cap honestly.
+                    // ROUND 178 (the audit — S2-F): the paging CONTEXT rides
+                    // too — without it loadMore() returns at `pagingMode ?:
+                    // return` and the 12h-gated open silently dead-ends the
+                    // grid (hasMore=true, no loads, no end-cap).
+                    pagingMode = PagingMode.TMDB_TRENDING
+                    lastLoadedPage = 2 // the cache holds pages 1+2
                     _uiState.value = SearchUiState.DataSourceSuccess(
                         results = cachedOnly,
                         hasMore = cachedOnly.size >= 40,
@@ -1062,8 +1071,15 @@ class SearchViewModel(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Logger.w(TAG) { "TMDB defaults refresh failed: ${e.message}" }
-            setRefreshNotice(e) // ROUND 173 (F1)
-            // The served cache stays.
+            // ROUND 178 (the audit — S2-A): the notice is the MANUAL pull's
+            // feedback. The AUTO path (the open) stays SILENT — a stale cache
+            // + offline at entry is the 12h gate's expected tail, not a user
+            // action's failure; the v1.1.111 "silent entry" order holds.
+            if (force) setRefreshNotice(e)
+            // ROUND 178 (the audit — S2-B): nothing was served and the
+            // network is gone → the Loading state would spin FOREVER (the
+            // center-spinner hang). Fall to Idle like the AniList loader.
+            if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
         }
     }
 
@@ -1138,8 +1154,11 @@ class SearchViewModel(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Logger.w(TAG) { "TVmaze defaults refresh failed: ${e.message}" }
-            setRefreshNotice(e) // ROUND 173 (F1)
-            // The served cache stays.
+            // ROUND 178 (the audit — S2-A/S2-B): the notice rides the MANUAL
+            // pull only; the never-served auto path falls to Idle instead of
+            // the forever-spinner.
+            if (force) setRefreshNotice(e)
+            if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
         }
     }
 
@@ -1176,6 +1195,10 @@ class SearchViewModel(
                     showingDefaults = true
                     // The paging kinds (TMDB/MAL) keep their load-more; the
                     // one-shot feeds (TVmaze/Simkl) end-cap honestly.
+                    // ROUND 178 (the audit — S2-F): the paging CONTEXT rides
+                    // too (see the TMDB loader).
+                    pagingMode = PagingMode.MAL_DEFAULTS
+                    lastLoadedPage = 2 // the cache holds pages 1+2
                     _uiState.value = SearchUiState.DataSourceSuccess(
                         results = cachedOnly,
                         hasMore = cachedOnly.size >= 40,
@@ -1200,9 +1223,13 @@ class SearchViewModel(
             }
         }
         try {
-            val p1 = runCatching { malTracker.topAnimeForUi(limit = 20, offset = 0) }
+            // ROUND 178 (the audit — S2-D): the runCatching SWALLOWED the
+            // failure — the manual pull's only feedback was the screen's 10s
+            // fallback with the wrong message. The result object is kept so
+            // the failure can surface on force.
+            val p1Result = runCatching { malTracker.topAnimeForUi(limit = 20, offset = 0) }
                 .onFailure { Logger.w(TAG) { "MAL defaults page 1 failed: ${it.message}" } }
-                .getOrDefault(emptyList())
+            val p1 = p1Result.getOrDefault(emptyList())
             val p2 = if (p1.size >= 20) {
                 runCatching { malTracker.topAnimeForUi(limit = 20, offset = 20) }.getOrDefault(emptyList())
             } else {
@@ -1213,7 +1240,8 @@ class SearchViewModel(
             val results = (p1 + p2).map { it.toDataSourceResult() }
             if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.MAL, results)
             if (results.isEmpty()) {
-                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+                if (force) p1Result.exceptionOrNull()?.let { setRefreshNotice(it) }
+                if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
             } else {
                 showingDefaults = true
                 pagingMode = PagingMode.MAL_DEFAULTS
@@ -1283,15 +1311,18 @@ class SearchViewModel(
             }
         }
         try {
-            val results = runCatching { simklTracker.trendingItems("tv") }
+            // ROUND 178 (the audit — S2-D): the swallow kept (same as MAL) —
+            // the failure now surfaces on the manual pull.
+            val simklResult = runCatching { simklTracker.trendingItems("tv") }
                 .onFailure { Logger.w(TAG) { "Simkl defaults failed: ${it.message}" } }
-                .getOrDefault(emptyList())
+            val results = simklResult.getOrDefault(emptyList())
                 .mapNotNull { it.toDataSourceResult() }
             if (_query.value.isNotBlank()) return@launch
             if (!isCurrent(gen)) return@launch
             if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.SIMKL, results)
             if (results.isEmpty()) {
-                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+                if (force) simklResult.exceptionOrNull()?.let { setRefreshNotice(it) }
+                if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
             } else {
                 showingDefaults = true
                 pagingMode = PagingMode.NONE
@@ -1505,7 +1536,9 @@ class SearchViewModel(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Logger.e(TAG, e) { "Trending load failed: ${e.message}" }
-                setRefreshNotice(e) // ROUND 173 (F1): the failure feedback
+                // ROUND 178 (the audit — S2-A): the MANUAL pull's feedback —
+                // the auto open stays silent (the 12h gate's offline tail).
+                if (force) setRefreshNotice(e)
                 if (_query.value.isNotBlank()) return@launch
                 if (!isCurrent(gen)) return@launch
                 // D-278: if cache already served (showingDefaults), keep it —
@@ -1693,7 +1726,7 @@ class SearchViewModel(
      *    STAYS visible (a network hiccup must never blank a page we can
      *    already show; errors only surface when there is no cache at all).
      */
-    private fun loadCloudstreamPopular(): Job {
+    private fun loadCloudstreamPopular(force: Boolean = false): Job {
         val providerName = _selectedCsProvider.value
         if (providerName == null) {
             beginRequest() // D-305 review fix: supersede in-flight requests.
@@ -1744,7 +1777,10 @@ class SearchViewModel(
             }
 
             // ── Step 2: fresh snapshot → no network at all ──
-            if (cached != null && cloudstreamRepository.browseIsFresh(providerName)) {
+            // ROUND 178 (S2-C): the manual pull (force) BYPASSES the freshness
+            // skip — the network refresh runs; the cached feed already
+            // rendered and stays if the refresh fails.
+            if (!force && cached != null && cloudstreamRepository.browseIsFresh(providerName)) {
                 Logger.d(TAG) { "Browse cache fresh for '$providerName' — skipping network refresh" }
                 return@launch
             }
@@ -2375,18 +2411,27 @@ class SearchViewModel(
 
     /**
      * Task 61 (round 21): the search page's PULL-TO-REFRESH — reloads the
-     * current mode's page 1. For the CS browse the cached feed is invalidated
-     * FIRST (the user's spec: "the old cache will be deleted after the refresh
-     * is successful"), then the fresh (randomized) sections land; for the
-     * other modes this is just the page-1 reload.
+     * current mode's page 1. For the CS browse the cached feed STAYS as the
+     * render source and the network refresh is FORCED past its freshness
+     * window (the cache rewrites on success; on failure the cached feed
+     * stays visible). ROUND 178 (the audit — S2-C): the pull NO LONGER
+     * invalidates the cache FIRST — offline, the invalidate → no-cache →
+     * Loading → error chain WIPED the page to ExtensionError (the F2 rule:
+     * a failed refresh never downgrades a cached state, on ANY source).
+     * For the other modes this is just the page-1 reload.
+     *
+     * ROUND 178 (the audit — S2-E/S1-B): the declared refreshJob guard was
+     * DEAD (declared + checked, never assigned — deleted). And a refresh
+     * whose fresh data EQUALS the displayed state never emits a new uiState
+     * (the StateFlow dedupes) — the screen's first-emission dismissal can't
+     * fire; [refreshEpoch] bumps on job completion and dismisses the dots.
      */
-    private var refreshJob: kotlinx.coroutines.Job? = null
+    private val _refreshEpoch = kotlinx.coroutines.flow.MutableStateFlow(0L)
+
+    /** The pull's completion counter — the no-emission dismissal signal. */
+    val refreshEpoch: kotlinx.coroutines.flow.StateFlow<Long> = _refreshEpoch.asStateFlow()
 
     fun refreshCurrent() {
-        // ROUND 176: the in-flight guard — the pull indicator's re-arm (the
-        // first-emission dismissal) permitted a second onRefresh that
-        // restarted the whole chain (the audit's genuine revert path).
-        if (refreshJob?.isActive == true) return
         when (_source.value) {
             SearchSource.ANILIST -> {
                 if (_query.value.isNotBlank()) {
@@ -2414,22 +2459,20 @@ class SearchViewModel(
                         DataSourceKind.TVMAZE -> defaultsJob = loadTvmazeDefaults(force = true)
                         DataSourceKind.MAL -> defaultsJob = loadMalDefaults(force = true)
                         DataSourceKind.SIMKL -> defaultsJob = loadSimklDefaults(force = true)
-                        DataSourceKind.ANILIST -> loadTrending(force = true)
+                        DataSourceKind.ANILIST -> defaultsJob = loadTrending(force = true)
                     }
                 }
             }
 
             SearchSource.EXTENSION -> {
                 if (_selectedKind.value == SelectedSourceKind.CLOUDSTREAM) {
-                    // The CS provider's cached browse must go FIRST — the
-                    // user's "old cache deleted" spec; after the invalidate,
-                    // loadCloudstreamPopular's cache-first path finds nothing
-                    // and runs the FULL fresh (randomized) load.
-                    _selectedCsProvider.value?.let { cloudstreamRepository.invalidateBrowseCache(it) }
                     if (_query.value.isNotBlank()) {
                         searchCloudstream(_query.value)
                     } else {
-                        loadCloudstreamPopular()
+                        // ROUND 178 (S2-C): force PAST the freshness window —
+                        // the cached page stays rendered while the network
+                        // refresh runs (no pre-invalidate).
+                        defaultsJob = loadCloudstreamPopular(force = true)
                     }
                 } else {
                     if (_query.value.isNotBlank()) {
@@ -2440,6 +2483,8 @@ class SearchViewModel(
                 }
             }
         }
+        // ROUND 178 (S1-B): the completion signal — see the doc above.
+        defaultsJob?.invokeOnCompletion { _refreshEpoch.value += 1 }
     }
 
     // ── Recents persistence ──
@@ -2477,14 +2522,36 @@ class SearchViewModel(
             DataSourceKind.SIMKL -> "simkl"
             else -> result.source.id
         }
-        val mainId = result.source.id + ":" + result.remoteId
+        // ROUND 178 (the audit — DB-1): the mainId prefix must match the
+        // LOADER's fine-kind decode (the packed id carries tmdb_movie/
+        // tmdb_tv) — the coarse "tmdb:<id>" minted here made the details
+        // open decode to "tmdb_movie:<id>" → a content_details MISS → a
+        // SECOND (sparse) main minted on every TMDB open: duplicate library
+        // rows, a rich + a poor twin.
+        // The LEGACY adoptions (both sides use the SAME condition): a device
+        // whose row lives under the coarse prefix keeps it — the rich data
+        // writes onto the COARSE main (its history + library placement ride
+        // it) and the loader adopts it; the fine twin is never minted. The
+        // on-open repair block removes the v1.1.113-era childless twins.
+        var targetId = fineType + ":" + result.remoteId
         val now = System.currentTimeMillis()
         viewModelScope.launch {
             runCatching {
+                if (fineType == "tmdb_movie" || fineType == "tmdb_tv") {
+                    val coarseId = "tmdb:" + result.remoteId
+                    val coarseExists = runCatching { metadataContentRepository.getContentDetails(coarseId) != null }
+                        .getOrDefault(false)
+                    val fineExists = runCatching { metadataContentRepository.getContentDetails(targetId) != null }
+                        .getOrDefault(false)
+                    if (coarseExists && !fineExists) {
+                        Logger.i(TAG) { "the legacy coarse main adopted: $coarseId" }
+                        targetId = coarseId
+                    }
+                }
                 metadataContentRepository.insertMainEntryIfMissing(
                     com.confused.anikuta.core.content.ContentRecord(
-                        mainId = mainId,
-                        contentId = mainId,
+                        mainId = targetId,
+                        contentId = targetId,
                         title = result.title,
                         contentType = "anime",
                         contentFormat = "video",
@@ -2495,7 +2562,7 @@ class SearchViewModel(
                 )
                 metadataContentRepository.upsertContentDetails(
                     com.confused.anikuta.core.content.ContentDetails(
-                        mainId = mainId,
+                        mainId = targetId,
                         dataSourceType = fineType,
                         dataSourceRefId = result.remoteId.toString(),
                         dataScore = result.rating?.let { (it * 10).toInt().toLong() },
@@ -2505,6 +2572,34 @@ class SearchViewModel(
                         dataUpdatedAt = now,
                     ),
                 )
+                // ROUND 178 (the audit — FINDING A): the OWN-KIND identity row —
+                // the menu's N-way chips need BOTH sides (the >=2 gate hides the
+                // whole switch block with one chip) and the rank-0 driver model
+                // needs a driver. Check-first: a re-persist must not REPLACE-
+                // stamp the rank back over the user's pick.
+                val existingIdentities = runCatching {
+                    metadataContentRepository.identitiesForContent(targetId)
+                }.getOrDefault(emptyList())
+                if (existingIdentities.none { it.sourceKind == fineType }) {
+                    metadataContentRepository.upsertIdentity(
+                        com.confused.anikuta.core.content.ContentIdentity(
+                            mainId = targetId,
+                            sourceKind = fineType,
+                            sourceRefId = result.remoteId.toString(),
+                            displayTitle = result.title,
+                            coverUrl = result.posterUrl,
+                            synopsis = result.overview,
+                            score = result.rating?.let { (it * 10).toInt() },
+                            episodes = null,
+                            status = null,
+                            genres = null,
+                            year = result.year,
+                            displayRank = (existingIdentities.maxOfOrNull { it.displayRank } ?: -1) + 1,
+                            createdAt = now,
+                            updatedAt = now,
+                        ),
+                    )
+                }
             }.onFailure { e ->
                 Logger.w(TAG) { "metadata persist failed (non-fatal): " + (e.message ?: "") }
             }

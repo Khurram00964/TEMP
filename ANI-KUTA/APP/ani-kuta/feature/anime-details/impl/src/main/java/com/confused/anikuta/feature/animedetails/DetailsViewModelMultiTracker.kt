@@ -734,7 +734,12 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                         } else {
                             source
                         }
-                        identityRepo.upsertIdentity(
+                        // ROUND 178 (the audit — DB-2): the claim guard —
+                        // upsertIdentity REFUSES when the (kind, ref) pair is
+                        // already claimed by ANOTHER content (the old REPLACE
+                        // silently ERASED that content's identity row). The
+                        // refusal surfaces instead of silently no-oping.
+                        val claimed = identityRepo.upsertIdentity(
                             com.confused.anikuta.core.content.ContentIdentity(
                                 mainId = mid,
                                 sourceKind = fineKind,
@@ -752,7 +757,15 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                                 updatedAt = now,
                             ),
                         )
-                        Logger.i(TAG_MT) { "the $fineKind identity linked: " + result.title }
+                        if (claimed) {
+                            Logger.i(TAG_MT) { "the $fineKind identity linked: " + result.title }
+                        } else {
+                            Logger.w(TAG_MT) { "the $fineKind identity REFUSED (claimed by another content)" }
+                            com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                                "Already linked to another entry",
+                                com.confused.anikuta.core.designsystem.component.toast.AppToastTone.NEUTRAL,
+                            )
+                        }
                     }
                     refreshLinkedIdentities()
                 }
@@ -831,7 +844,11 @@ fun DetailsViewModel.unlinkUnifiedIdentity(source: String) {
     val type = when (source) {
         "mal" -> TrackerType.MAL
         "simkl" -> TrackerType.SIMKL
-        "tmdb" -> TrackerType.TMDB
+        // ROUND 178 (the audit — C/DB-5): the FINE kinds route here too — the
+        // v8 picks wrote tmdb_movie/tmdb_tv identity rows, the menu's key
+        // stayed "tmdb", and the else->return silently DROPPED the unlink
+        // (nothing happened, no log — the Unlink row reappeared forever).
+        "tmdb", "tmdb_movie", "tmdb_tv" -> TrackerType.TMDB
         "tvmaze" -> TrackerType.TVMAZE
         else -> return
     }
@@ -842,14 +859,24 @@ fun DetailsViewModel.unlinkUnifiedIdentity(source: String) {
     // from the REMAINING identities (the ext base) — the v1.1.110 shape
     // kept the TMDB cover/synopsis forever after the unlink.
     val ownKind = mid.substringBefore(":")
-    val isOwnKind = source == ownKind
+    // ROUND 178 (the audit — C): the FINE mainIds are OWN kinds for the tmdb
+    // unlink (tmdb_movie:123 IS the row's TMDB identity).
+    val isOwnKind = source == ownKind || (source == "tmdb" && ownKind.startsWith("tmdb"))
     viewModelScope.launch {
         runCatching { repo.delete(mid, type) }
             .onFailure { e ->
                 Logger.w(TAG_MT) { "unlink $source failed: " + (e.message ?: "") }
             }
         // ROUND 173 (N2): the identity row goes with the unlink.
-        runCatching { contentRepository.deleteIdentity(mid, type.id) }
+        // ROUND 178 (the audit — C): the FINE-KIND sweep — deleteIdentity is
+        // an exact source_kind match; the v8 picks wrote tmdb_movie/tmdb_tv
+        // rows that the "tmdb" delete silently MISSED (the row survived and
+        // could re-elect itself).
+        runCatching {
+            contentRepository.identitiesForContent(mid)
+                .filter { it.sourceKind == type.id || it.sourceKind.startsWith("${type.id}_") }
+                .forEach { contentRepository.deleteIdentity(mid, it.sourceKind) }
+        }
         if (isOwnKind) {
             Logger.i(TAG_MT) { "unlink $source = the row's OWN kind — the display re-derives from the remaining identities" }
             metadataBase = null

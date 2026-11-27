@@ -1341,12 +1341,20 @@ class DetailsViewModel(
             // row — the persisted display driver survives the reopen (the
             // v1.1.110 pick never did). The stale-kind safety: a kind no
             // longer present (the unlink) clears the pick.
-            val rankZero = rows.minByOrNull { it.displayRank }
+            // ROUND 178 (the audit — FINDING D): ONLY an EXPLICIT rank-0 row
+            // restores the pick. minByOrNull elected the LOWEST rank even when
+            // nothing held 0 — a freshly linked extension (rank 1, the only
+            // row) got elected driver and the next remerge took the
+            // kind-primary(EXT) branch: the manual-link auto-flip on fresh
+            // metadata rows. The F6.3 coercion guards kind==null — keep it
+            // null unless something is REALLY ranked 0 (the seeds + the pick).
+            val rankZero = rows.firstOrNull { it.displayRank == 0 }
             _displaySourceKind.value = rankZero?.sourceKind
-            Logger.i(TAG) { "the display kind restored: ${rankZero?.sourceKind ?: "(none)"} (rank-0 of ${rows.size} identities)" }
-            if (linked.isNotEmpty()) {
-                _linkedIdentities.value = linked
-            }
+            Logger.i(TAG) { "the display kind restored: ${rankZero?.sourceKind ?: "(none)"} (explicit rank-0 of ${rows.size} identities)" }
+            // ROUND 178 (the audit — H): the empty write — unlinking the LAST
+            // identity must CLEAR the menu set (the isNotEmpty guard kept the
+            // stale set: a phantom Unlink row until the next resetState).
+            _linkedIdentities.value = linked
             // ROUND 174 (T2): the chips (the kind + the label) — the menu's
             // N-way switch renders these; the ext label = the extension's
             // name (the ref = <sourceId>:<url>).
@@ -1397,11 +1405,15 @@ class DetailsViewModel(
                     else -> 80
                 }
             }
-            _identityChips.value = ordered
+            // ROUND 178 (the audit — H): the gen guard moved ABOVE the chips
+            // write — a stale refresh must not stamp its chips either (the
+            // guard sat after the write: unreachable-as-hazard today, but a
+            // trap for any future suspend call in that window).
             if (gen != loadGeneration) {
                 Logger.d(TAG) { "the identities refresh discarded (stale generation)" }
                 return@launch
             }
+            _identityChips.value = ordered
             // ROUND 175 (F6.1): the stale-kind safety — a picked kind that
             // no longer exists (the unlink) clears the display pick.
             val picked = _displaySourceKind.value
@@ -1451,10 +1463,12 @@ class DetailsViewModel(
             6 -> "tmdb_tv"
             else -> "metadata"
         }
-        // ROUND 171: the mainId prefix matches the persist side's coarse kind
-        // (the fine-grained tmdb_movie/tmdb_tv lives in the details' type).
-        val mainId = "$kind:$remoteId"
-        Logger.i(TAG) { "metadata load: $mainId" }
+        // ROUND 171: the mainId prefix matches the persist side's kind —
+        // ROUND 178 (DB-1): the FINE convention everywhere (the packed id's
+        // kind IS the prefix); the legacy coarse rows are ADOPTED in the
+        // loader (the coarse row wins — see the coroutine head).
+        val packedMainId = "$kind:$remoteId"
+        Logger.i(TAG) { "metadata load: $packedMainId" }
 
         // ROUND 172 (the device order): the metadata load gets the SAME
         // per-load reset + generation guard as loadFromAniListCore — the
@@ -1488,6 +1502,38 @@ class DetailsViewModel(
         _state.value = DetailsState.Loading
         viewModelScope.launch {
             val now = System.currentTimeMillis()
+            // ROUND 178 (the audit — DB-1): the LEGACY adoption — a fine-tmdb
+            // decode landing where the row lives under the COARSE prefix (the
+            // pre-v8 convention) re-points to it instead of minting a second
+            // main. The search persist uses the SAME condition (the coarse
+            // row wins: its history + library placement ride it), so this
+            // only fires for a coarse row the persist just enriched.
+            var mainId = packedMainId
+            if (kind == "tmdb_movie" || kind == "tmdb_tv") {
+                val coarseId = "tmdb:$remoteId"
+                val fineExists = runCatching { contentRepository.getContentDetails(mainId) != null }
+                    .getOrDefault(false)
+                val coarseExists = runCatching { contentRepository.getContentDetails(coarseId) != null }
+                    .getOrDefault(false)
+                if (coarseExists && !fineExists) {
+                    Logger.i(TAG) { "the legacy coarse main adopted: $coarseId" }
+                    mainId = coarseId
+                }
+            }
+            // ROUND 178 (the audit — FINDING B): the display kind RESTORES
+            // before the first remerge. The ext-rebuild remerge below ran with
+            // kind=null (resetState cleared it) → the ANILIST coercion painted;
+            // the rank-0 restore in refreshLinkedIdentities landed AFTER with
+            // NO remerge → the mismatched first paint (the picked EXTENSION
+            // chip filled over TMDB data) until the next remerge. The same
+            // explicit-rank-0 rule as refreshLinkedIdentities.
+            runCatching {
+                contentRepository.identitiesForContent(mainId)
+                    .firstOrNull { it.displayRank == 0 }?.sourceKind
+            }.getOrNull()?.let { restored ->
+                _displaySourceKind.value = restored
+                Logger.i(TAG) { "the display kind restored pre-remerge: $restored" }
+            }
             // The DB LINKING (idempotent): the metadata content becomes a
             // first-class row (main_entry + content_details' data axis).
             runCatching {
@@ -1514,6 +1560,39 @@ class DetailsViewModel(
                             dataUpdatedAt = now,
                         ),
                     )
+                }
+                // ROUND 178 (the audit — FINDING A): the OWN-KIND identity row.
+                // The menu's N-way chips need BOTH sides (the >=2 gate hid the
+                // whole switch block with a single chip) and the rank-0 driver
+                // model needs a driver. Check-first: a reopen must not REPLACE-
+                // stamp the rank back over the user's pick (the ext-picked row
+                // holds 0); a legacy row missing the seed joins at maxRank+1 —
+                // it never hijacks the current driver. Runs OUTSIDE the create-
+                // if-missing block: the v1.1.112-era rows minted no identity.
+                // A 'metadata' kind is excluded like the 6.sqm seed does.
+                if (kind != "metadata") {
+                    val identityRows = runCatching { contentRepository.identitiesForContent(mainId) }
+                        .getOrDefault(emptyList())
+                    if (identityRows.none { it.sourceKind == kind }) {
+                        contentRepository.upsertIdentity(
+                            com.confused.anikuta.core.content.ContentIdentity(
+                                mainId = mainId,
+                                sourceKind = kind,
+                                sourceRefId = remoteId.toString(),
+                                displayTitle = title.orEmpty(),
+                                coverUrl = coverUrl,
+                                synopsis = existing?.dataSynopsis,
+                                score = null,
+                                episodes = null,
+                                status = null,
+                                genres = null,
+                                year = null,
+                                displayRank = (identityRows.maxOfOrNull { it.displayRank } ?: -1) + 1,
+                                createdAt = System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
                 }
             }.onFailure { e ->
                 Logger.w(TAG) { "metadata DB linking failed (non-fatal): ${e.message}" }
@@ -3176,11 +3255,13 @@ class DetailsViewModel(
         val refId = details?.dataSourceRefId?.toIntOrNull() ?: return
         Logger.i(TAG) { "the metadata enrichment refresh: $mid ($fineType:$refId)" }
         var refreshed = details
+        var backendFetched = false
         when (fineType) {
             "tmdb_movie", "tmdb_tv" -> tmdbApi?.detail(
                 if (fineType == "tmdb_tv") "tv" else "movie",
                 refId,
             )?.let { d ->
+                backendFetched = true
                 refreshed = refreshed?.copy(
                     dataSynopsis = d.item.overview ?: refreshed?.dataSynopsis,
                     dataCoverUrl = d.item.posterUrl ?: refreshed?.dataCoverUrl,
@@ -3193,6 +3274,7 @@ class DetailsViewModel(
                 )
             }
             "tvmaze" -> tvmazeApi?.show(refId)?.let { show ->
+                backendFetched = true
                 refreshed = refreshed?.copy(
                     dataSynopsis = show.overview?.replace(Regex("<[^>]*>"), "") ?: refreshed?.dataSynopsis,
                     dataCoverUrl = show.posterUrl ?: refreshed?.dataCoverUrl,
@@ -3202,6 +3284,7 @@ class DetailsViewModel(
                 )
             }
             "mal" -> malTracker?.detail(refId)?.let { d ->
+                backendFetched = true
                 refreshed = refreshed?.copy(
                     dataSynopsis = d.synopsis ?: refreshed?.dataSynopsis,
                     dataCoverUrl = d.main_picture?.large ?: d.main_picture?.medium ?: refreshed?.dataCoverUrl,
@@ -3225,6 +3308,17 @@ class DetailsViewModel(
                 Logger.w(TAG) { "the enrichment refresh: no detail backend for $fineType" }
                 return
             }
+        }
+        if (!backendFetched) {
+            // ROUND 178 (the audit — F): the pull's fetch returning nothing
+            // was SILENT — the dots left, the old data stayed, no notice
+            // (the honest-failure doctrine: nothing fails silently). The
+            // no-backend kinds return above — nothing to fetch is not a
+            // failure.
+            com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                "Couldn't refresh the details — check your connection",
+                com.confused.anikuta.core.designsystem.component.toast.AppToastTone.ERROR,
+            )
         }
         refreshed?.let {
             runCatching { contentRepository.upsertContentDetails(it) }
@@ -4458,8 +4552,10 @@ class DetailsViewModel(
             refreshContentId(mainId)
             // ROUND 173 (N2): the extension identity ROW (the multi-link
             // model's authoritative record; the ref = <sourceId>:<url>).
+            // ROUND 178 (the audit — DB-2): the claim guard — a cross-content
+            // claim surfaces (the old REPLACE erased the other content's row).
             runCatching {
-                contentRepository.upsertIdentity(
+                val identityClaimed = contentRepository.upsertIdentity(
                     com.confused.anikuta.core.content.ContentIdentity(
                         mainId = mainId,
                         sourceKind = ecosystemName,
@@ -4477,6 +4573,13 @@ class DetailsViewModel(
                         updatedAt = System.currentTimeMillis(),
                     ),
                 )
+                if (!identityClaimed) {
+                    Logger.w(TAG) { "the $ecosystemName identity REFUSED (claimed by another content)" }
+                    com.confused.anikuta.core.designsystem.component.toast.AppToast.show(
+                        "Already linked to another entry",
+                        com.confused.anikuta.core.designsystem.component.toast.AppToastTone.NEUTRAL,
+                    )
+                }
             }
         }
 

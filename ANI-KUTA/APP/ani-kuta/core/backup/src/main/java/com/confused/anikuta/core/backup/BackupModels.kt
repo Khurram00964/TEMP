@@ -66,6 +66,10 @@ val BACKUP_TABLES: List<String> = listOf(
     "genre",
     "main_entry",
     "content_details",
+    // ROUND 178 (the audit): the AUTHORITATIVE identity set rode NO backup —
+    // a full restore silently dropped every content_identity row (the ext
+    // identities + the display picks are unrecoverable from content_details).
+    "content_identity",
     "content_genre",
     "library_category",
     "library_item",
@@ -213,6 +217,8 @@ data class BackupOptions(
     /** The DB table a Library/Images switch owns (null = not a table gate). */
     fun tableFor(table: String): Boolean = when (table) {
         "data_source", "system", "genre", "main_entry", "content_details",
+        // ROUND 178: the identity set rides libraryCore with its parents.
+        "content_identity",
         "content_genre", "library_category", "library_item",
         -> libraryCore
         // ROUND 137: the per-day session ledger rides the history bucket.
