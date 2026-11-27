@@ -302,6 +302,7 @@ class SchemaMigrationTest {
         // setUp already created main_entry/watch_progress — the double
         // CREATE threw 'table main_entry already exists' before any
         // migration ran).
+        driver.execute(null, "DROP TABLE IF EXISTS main_entry", 0)
         driver.execute(null, "DROP TABLE IF EXISTS content_details", 0)
         driver.execute(null, "DROP TABLE IF EXISTS watch_progress", 0)
         driver.execute(null, "DROP TABLE IF EXISTS track_entry", 0)
@@ -324,6 +325,41 @@ class SchemaMigrationTest {
                 display_source TEXT NOT NULL DEFAULT 'extension',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
+            )
+            """.trimMargin(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE content_details (
+                main_id TEXT NOT NULL PRIMARY KEY,
+                data_source_type   TEXT,
+                data_source_ref_id TEXT,
+                data_score          INTEGER,
+                data_episodes       INTEGER,
+                data_season         TEXT,
+                data_season_year    INTEGER,
+                data_status         TEXT,
+                data_genres         TEXT,
+                data_synopsis       TEXT,
+                data_cover_url      TEXT,
+                data_banner_url     TEXT,
+                data_extra_json     TEXT,
+                data_updated_at     INTEGER,
+                extension_type      TEXT,
+                extension_id        TEXT,
+                source_id           INTEGER,
+                anime_url           TEXT,
+                ext_description     TEXT,
+                ext_genres          TEXT,
+                ext_status          TEXT,
+                ext_author          TEXT,
+                ext_artist          TEXT,
+                ext_thumbnail_url   TEXT,
+                ext_extra_json      TEXT,
+                ext_updated_at      INTEGER,
+                cover_accent_argb   INTEGER
             )
             """.trimMargin(),
             0,
@@ -451,6 +487,7 @@ class SchemaMigrationTest {
     /** The faithful v4 shape: the tracking tables still WITH the cascade FK. */
     private fun createV4Shape() {
         // ROUND 176: the same era-shape drops (the setUp collisions).
+        driver.execute(null, "DROP TABLE IF EXISTS main_entry", 0)
         driver.execute(null, "DROP TABLE IF EXISTS content_details", 0)
         driver.execute(null, "DROP TABLE IF EXISTS watch_progress", 0)
         driver.execute(null, "DROP TABLE IF EXISTS track_entry", 0)
