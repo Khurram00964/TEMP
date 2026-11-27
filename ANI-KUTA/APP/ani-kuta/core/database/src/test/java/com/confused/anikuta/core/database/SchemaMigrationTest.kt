@@ -719,7 +719,7 @@ class SchemaMigrationTest {
     // yields a season-carrying table.
 
     @Test
-    fun `the WS-A v5 cohort shape is recoverable by 5.sqm after the detector adds season_number`() {
+    fun `the WS-A v5 cohort shape is recoverable by 5 sqm after the detector adds season_number`() {
         // The faithful WS-A-v5 shape: 13 columns — the v4 table + episode_number.
         driver.execute(
             null,
@@ -879,7 +879,7 @@ class SchemaMigrationTest {
         assertEquals(
             "the skipped duplicate's kind is what collided",
             "tmdb",
-            main1.first().sourceKind,
+            main1.first().source_kind,
         )
     }
 
@@ -905,7 +905,7 @@ class SchemaMigrationTest {
         val atV7 = AnikutaDatabase(driver)
             .contentQueries.getIdentitiesForContent("main-1")
             .executeAsList()
-        assertEquals("the v7 row is coarse (the documented collapse)", "tmdb", atV7.first().sourceKind)
+        assertEquals("the v7 row is coarse (the documented collapse)", "tmdb", atV7.first().source_kind)
 
         // v7 → v8: 7.sqm re-splits the kind from the preserved fine type.
         AnikutaDatabase.Schema.migrate(driver, 7, 8)
@@ -915,8 +915,8 @@ class SchemaMigrationTest {
         assertEquals(
             "the identity re-splits to the FINE kind (the collision fix)",
             "tmdb_movie",
-            atV8.first().sourceKind,
+            atV8.first().source_kind,
         )
-        assertEquals("the ref stays numeric (the fine KIND separates)", "123", atV8.first().sourceRefId)
+        assertEquals("the ref stays numeric (the fine KIND separates)", "123", atV8.first().source_ref_id)
     }
 }
