@@ -825,7 +825,10 @@ class SearchViewModel(
     internal val _refreshNotice = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     val refreshNotice: kotlinx.coroutines.flow.StateFlow<String?> = _refreshNotice.asStateFlow()
 
-    private fun setRefreshNotice(e: Exception) {
+    // ROUND 178: Throwable — the runCatching-based loaders surface their
+    // failure via exceptionOrNull() (a Throwable); the IOException check
+    // below works unchanged on the wider type.
+    private fun setRefreshNotice(e: Throwable) {
         val msg = if (e is java.io.IOException) {
             "Refresh failed due to network error"
         } else {
