@@ -1,0 +1,57 @@
+# ANI-KUTA — DB Tests (one-off, dispatch-only)
+#
+# ROUND 177: the user's order — "LOGICAL TESTS along the way (the
+# schema-touching paths get the test pass; CI skips routine tests by user
+# order — run the DB tests explicitly on the identity changes)". This
+# workflow exists ONLY to run :core:database's SchemaMigrationTest (the
+# S2/S3 lock tests + the fixture-repaired chain tests) on CI — the local
+# machine can't (no SDK, the no-local-builds rule).
+#
+# Dispatch-only (never a push trigger — the routine CI stays test-free per
+# D-465). Safe to re-dispatch after any schema change.
+
+name: DB Tests
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: db-tests-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  db-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ANI-KUTA/APP/ani-kuta
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+        with:
+          min-wrapper-count: 1
+          allow-snapshots: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run the DB tests (SchemaMigrationTest — the S2/S3 lock tests)
+        run: ./gradlew :core:database:testDebugUnitTest --tests "com.confused.anikuta.core.database.SchemaMigrationTest"
+
+      - name: Upload the test report (always — the failures need the HTML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-test-report
+          path: ANI-KUTA/APP/ani-kuta/core/database/build/reports/tests/
+          if-no-files-found: ignore
