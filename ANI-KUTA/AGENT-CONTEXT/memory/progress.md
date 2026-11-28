@@ -2203,4 +2203,5 @@ Run **40000778322** (head 2a99ca40): **GREEN — VERIFIED** (queried via the API
 - **E. THE HAPTICS (none anywhere):** the release-cross fix (a fast flick jumped sub-threshold → refreshing in one frame; lastDragFraction honors the drag's depth at the release) + the belt-and-braces pipelines (the composed View haptic fires alongside the direct Vibrator — the OEMs silence one or the other).
 - **F. THE JUMPING BEAT:** a 600ms minimum before every pull dismissal (the fast Simkl pull left the dots static).
 - **G. THE OFFLINE-PULL "NO RESULTS" (AniList/TMDB/TVmaze):** beginRequest() resets showingDefaults=false → the failure guards fired Idle/Empty OVER SERVED CONTENT; all five loaders' failure paths now downgrade ONLY a LOADING state (the F2 doctrine, systematic).
-- **THE RELEASE:** v1.1.118/10218 dispatched (bd604ae4; 12 files, +413/−102). Schema v8→v8.
+- **THE CI TRAIL:** 46131350940 (the Simkl jsonArray import) → 46131755707 (the MoreHoriz extension property — the fully-qualified reference does not resolve) → **the re-dispatched run GREEN (bc23b2a7)** — two single-cause compile fixes, both disclosed.
+- **THE RELEASE:** v1.1.118/10218 LIVE on TEMP (bd604ae4 + the two fixes; 12 files, +413/−102). Schema v8→v8.
