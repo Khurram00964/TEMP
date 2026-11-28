@@ -663,21 +663,31 @@ private fun CompactTrackerCard(
                             Text("Link", fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
                         }
                         else -> {
-                            if (onPopulate != null) {
-                                androidx.compose.material3.FilledTonalButton(
-                                    onClick = onPopulate,
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    ),
-                                ) {
+                            // ROUND 182 (the device report): the button VANISHED
+                            // while fetching (onPopulate went null and the guard
+                            // hid the row) — the user saw zero progress. It
+                            // stays, disabled, with a spinner, until done.
+                            androidx.compose.material3.FilledTonalButton(
+                                onClick = { onPopulate?.invoke() },
+                                enabled = onPopulate != null,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
+                            ) {
+                                if (onPopulate == null) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
                                     Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.size(6.dp))
-                                    Text(populateLabel, fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
                                 }
-                                Spacer(Modifier.size(8.dp))
+                                Spacer(Modifier.size(6.dp))
+                                Text(populateLabel, fontFamily = RobotoFamily, fontWeight = FontWeight.ExtraBold)
                             }
+                            Spacer(Modifier.size(8.dp))
                             // ROUND 171: the WIDE unlink button (the outlined
                             // error — not the bare trash-can icon).
                             androidx.compose.material3.OutlinedButton(

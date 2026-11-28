@@ -237,13 +237,44 @@ class SimklApi(
      * GET /sync/all-items/{kind}/{status} — the library reads (kind: movie |
      * tv | anime; status: watching/plantowatch/completed/hold/dropped or
      * "all" where supported).
+     *
+     * ROUND 182 (the populate device report — the "library is empty" toast
+     * with a POPULATED Simkl account): the shape is TOLERANT-parsed — Simkl
+     * returns the entries as a BARE ARRAY, or wrapped in an {"items": [...]}
+     * object, or as a per-type keyed object ({"anime": [...], ...}), and
+     * each entry may be FLAT (the ids/title at the top) or wrapped under a
+     * movie/show/anime key. The strict single-shape parse silently returned
+     * empty on the real device.
      */
-    fun allItems(kind: String, status: String, accessToken: String): List<SimklLibraryItem> =
-        get(url("/sync/all-items/$kind/$status"), accessToken)?.let { raw ->
-            runCatching {
-                json.decodeFromString(kotlinx.serialization.serializer<List<SimklLibraryItem>>(), raw)
-            }.getOrNull()
-        } ?: emptyList()
+    fun allItems(kind: String, status: String, accessToken: String): List<SimklLibraryItem> {
+        val raw = get(url("/sync/all-items/$kind/$status"), accessToken) ?: return emptyList()
+        return runCatching {
+            val root = json.parseToJsonElement(raw)
+            val array: kotlinx.serialization.json.JsonArray = when (val obj = root as? kotlinx.serialization.json.JsonObject) {
+                null -> root as kotlinx.serialization.json.JsonArray
+                else -> (obj["items"] ?: obj["entries"])?.let {
+                    kotlinx.serialization.json.jsonArray.takeIf { true }?.let { _ -> it as? kotlinx.serialization.json.JsonArray }
+                } ?: buildList {
+                    for (key in listOf("anime", "movies", "movie", "tv", "shows", "show", "entries")) {
+                        (obj[key] as? kotlinx.serialization.json.JsonArray)?.let { addAll(it) }
+                    }
+                }.let { kotlinx.serialization.json.JsonArray(it) }
+            }
+            array.mapNotNull { element ->
+                val obj = element as? kotlinx.serialization.json.JsonObject
+                val inner = obj?.entries?.firstNotNullOfOrNull { (key, value) ->
+                    if (key in setOf("movie", "show", "anime") &&
+                        value is kotlinx.serialization.json.JsonObject
+                    ) value else null
+                }
+                if (inner != null) {
+                    json.decodeFromJsonElement(SimklLibraryItem.serializer(), inner)
+                } else {
+                    json.decodeFromJsonElement(SimklLibraryItem.serializer(), element)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
 }
 
 /**

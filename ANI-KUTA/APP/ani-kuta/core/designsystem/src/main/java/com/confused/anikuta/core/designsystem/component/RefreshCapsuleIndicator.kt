@@ -83,10 +83,28 @@ fun RefreshCapsuleIndicator(
 
     // THE THRESHOLD VIBRATION — fires once per upward crossing (the user's
     // "implement a vibration here, just like the details page").
+    // ROUND 182 (THE DEVICE REPORT — no vibration anywhere): TWO fixes —
+    // (1) the release-cross: a fast flick jumps from a sub-threshold drag
+    // STRAIGHT to the refreshing snap (fraction=1, refreshing=true) in one
+    // frame; the old !refreshing guard missed the crossing entirely.
+    // lastDragFraction remembers the drag's depth so the release honors it.
+    // (2) the belt-and-braces: the composed haptic fires the View pipeline
+    // ALONGSIDE the direct Vibrator — the OEMs (ColorOS included) silence
+    // one pipeline or the other per their touch/haptics settings; firing
+    // both guarantees the feel (the pipelines blend into one tap where both
+    // are active).
     var hapticFired by remember { mutableStateOf(false) }
+    var lastDragFraction by remember { mutableStateOf(0f) }
+    val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     LaunchedEffect(dragFraction, refreshing) {
-        if (!refreshing && dragFraction >= PULL_THRESHOLD && !hapticFired) {
+        if (!refreshing) lastDragFraction = dragFraction
+        if (!hapticFired && (dragFraction >= PULL_THRESHOLD ||
+                (refreshing && lastDragFraction >= PULL_THRESHOLD))
+        ) {
             HapticHelper.stageCross(context)
+            hapticFeedback.performHapticFeedback(
+                androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress,
+            )
             hapticFired = true
         }
         if (dragFraction < PULL_THRESHOLD / 2f) hapticFired = false

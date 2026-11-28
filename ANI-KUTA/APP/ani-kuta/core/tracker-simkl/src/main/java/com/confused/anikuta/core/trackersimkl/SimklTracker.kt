@@ -384,6 +384,7 @@ class SimklTracker(
     suspend fun userLibrary(): List<SimklListEntry> = withContext(Dispatchers.IO) {
         if (!ensureFreshToken()) return@withContext emptyList()
         val out = mutableListOf<SimklListEntry>()
+        var fetchedRows = 0
         for (kind in listOf("anime", "tv", "movie")) {
             for (status in listOf("watching", "plantowatch", "completed", "hold", "dropped")) {
                 val items = try {
@@ -392,6 +393,7 @@ class SimklTracker(
                     Logger.w(TAG) { "userLibrary: $kind/$status failed: ${e.message}" }
                     continue
                 }
+                fetchedRows += items.size
                 for (item in items) {
                     val id = item.ids?.simkl ?: continue
                     val title = item.title ?: continue
@@ -410,6 +412,10 @@ class SimklTracker(
                 }
             }
         }
+        // ROUND 182 (the diagnostics): the shape evidence — fetched>0 with a
+        // small distinct set, or 0 across ALL sections, names where the
+        // shape broke (the tolerant parse + this log pin the next report).
+        Logger.i(TAG) { "userLibrary: fetched $fetchedRows rows across 15 sections, ${out.distinctBy { it.simklId }.size} distinct entries" }
         out.distinctBy { it.simklId }
     }
 

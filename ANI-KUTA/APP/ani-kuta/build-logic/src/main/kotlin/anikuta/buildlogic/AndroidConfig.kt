@@ -544,8 +544,48 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10217
-    const val versionName = "1.1.117"
+    const val versionCode = 10218
+    const val versionName = "1.1.118"
+    // ROUND 182 (v1.1.118): THE DEVICE-REPORT FIXES — the user's v1.1.117
+    // round (the boot confirmed, the updater speaks TEMP, the Trackers live
+    // under MORE → Trackers):
+    // A. THE POPULATE LIBRARY: the Simkl allItems shape is TOLERANT-parsed
+    //    (the bare array / the {"items": [...]} wrapper / the per-type keys /
+    //    the movie-show-anime entry wrappers — the strict single-shape parse
+    //    returned empty on a POPULATED account); the MAL animelist accepts
+    //    BOTH status keys (list_status + my_list_status — the strict key was
+    //    null for every row); the raw-vs-mapped diagnostics log the shape
+    //    evidence; the Populate button STAYS visible with a spinner while
+    //    fetching (it used to vanish).
+    // B. THE N-WAY DISPLAY (the big one): the MAL/Simkl pick wrote ONLY the
+    //    track_entry mapping — no content_identity row — hence the missing
+    //    MAL chip and no payload to display. The identity row rides now (the
+    //    claim guard included). The payload DRIVES the display for the
+    //    data-axis kinds (mal/simkl/tmdb*/tvmaze — anilist/ext keep their
+    //    live bases); selectDisplaySource FETCHES the kind's detail endpoint
+    //    once and writes the synopsis/genres/status INTO THE IDENTITY ROW
+    //    (the per-source cache the user ordered) — the display enriches and
+    //    every later selection is instant. The selection honesty: the filled
+    //    chip now always matches the displayed data.
+    // C. THE MENU REDESIGN: "Link to other" → "More options" — the expanded
+    //    list shows ALL FIVE sources with the LINKED ones distinct (the
+    //    filled look + the "Linked — tap to unlink" badge); the tap on a
+    //    linked source opens the unlink confirm; the standalone Unlink rows
+    //    FOLDED AWAY (the compact menu the user ordered).
+    // D. THE SHARE: the linked sources ride the share sheet — the MAL/
+    //    TVmaze/TMDB/Simkl links build from the identity payloads (Simkl's
+    //    flat id has no stable public page — its row shares the site search).
+    // E. THE HAPTICS: no vibration anywhere on the device — TWO fixes: the
+    //    release-cross honored (a fast flick jumps sub-threshold → refreshing
+    //    in one frame; lastDragFraction remembers the drag's depth) and the
+    //    belt-and-braces pipelines (the composed View haptic fires alongside
+    //    the direct Vibrator — the OEMs silence one or the other).
+    // F. THE JUMPING BEAT: every pull dismissal waits out a 600ms minimum —
+    //    the fast-completing Simkl pull no longer leaves the dots static.
+    // G. THE OFFLINE-PULL "NO RESULTS": beginRequest() resets showingDefaults,
+    //    so the failure-path guards fired Idle/Empty OVER SERVED CONTENT —
+    //    all five loaders' failure paths now downgrade ONLY a LOADING state
+    //    (the F2 doctrine: a failed refresh never downgrades a served state).
     // ROUND 181 (v1.1.117): THE BOOT LOOP FIXED — the device logcat named it
     // verbatim. `DatabaseDriverFactory.onOpen` ran `db.execSQL("PRAGMA
     // journal_mode = WAL")` (the round-176 ride-along); that pragma RETURNS

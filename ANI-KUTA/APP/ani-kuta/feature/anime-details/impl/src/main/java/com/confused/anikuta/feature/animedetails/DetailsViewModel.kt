@@ -678,6 +678,11 @@ class DetailsViewModel(
             }
         }
         _displaySourceKind.value = kind
+        // ROUND 182 (THE PER-SOURCE FETCH+CACHE — the device report): the
+        // picked kind's payload is usually a THIN link-time snapshot (no
+        // synopsis) — the detail backend fetches the full data and WRITES
+        // IT INTO THE IDENTITY ROW (the cache), then the remerge repaints.
+        enrichIdentityPayload(kind)
         val mid = currentMainId
         if (mid != null) {
             viewModelScope.launch {
@@ -697,6 +702,83 @@ class DetailsViewModel(
         }
         remergeBases(persistedDisplayPriority(currentMainId, com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST))
         Logger.i(TAG) { "the display source switched: $kind" }
+    }
+
+    /**
+     * ROUND 182 (THE PER-SOURCE FETCH+CACHE — the device report): the picked
+     * identity's payload is a THIN link-time snapshot (the title/cover/score/
+     * year) — the synopsis/genres/status arrive by fetching the kind's DETAIL
+     * endpoint ONCE and writing them into the identity row (the cache): the
+     * next remerge repaints with the full data and every later selection is
+     * instant. Fire-and-forget: a failure keeps the snapshot (never blocks
+     * the display switch; nothing fails visibly for a cosmetic enrichment).
+     * anilist rides its own live base; simkl has no detail endpoint; the
+     * extension kinds ride the ext base — none fetch here.
+     */
+    private fun enrichIdentityPayload(kind: String) {
+        val mid = currentMainId ?: return
+        val payload = _identityPayloads.value[kind] ?: return
+        if (!payload.synopsis.isNullOrBlank()) return // already cached
+        val refId = payload.sourceRefId.toIntOrNull() ?: return
+        val gen = loadGeneration
+        viewModelScope.launch {
+            val updated: com.confused.anikuta.core.content.ContentIdentity = when (kind) {
+                "tmdb_movie", "tmdb_tv" -> tmdbApi?.detail(
+                    if (kind == "tmdb_tv") "tv" else "movie",
+                    refId,
+                )?.let { d ->
+                    payload.copy(
+                        synopsis = d.item.overview,
+                        coverUrl = payload.coverUrl ?: d.item.posterUrl,
+                        genres = d.genres.joinToString(",").ifBlank { null },
+                        status = d.status,
+                        episodes = d.episodes?.toInt(),
+                        year = payload.year ?: d.item.year,
+                        score = payload.score ?: d.item.rating?.let { (it * 10).toInt() },
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                }
+                "tvmaze" -> tvmazeApi?.show(refId)?.let { show ->
+                    payload.copy(
+                        synopsis = show.overview?.replace(Regex("<[^>]*>"), ""),
+                        coverUrl = payload.coverUrl ?: show.posterUrl,
+                        year = payload.year ?: show.year,
+                        score = payload.score ?: show.rating?.let { (it * 10).toInt() },
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                }
+                "mal" -> malTracker?.detail(refId)?.let { d ->
+                    payload.copy(
+                        synopsis = d.synopsis,
+                        coverUrl = payload.coverUrl ?: d.main_picture?.large ?: d.main_picture?.medium,
+                        genres = (d.genres.map { it.name } + d.themes.map { it.name })
+                            .distinct().joinToString(",").ifBlank { null },
+                        status = when (d.status) {
+                            "currently_airing" -> "RELEASING"
+                            "finished_airing" -> "FINISHED"
+                            "not_yet_aired" -> "NOT_YET_RELEASED"
+                            else -> null
+                        },
+                        episodes = d.num_episodes,
+                        year = payload.year ?: d.start_season?.year,
+                        score = payload.score ?: d.mean?.toInt(),
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                }
+                else -> null
+            } ?: return@launch
+            runCatching { contentRepository.upsertIdentity(updated) }
+                .onFailure { e ->
+                    Logger.w(TAG) { "the $kind payload enrichment store failed: ${e.message}" }
+                    return@launch
+                }
+            if (gen != loadGeneration) return@launch // the screen moved on
+            _identityPayloads.value = _identityPayloads.value + (kind to updated)
+            if (_displaySourceKind.value == kind) {
+                remergeBases(persistedDisplayPriority(mid, com.confused.anikuta.core.common.model.DataSourcePriority.ANILIST))
+            }
+            Logger.i(TAG) { "the $kind identity payload enriched (the synopsis cached into the row)" }
+        }
     }
 
     // ROUND 172: the LINKED identities (the menu's per-source unlink rows):
@@ -1208,17 +1290,26 @@ class DetailsViewModel(
             coverUrl = primary.coverUrl,
         )
         _state.value = DetailsState.Success(merged)
-        // ROUND 179 (THE N-WAY): the picked identity's PAYLOAD joins the
-        // display — the link-time snapshot of THAT source's data. Two
-        // directions, stated plainly:
-        // • the base-less kinds (mal/simkl — no base of their own): the
-        //   payload IS the display (the MAL/Simkl snapshot drives), the
-        //   merged base fills the payload's gaps;
-        // • every base-ful kind: the payload FILLS the base's nulls only —
-        //   it never overwrites a maintained value (the enrichment keeps
-        //   the axis fresher than any snapshot).
-        val payload = _identityPayloads.value[kind]
-        val payloadDisplay = if (payload != null && kind in setOf("mal", "simkl")) {
+        // ROUND 179/182 (THE N-WAY): the picked identity's PAYLOAD drives the
+        // display for the DATA-AXIS kinds (mal/simkl/tmdb*/tvmaze). The
+        // device report killed the two-direction shape: a fill-only tvmaze
+        // pick showed the row's own data (the pick's payload was ignored)
+        // and a mal pick showed the AniList data while the mal chip carried
+        // nothing — the selection looked a lie. THE MODEL NOW: the payload
+        // IS the picked source's display (the link-time title/cover/score/
+        // year), the merged base fills the gaps it lacks (the entryMode/the
+        // ids/the episodes header stay the base's). anilist + the extension
+        // kinds are EXCLUDED — their bases are LIVE-fetched (the freshest
+        // data; the thin snapshot would downgrade them). The payload
+        // ENRICHES over time: selectDisplaySource's per-kind detail fetch
+        // backfills the synopsis/genres/status into the row (the cache the
+        // user asked for), and the next remerge shows it.
+        val payload = if (kind !in setOf("anilist", "aniyomi", "cloudstream", "extension")) {
+            _identityPayloads.value[kind]
+        } else {
+            null
+        }
+        val payloadDisplay = if (payload != null) {
             merged.copy(
                 title = payload.displayTitle ?: merged.title,
                 coverUrl = payload.coverUrl ?: merged.coverUrl,
@@ -1229,18 +1320,6 @@ class DetailsViewModel(
                 status = payload.status ?: merged.status,
                 episodes = payload.episodes ?: merged.episodes,
                 seasonYear = payload.year ?: merged.seasonYear,
-            )
-        } else if (payload != null) {
-            merged.copy(
-                coverUrl = merged.coverUrl ?: payload.coverUrl,
-                description = merged.description ?: payload.synopsis,
-                averageScore = merged.averageScore ?: payload.score,
-                genres = merged.genres.ifEmpty {
-                    payload.genres?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-                },
-                status = merged.status ?: payload.status,
-                episodes = merged.episodes ?: payload.episodes,
-                seasonYear = merged.seasonYear ?: payload.year,
             )
         } else {
             merged
@@ -4232,15 +4311,43 @@ class DetailsViewModel(
         }
         val sourceName = _linkedSource.value?.sourceName
             ?: sourceId?.let { extensionManager.getSource(it)?.name }
-        val dataLinks = anime.anilistId?.let { id ->
-            listOf(
-                com.confused.anikuta.core.share.DataSourceLink(
-                    providerId = "anilist",
-                    providerName = "AniList",
-                    url = com.confused.anikuta.core.share.ContentShareLinkFactory.buildAniListUrl(id),
-                ),
-            )
-        } ?: emptyList()
+        val dataLinks = buildList {
+            anime.anilistId?.let { id ->
+                add(
+                    com.confused.anikuta.core.share.DataSourceLink(
+                        providerId = "anilist",
+                        providerName = "AniList",
+                        url = com.confused.anikuta.core.share.ContentShareLinkFactory.buildAniListUrl(id),
+                    ),
+                )
+            }
+            // ROUND 182 (D — the device report): the OTHER linked sources ride
+            // the share sheet — the identity payloads' (kind, ref) build the
+            // provider pages (the share options previously covered only the
+            // extension + AniList). Simkl exposes no stable public page shape
+            // for a flat id — its row shares the site search for the title.
+            _identityPayloads.value["mal"]?.let {
+                add(com.confused.anikuta.core.share.DataSourceLink("mal", "MyAnimeList", "https://myanimelist.net/anime/${it.sourceRefId}"))
+            }
+            _identityPayloads.value["tvmaze"]?.let {
+                add(com.confused.anikuta.core.share.DataSourceLink("tvmaze", "TVMaze", "https://www.tvmaze.com/shows/${it.sourceRefId}"))
+            }
+            _identityPayloads.value["tmdb_movie"]?.let {
+                add(com.confused.anikuta.core.share.DataSourceLink("tmdb", "TMDB", "https://www.themoviedb.org/movie/${it.sourceRefId}"))
+            }
+            _identityPayloads.value["tmdb_tv"]?.let {
+                add(com.confused.anikuta.core.share.DataSourceLink("tmdb", "TMDB", "https://www.themoviedb.org/tv/${it.sourceRefId}"))
+            }
+            _identityPayloads.value["simkl"]?.let {
+                add(
+                    com.confused.anikuta.core.share.DataSourceLink(
+                        "simkl",
+                        "Simkl",
+                        "https://simkl.com/search/?q=" + android.net.Uri.encode(it.displayTitle ?: ""),
+                    ),
+                )
+            }
+        }
         return com.confused.anikuta.core.share.ShareableContent(
             title = anime.displayName,
             mainId = currentMainId ?: "",

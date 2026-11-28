@@ -708,6 +708,33 @@ fun DetailsViewModel.pickUnifiedLink(source: String, result: UnifiedLinkResult) 
                 }.onFailure { e ->
                     Logger.w(TAG_MT) { "the $source link store failed: " + (e.message ?: "") }
                 }
+                // ROUND 182 (THE DEVICE REPORT — the missing MAL chip): this
+                // branch wrote ONLY the track_entry mapping — no
+                // content_identity row — so the pick produced NO CHIP (the
+                // menu's Unlink row came from the union read of the MAPPINGS,
+                // which masked the gap) and NO PAYLOAD (the N-way display had
+                // nothing to show: the user's "the data did not change"). The
+                // identity row rides now, carrying the link-time payload
+                // (title/cover/score/year) exactly like the tmdb/tvmaze
+                // branch; the claim guard refuses cross-main steals.
+                contentRepository?.upsertIdentity(
+                    com.confused.anikuta.core.content.ContentIdentity(
+                        mainId = mid,
+                        sourceKind = source,
+                        sourceRefId = result.id.toString(),
+                        displayTitle = result.title,
+                        coverUrl = result.posterUrl,
+                        synopsis = null,
+                        score = result.rating?.let { (it * 10).toInt() },
+                        episodes = null,
+                        status = null,
+                        genres = null,
+                        year = result.year,
+                        displayRank = 2,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                )
                 refreshLinkedIdentities()
                 // The TRACKING entry's return path: the mapping now exists →
                 // the tracker's sheet opens driving that tracker.

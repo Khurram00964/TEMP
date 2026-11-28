@@ -363,9 +363,23 @@ fun SearchScreen(
     // landing forces the dismissal + the notice (the network stacks can
     // hang well past the user's patience).
     val refreshNotice by viewModel.refreshNotice.collectAsState()
+    // ROUND 182 (F — the device report): the MINIMUM JUMPING BEAT — a fast
+    // completing refresh (the Simkl offline pull dismissed in one beat)
+    // left the jumping dots no time to actually jump (shown but static).
+    // Every dismissal path routes through [dismissRefresh]: the dots jump
+    // for at least 600ms before leaving.
+    var pullStartedAt by remember { mutableStateOf(0L) }
+    androidx.compose.runtime.LaunchedEffect(pullRefreshing) {
+        if (pullRefreshing) pullStartedAt = System.currentTimeMillis()
+    }
+    suspend fun dismissRefresh() {
+        val elapsed = System.currentTimeMillis() - pullStartedAt
+        if (pullRefreshing && elapsed < 600) kotlinx.coroutines.delay(600 - elapsed)
+        pullRefreshing = false
+    }
     androidx.compose.runtime.LaunchedEffect(refreshNotice) {
         if (refreshNotice != null) {
-            pullRefreshing = false
+            dismissRefresh()
             viewModel.clearRefreshNotice()
         }
     }
@@ -376,7 +390,7 @@ fun SearchScreen(
     // fallback keeps its role for the true hangs only.
     val refreshEpoch by viewModel.refreshEpoch.collectAsState()
     androidx.compose.runtime.LaunchedEffect(refreshEpoch) {
-        if (refreshEpoch > 0L) pullRefreshing = false
+        if (refreshEpoch > 0L) dismissRefresh()
     }
     androidx.compose.runtime.LaunchedEffect(pullRefreshing) {
         if (pullRefreshing) {
@@ -392,7 +406,7 @@ fun SearchScreen(
     }
 
         val ptrState = rememberPullToRefreshState()
-        LaunchedEffect(uiState) { pullRefreshing = false }
+        LaunchedEffect(uiState) { dismissRefresh() }
         PullToRefreshBox(
             isRefreshing = pullRefreshing,
             onRefresh = {

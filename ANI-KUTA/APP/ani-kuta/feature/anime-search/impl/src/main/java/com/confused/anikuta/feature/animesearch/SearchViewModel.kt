@@ -1061,7 +1061,10 @@ class SearchViewModel(
             val results = (p1 + p2).map { it.toDataSourceResult() }
             if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.TMDB, results)
             if (results.isEmpty()) {
-                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+                // ROUND 182 (G): only a LOADING state downgrades — the
+                // showingDefaults bookkeeping resets on beginRequest(), so
+                // the old guard fired Empty over served content.
+                if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Empty
             } else {
                 showingDefaults = true
                 pagingMode = PagingMode.TMDB_TRENDING
@@ -1082,7 +1085,9 @@ class SearchViewModel(
             // ROUND 178 (the audit — S2-B): nothing was served and the
             // network is gone → the Loading state would spin FOREVER (the
             // center-spinner hang). Fall to Idle like the AniList loader.
-            if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
+            // ROUND 182 (G): only a LOADING state downgrades (see the Empty
+            // note) — the served cache NEVER falls to Idle on a failure.
+            if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Idle
         }
     }
 
@@ -1148,7 +1153,10 @@ class SearchViewModel(
             if (!isCurrent(gen)) return@launch
             if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.TVMAZE, results)
             if (results.isEmpty()) {
-                if (!showingDefaults) _uiState.value = SearchUiState.Empty
+                // ROUND 182 (G): only a LOADING state downgrades — the
+                // showingDefaults bookkeeping resets on beginRequest(), so
+                // the old guard fired Empty over served content.
+                if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Empty
             } else {
                 showingDefaults = true
                 pagingMode = PagingMode.NONE
@@ -1161,7 +1169,9 @@ class SearchViewModel(
             // pull only; the never-served auto path falls to Idle instead of
             // the forever-spinner.
             if (force) setRefreshNotice(e)
-            if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
+            // ROUND 182 (G): only a LOADING state downgrades (see the Empty
+            // note) — the served cache NEVER falls to Idle on a failure.
+            if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Idle
         }
     }
 
@@ -1244,7 +1254,9 @@ class SearchViewModel(
             if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.MAL, results)
             if (results.isEmpty()) {
                 if (force) p1Result.exceptionOrNull()?.let { setRefreshNotice(it) }
-                if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
+                // ROUND 182 (G): only a LOADING state downgrades (see the Empty
+            // note) — the served cache NEVER falls to Idle on a failure.
+            if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Idle
             } else {
                 showingDefaults = true
                 pagingMode = PagingMode.MAL_DEFAULTS
@@ -1325,7 +1337,9 @@ class SearchViewModel(
             if (results.isNotEmpty()) writeDefaultsCache(DataSourceKind.SIMKL, results)
             if (results.isEmpty()) {
                 if (force) simklResult.exceptionOrNull()?.let { setRefreshNotice(it) }
-                if (!showingDefaults && !silentRefresh) _uiState.value = SearchUiState.Idle
+                // ROUND 182 (G): only a LOADING state downgrades (see the Empty
+            // note) — the served cache NEVER falls to Idle on a failure.
+            if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Idle
             } else {
                 showingDefaults = true
                 pagingMode = PagingMode.NONE
@@ -1507,7 +1521,10 @@ class SearchViewModel(
                 if (results.isEmpty()) {
                     // Network returned empty — only fall to Idle if we have
                     // NO cached fallback already showing (D-278).
-                    if (!showingDefaults) _uiState.value = SearchUiState.Idle
+                    // ROUND 182 (G): only a LOADING state downgrades (the
+                    // AniList catch — beginRequest() reset showingDefaults,
+                    // so the old guard fired Idle over the served cache).
+                    if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Idle
                 } else {
                     // ROUND 176: the fresh results WRITE the cache row — the
                     // fetchedAt advances so the 12h gate reads a fresh
@@ -1547,7 +1564,8 @@ class SearchViewModel(
                 // D-278: if cache already served (showingDefaults), keep it —
                 // don't clobber with Idle. Only fall to Idle when we have
                 // nothing cached to show.
-                if (!showingDefaults) _uiState.value = SearchUiState.Idle
+                // ROUND 182 (G): only a LOADING state downgrades (see above).
+                if (_uiState.value is SearchUiState.Loading) _uiState.value = SearchUiState.Idle
             }
         }.also { defaultsJob = it }
     }

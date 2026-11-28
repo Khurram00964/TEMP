@@ -108,7 +108,12 @@ data class MalSearchRow(
 // DTO with a SerialName remap would break the latter's parse. Dedicated
 // node/row types keep both shapes exact.
 
-/** The animelist node — MalAnime's fields with the `list_status` key. */
+/** The animelist node — MalAnime's fields with the `list_status` key.
+ *  ROUND 182 (the populate device report — "MAL is empty" with a populated
+ *  list): BOTH key conventions are accepted — the list endpoint documents
+ *  `list_status` while some responses/clients ride `my_list_status`; the
+ *  strict single key parsed to null for every row and the mapped list came
+ *  back empty. */
 @Serializable
 data class MalListAnime(
     val id: Int,
@@ -118,6 +123,8 @@ data class MalListAnime(
     val mean: Float? = null,
     val start_season: MalStartSeason? = null,
     @SerialName("list_status")
+    val list_status: MalMyListStatus? = null,
+    @SerialName("my_list_status")
     val my_list_status: MalMyListStatus? = null,
 )
 

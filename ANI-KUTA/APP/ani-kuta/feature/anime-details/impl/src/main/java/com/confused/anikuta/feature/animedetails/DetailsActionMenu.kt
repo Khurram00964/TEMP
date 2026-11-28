@@ -252,67 +252,59 @@ fun DetailsActionMenu(
                     // MyAnimeList → Simkl → TMDB → TVmaze), each row with
                     // its REAL logo. ROUND 172: the pick dismisses the menu
                     // first (the unified sheet opens over a closed menu).
+                    // ROUND 182 (C — THE MENU REDESIGN, the device report):
+                    // "Link to other" is now "MORE OPTIONS" — the expanded
+                    // list shows ALL FIVE sources with the LINKED ones
+                    // distinct (the filled look + the Linked badge); tapping a
+                    // LINKED source opens the unlink confirm (the caller's
+                    // existing dialog), an UNLINKED one the link flow. The
+                    // standalone Unlink rows FOLDED AWAY — the compact menu
+                    // the user ordered.
                     if (linkToOtherExpanded) {
+                        fun linkStateOf(key: String): Boolean =
+                            linkedIdentities.any { it == key || it.startsWith("${key}_") }
                         MenuDiscRowWithLogo(
                             label = "AniList",
                             logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist,
-                            onClick = { onDismissRequest(); onLinkAniList() },
+                            linked = linkStateOf("anilist"),
+                            onClick = { onDismissRequest(); if (linkStateOf("anilist")) onUnlinkAniList() else onLinkAniList() },
                         )
                         MenuDiscRowWithLogo(
                             label = "MyAnimeList",
                             logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
-                            onClick = { onDismissRequest(); onLinkMal() },
+                            linked = linkStateOf("mal"),
+                            onClick = { onDismissRequest(); if (linkStateOf("mal")) onUnlinkMal() else onLinkMal() },
                         )
                         MenuDiscRowWithLogo(
                             label = "Simkl",
                             logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl,
-                            onClick = { onDismissRequest(); onLinkSimkl() },
+                            linked = linkStateOf("simkl"),
+                            onClick = { onDismissRequest(); if (linkStateOf("simkl")) onUnlinkSimkl() else onLinkSimkl() },
                         )
                         MenuDiscRowWithLogo(
                             label = "TMDB",
                             logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb,
-                            onClick = { onDismissRequest(); onLinkTmdb() },
+                            linked = linkStateOf("tmdb"),
+                            onClick = { onDismissRequest(); if (linkStateOf("tmdb")) onUnlinkTmdb() else onLinkTmdb() },
                         )
                         MenuDiscRowWithLogo(
                             label = "TVMaze",
                             logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze,
-                            onClick = { onDismissRequest(); onLinkTvmaze() },
+                            linked = linkStateOf("tvmaze"),
+                            onClick = { onDismissRequest(); if (linkStateOf("tvmaze")) onUnlinkTvmaze() else onLinkTvmaze() },
                         )
                     } else {
                         MenuDiscRow(
-                            icon = Icons.Filled.Link,
-                            label = "Link to other",
+                            icon = androidx.compose.material.icons.filled.MoreHoriz,
+                            label = "More options",
                             onClick = { linkToOtherExpanded = true },
                         )
                     }
-                    // ROUND 172: the LINKED identities — the per-source
-                    // Unlink rows (the user's model: after linking, the menu
-                    // shows "Unlink {source}"; the v1.1.107 bug hid the row
-                    // behind an AniList-only check that lied on metadata).
-                    val unlinkTargets = listOf(
-                        Triple("anilist", "Unlink AniList", onUnlinkAniList),
-                        Triple("mal", "Unlink MyAnimeList", onUnlinkMal),
-                        Triple("simkl", "Unlink Simkl", onUnlinkSimkl),
-                        Triple("tmdb", "Unlink TMDB", onUnlinkTmdb),
-                        Triple("tvmaze", "Unlink TVMaze", onUnlinkTvmaze),
-                    )
-                    unlinkTargets.forEach { (key, label, onUnlink) ->
-                        // ROUND 178 (the audit — C): the FINE kinds match their
-                        // parent key — the v8 TMDB picks wrote tmdb_movie/
-                        // tmdb_tv rows and the exact "tmdb" test hid the Unlink
-                        // row forever.
-                        if (linkedIdentities.any { it == key || it.startsWith("${key}_") }) {
-                            MenuDiscRow(
-                                icon = Icons.Filled.LinkOff,
-                                label = label,
-                                destructive = true,
-                                onClick = {
-                                    onDismissRequest()
-                                    onUnlink()
-                                },
-                            )
-                        }
-                    }
+                    // ROUND 182 (C): the standalone Unlink rows FOLDED AWAY —
+                    // the unlink lives inside "More options" now (the linked
+                    // sources carry the distinct look + the confirm dialog;
+                    // the user's compact-menu order). The onUnlink* callbacks
+                    // stay — the expanded source rows route to them.
                 }
             }
 
@@ -442,16 +434,26 @@ private fun fireOsShareChooser(
 /** A small all-caps section label ABOVE each crimped card (the grouping rhythm). */
 // ── ROUND 171: the source-row variant carrying the REAL logo (the device
 // order: the icons, not the generic discs).
+// ROUND 182 (C): the LINKED-DISTINCT look — a linked source's row carries
+// the filled primary-container background + the trailing "Linked" badge;
+// the tap routes to the UNLINK confirm (the caller's existing dialog), an
+// unlinked tap to the link flow.
 @Composable
 private fun MenuDiscRowWithLogo(
     label: String,
     logoRes: Int,
     onClick: () -> Unit,
+    linked: Boolean = false,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (linked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                else androidx.compose.ui.graphics.Color.Transparent,
+                RoundedCornerShape(10.dp),
+            )
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -468,7 +470,26 @@ private fun MenuDiscRowWithLogo(
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
         )
+        // ROUND 182 (C): the LINKED badge — the distinct state the user
+        // ordered (the filled row alone isn't enough at a glance).
+        if (linked) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+            ) {
+                Text(
+                    text = "Linked — tap to unlink",
+                    fontFamily = RobotoFamily,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

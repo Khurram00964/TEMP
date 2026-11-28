@@ -250,11 +250,23 @@ class MalTracker(
         if (!ensureFreshToken()) return@withContext emptyList()
         val token = preferences.accessToken
         val anime = api.userAnimelist(token)
-        anime.mapNotNull { row ->
-            val ls = row.my_list_status ?: return@mapNotNull null
+        val mapped = anime.mapNotNull { row ->
+            // ROUND 182: BOTH key conventions ride (see MalListAnime) — the
+            // strict single key was null for every row on the device.
+            val ls = row.list_status ?: row.my_list_status ?: return@mapNotNull null
             val rawStatus = ls.status ?: "watching"
             MalListEntry(row, mapFromMal(rawStatus), rawStatus)
         }
+        // ROUND 182 (the diagnostics): the shape evidence rides the log —
+        // raw>0 with mapped==0 means the rows arrived but the status key
+        // didn't (the next shape report names it).
+        if (anime.isNotEmpty() && mapped.isEmpty()) {
+            Logger.w(TAG) {
+                "userAnimelist: ${anime.size} raw rows, 0 mapped — the status key did not parse " +
+                    "(first node: id=${anime.first().id}, title=${anime.first().title})"
+            }
+        }
+        mapped
     }
 
     /** MAL dates: `YYYY-MM-DD` (or null). */
