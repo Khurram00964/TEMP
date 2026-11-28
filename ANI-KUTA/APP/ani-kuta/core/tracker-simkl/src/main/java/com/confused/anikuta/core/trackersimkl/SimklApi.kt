@@ -3,6 +3,9 @@ package com.confused.anikuta.core.trackersimkl
 import com.confused.anikuta.core.common.Logger
 import com.confused.anikuta.core.trackerapi.TrackerKeys
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -250,21 +253,24 @@ class SimklApi(
         val raw = get(url("/sync/all-items/$kind/$status"), accessToken) ?: return emptyList()
         return runCatching {
             val root = json.parseToJsonElement(raw)
-            val array: kotlinx.serialization.json.JsonArray = when (val obj = root as? kotlinx.serialization.json.JsonObject) {
-                null -> root as kotlinx.serialization.json.JsonArray
-                else -> (obj["items"] ?: obj["entries"])?.let {
-                    kotlinx.serialization.json.jsonArray.takeIf { true }?.let { _ -> it as? kotlinx.serialization.json.JsonArray }
-                } ?: buildList {
-                    for (key in listOf("anime", "movies", "movie", "tv", "shows", "show", "entries")) {
-                        (obj[key] as? kotlinx.serialization.json.JsonArray)?.let { addAll(it) }
-                    }
-                }.let { kotlinx.serialization.json.JsonArray(it) }
+            val array: JsonArray = when (val obj = root as? JsonObject) {
+                null -> root.jsonArray
+                else -> {
+                    val wrapped = (obj["items"] ?: obj["entries"]) as? JsonArray
+                    wrapped ?: JsonArray(
+                        buildList {
+                            for (key in listOf("anime", "movies", "movie", "tv", "shows", "show", "entries")) {
+                                (obj[key] as? JsonArray)?.let { addAll(it) }
+                            }
+                        },
+                    )
+                }
             }
             array.mapNotNull { element ->
-                val obj = element as? kotlinx.serialization.json.JsonObject
-                val inner = obj?.entries?.firstNotNullOfOrNull { (key, value) ->
+                val entryObj = element as? JsonObject
+                val inner = entryObj?.entries?.firstNotNullOfOrNull { (key, value) ->
                     if (key in setOf("movie", "show", "anime") &&
-                        value is kotlinx.serialization.json.JsonObject
+                        value is JsonObject
                     ) value else null
                 }
                 if (inner != null) {
