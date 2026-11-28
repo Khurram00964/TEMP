@@ -544,8 +544,32 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10220
-    const val versionName = "1.1.120"
+    const val versionCode = 10221
+    const val versionName = "1.1.121"
+    // ROUND 185 (v1.1.121): CHUNK 4 — THE ENRICHMENT PHASE 2 (the user's
+    // order: "all the necessary fields of the specific data source provider
+    // fetched and shown on the details page properly... if something is
+    // missing, then it won't show that. But if some other provider does
+    // provide that info, then it will show that"):
+    // - DataSourceExtras gains the ADDITIVE phase-2 fields (the themes/the
+    //   durationMinutes/the rank/the popularity/the network — the SCHEMA.md
+    //   rule 2, no migration; ignoreUnknownKeys decodes the old rows).
+    // - TmdbDetail parses the runtime/the networks/the production companies
+    //   from the SAME detail JSON (no extra call); TvmazeShow parses the
+    //   genres + the runtime.
+    // - refreshMetadataEnrichment MERGES the extras per provider (the MAL
+    //   detail's rich unused fields — the themes/the studios/the duration/
+    //   the rank/the popularity — land; 7 of 25 no more).
+    // - The VM exposes extrasFlow (the load sets it from the details row,
+    //   the enrichments update it, the reset clears it); the details page
+    //   renders the DETAILS INFO GRID after the genres — the "Label: value"
+    //   chips, PRESENT-ONLY (missing = hidden — the provider-compatibility
+    //   rule).
+    // THE SMALL WINS SWEEP (this round's discovery): the Stop-tracking
+    //   dialog, the None-on-opt-in semantics (round 174), and the menu
+    //   animation/reset — ALREADY BUILT (the docs lagged); MS-4's screen
+    //   doesn't exist under that name (its texts ride Chunk 3's home
+    //   settings).
     // ROUND 184 (v1.1.120): CHUNK 2 — THE DATA-SOURCE TOGGLES (the user's
     // order: "the ability in the settings to pick which data sources to turn
     // on and which to turn off"):

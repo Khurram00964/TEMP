@@ -52,6 +52,10 @@ class TvmazeApi(
         val nextEpisodeName: String?,
         val nextEpisodeAirDate: String?, // ISO local date (no exact time — TVmaze separates the schedule)
         val nextEpisodeNumber: Int?,
+        // ROUND 185 (CHUNK 4 — the enrichment phase 2): the same JSON, no
+        // extra call — the phase-2 display fields.
+        val genres: List<String> = emptyList(),
+        val runtimeMinutes: Int? = null,
     )
 
     private fun get(url: String): String? = runCatching {
@@ -109,6 +113,12 @@ class TvmazeApi(
             nextEpisodeName = nextName,
             nextEpisodeAirDate = nextDate,
             nextEpisodeNumber = nextNumber,
+            // ROUND 185 (CHUNK 4): the genres + the runtime — the phase-2
+            // info grid's TVmaze sources (the null-safe discipline holds).
+            genres = (obj["genres"] as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { g -> (g as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is JsonNull }?.content }
+                ?: emptyList(),
+            runtimeMinutes = obj["runtime"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { r -> r !is JsonNull }?.content?.toIntOrNull() },
         )
     }
 

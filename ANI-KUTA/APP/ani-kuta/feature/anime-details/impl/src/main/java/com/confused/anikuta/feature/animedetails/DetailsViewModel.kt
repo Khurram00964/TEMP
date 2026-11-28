@@ -652,6 +652,16 @@ class DetailsViewModel(
     val identityPayloads: kotlinx.coroutines.flow.StateFlow<Map<String, com.confused.anikuta.core.content.ContentIdentity>> =
         _identityPayloads.asStateFlow()
 
+    // ROUND 185 (CHUNK 4 — the enrichment phase 2): the DATA-AXIS extras —
+    // the details page's info grid reads THIS (the studios/themes/duration/
+    // rank/popularity/network). Set by the metadata load (the details row)
+    // and the enrichments (the merges); cleared on resetState. The
+    // provider-compatibility rule: whatever is present renders, missing =
+    // hidden.
+    internal val _extrasFlow = kotlinx.coroutines.flow.MutableStateFlow<com.confused.anikuta.core.content.DataSourceExtras?>(null)
+    val extrasFlow: kotlinx.coroutines.flow.StateFlow<com.confused.anikuta.core.content.DataSourceExtras?> =
+        _extrasFlow.asStateFlow()
+
     /**
      * ROUND 174 (T2): the N-way display switch — the picked identity drives
      * the details page. The mapping-only identities (mal/simkl) carry no
@@ -1423,6 +1433,7 @@ class DetailsViewModel(
         _isMetadataEntry.value = false
         _linkedIdentities.value = emptySet()
         _identityPayloads.value = emptyMap() // ROUND 179 (the N-way): the payloads ride the reset
+        _extrasFlow.value = null // ROUND 185 (CHUNK 4): the extras ride the reset
         _displaySourceKind.value = null // ROUND 175 (F6.1): the pick never leaks across screens
         Logger.d(TAG) { "resetState: all per-anime state cleared (loadGeneration=$loadGeneration)" }
     }
@@ -1714,6 +1725,13 @@ class DetailsViewModel(
             }
             // The DB LINKING (idempotent): the metadata content becomes a
             // first-class row (main_entry + content_details' data axis).
+            // ROUND 185 (CHUNK 4): the info grid's source — the details row's
+            // extras ride the load.
+            runCatching {
+                _extrasFlow.value = com.confused.anikuta.core.content.DataSourceExtras.fromJson(
+                    contentRepository.getContentDetails(mainId)?.dataExtraJson,
+                )
+            }
             runCatching {
                 val existing = contentRepository.getContentDetails(mainId)
                 if (existing == null) {
@@ -3453,6 +3471,11 @@ class DetailsViewModel(
         Logger.i(TAG) { "the metadata enrichment refresh: $mid ($fineType:$refId)" }
         var refreshed = details
         var backendFetched = false
+        // ROUND 185 (CHUNK 4): the EXTRAS merge — the phase-2 fields ride
+        // data_extra_json (the additive model, the SCHEMA.md rule 2); the new
+        // values WIN where present, the stored fill the rest.
+        fun mergedExtras(update: (com.confused.anikuta.core.content.DataSourceExtras) -> com.confused.anikuta.core.content.DataSourceExtras): String =
+            update(com.confused.anikuta.core.content.DataSourceExtras.fromJson(details?.dataExtraJson)).toJson()
         when (fineType) {
             "tmdb_movie", "tmdb_tv" -> tmdbApi?.detail(
                 if (fineType == "tmdb_tv") "tv" else "movie",
@@ -3468,6 +3491,13 @@ class DetailsViewModel(
                     dataStatus = d.status ?: refreshed?.dataStatus,
                     dataGenres = d.genres.joinToString(",").ifBlank { refreshed?.dataGenres },
                     dataUpdatedAt = System.currentTimeMillis(),
+                    dataExtraJson = mergedExtras { base ->
+                        base.copy(
+                            durationMinutes = d.runtimeMinutes ?: base.durationMinutes,
+                            network = d.networks.firstOrNull() ?: base.network,
+                            studio = base.studio ?: d.companies.firstOrNull(),
+                        )
+                    },
                 )
             }
             "tvmaze" -> tvmazeApi?.show(refId)?.let { show ->
@@ -3477,7 +3507,18 @@ class DetailsViewModel(
                     dataCoverUrl = show.posterUrl ?: refreshed?.dataCoverUrl,
                     dataSeasonYear = show.year?.toLong() ?: refreshed?.dataSeasonYear,
                     dataScore = show.rating?.let { (it * 10).toInt().toLong() } ?: refreshed?.dataScore,
+                    // ROUND 185 (CHUNK 4): the TVmaze GENRES now ride (the
+                    // DTO parses them — the genres row finally fills for the
+                    // TVmaze rows).
+                    dataGenres = show.genres.takeIf { it.isNotEmpty() }
+                        ?.joinToString(",") ?: refreshed?.dataGenres,
                     dataUpdatedAt = System.currentTimeMillis(),
+                    dataExtraJson = mergedExtras { base ->
+                        base.copy(
+                            network = show.network ?: base.network,
+                            durationMinutes = show.runtimeMinutes ?: base.durationMinutes,
+                        )
+                    },
                 )
             }
             "mal" -> malTracker?.detail(refId)?.let { d ->
@@ -3499,6 +3540,20 @@ class DetailsViewModel(
                         .joinToString(",")
                         .ifBlank { refreshed?.dataGenres },
                     dataUpdatedAt = System.currentTimeMillis(),
+                    // ROUND 185 (CHUNK 4): the RICH MAL detail's unused
+                    // fields land in the extras (the themes/the studio/the
+                    // duration/the rank/the popularity — 7 of 25 no more).
+                    dataExtraJson = mergedExtras { base ->
+                        base.copy(
+                            themes = d.themes.takeIf { it.isNotEmpty() }
+                                ?.joinToString(",") { it.name } ?: base.themes,
+                            studio = base.studio ?: d.studios.firstOrNull()?.name,
+                            durationMinutes = d.average_episode_duration?.div(60)
+                                ?: base.durationMinutes,
+                            rank = d.rank ?: base.rank,
+                            popularity = d.popularity ?: base.popularity,
+                        )
+                    },
                 )
             }
             else -> {
@@ -3519,6 +3574,9 @@ class DetailsViewModel(
         }
         refreshed?.let {
             runCatching { contentRepository.upsertContentDetails(it) }
+            // ROUND 185 (CHUNK 4): the info grid's source updates with the
+            // write (the extras merge landed above).
+            _extrasFlow.value = com.confused.anikuta.core.content.DataSourceExtras.fromJson(it.dataExtraJson)
             // The display re-derives: the metadata base rebuilds from the
             // refreshed axis + the remerge honors the display kind.
             if (metadataBase != null) {

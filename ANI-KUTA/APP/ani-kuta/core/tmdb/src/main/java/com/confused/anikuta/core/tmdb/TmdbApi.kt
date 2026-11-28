@@ -160,6 +160,11 @@ class TmdbApi(
         val genres: List<String>,
         val episodes: Int?,
         val status: String?,
+        // ROUND 185 (CHUNK 4 — the enrichment phase 2): the same JSON, no
+        // extra call — the phase-2 display fields.
+        val runtimeMinutes: Int?,
+        val networks: List<String>,
+        val companies: List<String>,
     )
 
     suspend fun detail(mediaType: String, id: Int): TmdbDetail? = withContext(Dispatchers.IO) {
@@ -192,7 +197,19 @@ class TmdbApi(
             val episodes = obj["number_of_episodes"]?.jsonPrimitive?.content?.toIntOrNull()
                 ?: obj["runtime"]?.jsonPrimitive?.content?.toIntOrNull()
             val status = obj["status"]?.jsonPrimitive?.content
-            TmdbDetail(item, genres, episodes, status)
+            // ROUND 185 (CHUNK 4): the runtime (the movies' `runtime`, the
+            // TV's first `episode_run_time`), the networks, the production
+            // companies — the phase-2 info grid's TMDB sources.
+            val runtimeMinutes = obj["runtime"]?.jsonPrimitive?.content?.toIntOrNull()
+                ?: obj["episode_run_time"]?.jsonArray?.firstOrNull()
+                    ?.jsonPrimitive?.content?.toIntOrNull()
+            val networks = obj["networks"]?.jsonArray?.mapNotNull { n ->
+                n.jsonObject["name"]?.jsonPrimitive?.content
+            } ?: emptyList()
+            val companies = obj["production_companies"]?.jsonArray?.mapNotNull { c ->
+                c.jsonObject["name"]?.jsonPrimitive?.content
+            } ?: emptyList()
+            TmdbDetail(item, genres, episodes, status, runtimeMinutes, networks, companies)
         } catch (e: Exception) {
             Logger.w(TAG) { "detail parse failed: " + (e.message ?: "") }
             null

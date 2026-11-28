@@ -1336,6 +1336,16 @@ fun DetailsScreen(
                             item { GenresRow(genres) }
                         }
 
+                        // ── Details info grid (ROUND 185 / CHUNK 4 — the
+                        // enrichment phase 2): the provider detail fields
+                        // (the studios/the themes/the duration/the rank/the
+                        // popularity/the network) — PRESENT-ONLY: a field the
+                        // provider does not carry renders nothing.
+                        item {
+                            val extras by viewModel.extrasFlow.collectAsState()
+                            DetailsInfoGrid(extras)
+                        }
+
                         // ── Synopsis ──
                         anime.description?.let { desc ->
                             item { SynopsisSection(desc, animeRating, viewModel::setAnimeRating) }
@@ -2820,6 +2830,60 @@ private fun GenresRow(genres: List<String>) {
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * ROUND 185 (CHUNK 4 — the enrichment phase 2): the DETAILS INFO GRID — the
+ * provider detail fields (the studios/the themes/the duration/the rank/the
+ * popularity/the network) as the "Label: value" chips, the GenresRow's
+ * language. PRESENT-ONLY: a field the provider does not carry renders
+ * nothing (the provider-compatibility rule the user ordered).
+ */
+@Composable
+private fun DetailsInfoGrid(extras: com.confused.anikuta.core.content.DataSourceExtras?) {
+    val pairs = listOfNotNull(
+        extras?.studio?.takeIf { it.isNotBlank() }?.let { "Studio" to it },
+        extras?.themes?.takeIf { it.isNotBlank() }?.let { "Themes" to it },
+        extras?.network?.takeIf { it.isNotBlank() }?.let { "Network" to it },
+        extras?.durationMinutes?.let { "Duration" to "$it min" },
+        extras?.rank?.let { "Rank" to "#$it" },
+        extras?.popularity?.let { "Popularity" to "#$it" },
+    )
+    if (pairs.isEmpty()) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        pairs.forEach { (label, value) ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(50),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = label,
+                        fontFamily = RobotoFamily,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = value,
+                        fontFamily = RobotoFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
     }

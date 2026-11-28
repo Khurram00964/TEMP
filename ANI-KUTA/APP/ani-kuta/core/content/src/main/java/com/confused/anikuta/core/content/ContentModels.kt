@@ -130,6 +130,16 @@ data class DataSourceExtras(
     val studio: String? = null,
     val coverUrlLarge: String? = null,
     val coverUrlSmall: String? = null,
+    // ROUND 185 (CHUNK 4 — the enrichment phase 2): the provider detail
+    // fields ride the ADDITIVE extras (the SCHEMA.md rule 2 — no migration;
+    // ignoreUnknownKeys decodes the old rows). The details page's info grid
+    // renders whatever is present — missing = hidden (the
+    // provider-compatibility rule).
+    val themes: String? = null,
+    val durationMinutes: Int? = null,
+    val rank: Int? = null,
+    val popularity: Int? = null,
+    val network: String? = null,
 ) {
     fun toJson(): String = extrasJson.encodeToString(DataSourceExtras.serializer(), this)
 
