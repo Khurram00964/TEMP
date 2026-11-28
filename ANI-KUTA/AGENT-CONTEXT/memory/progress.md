@@ -2185,3 +2185,11 @@ Run **40000778322** (head 2a99ca40): **GREEN — VERIFIED** (queried via the API
 - **THE CI TRAIL:** the v1.1.116 build GREEN (46104623909 — the winning twin; 46104626124 the red twin at the already-exists check).
 - **THE RELEASE:** v1.1.116/10216 LIVE on TEMP, stable, sha-verified (b23e1ec4…5dfc742). Schema v8→v8.
 - **THE USER'S DEVICE ROUND (on 116):** install over → the boot → if the black screen repeats, ErrorActivity now SHOWS the boot-hang report → paste it back → the exact statement gets the fix. If the boot is clean, the round-179 checklist runs as delivered.
+
+## Round 181 (2026-11-28) — THE BOOT LOOP FIXED (v1.1.117/10217 LIVE, DEVICE-CONFIRMED BOOTING)
+- **THE ROOT CAUSE (the user's logcat, verbatim proof):** `DatabaseDriverFactory.onOpen` ran `db.execSQL("PRAGMA journal_mode = WAL")` (the round-176 ride-along); that pragma RETURNS A RESULT ROW and Android's SQLiteDatabase.execSQL THROWS on any row-returning statement — every database open threw inside onOpen on every device build since v1.1.113 → the Continue-Watching flow's collection caught the uncaught exception → the crash handler → ErrorActivity + the process self-SIG-9 → the relaunch → Application.onCreate's warm-up/seeds hit the same throw → THE ~2.3s BOOT LOOP, zero frames drawn. Data-independent (the fresh install hung identically); the BootWatchdog could never reach its 12s window (the process died every 2.3s). THE FIX: the pragma rides db.query (a Cursor — the row consumed, the cursor closed). The app-wide sweep found no other row-returning execSQL (foreign_keys=ON is set-only — legal, and the logcat proves it passes).
+- **THE DURABLE LESSON:** the JVM test driver ACCEPTS a row-returning execSQL — CI green never proved device green. No shipped statement may return rows via execSQL.
+- **THE PROCESS CHANGE (the user's order):** the sha-verify-by-downloading ritual is RETIRED — CI green + the release existing IS the verification (the user confirmed v1.1.117 boots; no more 77MB downloads).
+- **THE CI TRAIL:** the v1.1.117 release GREEN (52d2691f, one run).
+- **THE RELEASE:** v1.1.117/10217 LIVE on TEMP. **THE USER INSTALLED IT AND IT OPENS** — the boot loop is device-confirmed dead. Schema v8→v8.
+- **NEXT:** the user runs the round-179 device checklist (the Populate Library headline) on the working build.
