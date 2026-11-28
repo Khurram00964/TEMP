@@ -2219,3 +2219,16 @@ Run **40000778322** (head 2a99ca40): **GREEN — VERIFIED** (queried via the API
 - **THE CI TRAIL:** the first run failed at the ic_source_* references (the drawables live in the anime-search FEATURE R — the library resources do not merge into the app R; the durable lesson) → the fix 57b3d1ec + the re-tag → **the rebuild GREEN**.
 - **THE RELEASE:** v1.1.120/10220 LIVE on TEMP (57b3d1ec). Schema v8→v8.
 - **NEXT:** Chunk 3 — the home data system, DESIGN-FIRST (the design doc before any code): the Settings Home-page → Data → the source-or-type mode (the sources: the 5 + the extensions question; the types: anime/movies/Western series/donghua/Chinese dramas/Korean dramas; the per-type provider mapping: AniList → anime+donghua (the countryOfOrigin CN), TMDB → movies/Western/K-dramas/C-dramas (the origin_country discover), TVmaze → Western series (weak type filtering — honest), MAL → anime, Simkl → movies/TV/anime), the hero scaling 5×sources rating-ordered, the airs contract, the trending/suggested merges, the browse/all-genres merge, the tags gating. THE LAYOUT STAYS EXACTLY AS IT IS.
+
+## Round 185 (2026-11-28) — CHUNK 4: the enrichment phase 2 (v1.1.121/10221 dispatched)
+- **THE USER'S ORDER (re-prioritized):** the small wins → the enrichment phase 2 → the home (the home design doc last).
+- **THE SMALL-WINS SWEEP'S DISCOVERY:** TR-3 (the Stop-tracking dialog), TR-10 (the None-on-opt-in — round 174's isTracked keying), DT-4 (the animateContentSize menu + the reset) were ALREADY BUILT — the docs lagged. MS-4's HomeContentScreen doesn't exist under that name (its texts ride Chunk 3's home settings). The genuinely remaining: the TVmaze airs / Bangumi / the movie download button — FEATURES with their own design passes, not wins.
+- **THE BUILD (the provider-compatibility rule — "missing = hidden, provided = shown"):**
+  - DataSourceExtras: the ADDITIVE phase-2 fields (the themes/the durationMinutes/the rank/the popularity/the network — the SCHEMA.md rule 2, no migration).
+  - TmdbDetail: the runtime/the networks/the production companies parse from the SAME detail JSON (no extra call).
+  - TvmazeShow: the genres + the runtime parse (the null-safe discipline holds).
+  - refreshMetadataEnrichment: the mergedExtras helper — the extras read-modify-write per provider branch (the MAL's rich detail lands: the themes/the studios/the duration/the rank/the popularity — "7 of 25" no more; the TVmaze genres ride the genres row now).
+  - The VM's extrasFlow (the load sets it from the details row, the enrichments update it, the reset clears it).
+  - The details page's DETAILS INFO GRID after the genres — the "Label: value" chips, present-only.
+- **THE RELEASE:** v1.1.121/10221 dispatched (c5105081; 6 files, +186/−3). Schema v8→v8.
+- **NEXT:** Chunk 3 — the home data system, DESIGN-FIRST (the design doc: the source/type model, the per-type provider mapping, the hero scaling, the airs contract, the section merges — before any code).
