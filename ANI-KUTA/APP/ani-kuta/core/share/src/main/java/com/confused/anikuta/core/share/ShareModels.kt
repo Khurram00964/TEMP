@@ -84,4 +84,9 @@ data class ShareLink(
     val url: String,
     val label: String,
     val description: String,
+    // ROUND 183 (the device report — the share icons): the DATA_SOURCE rows
+    // carry the provider's stable id so the sheet renders the provider's REAL
+    // logo (the generic Star glyph read wrong on device). Null for the rows
+    // without a provider (the extension/the deep link).
+    val providerId: String? = null,
 )

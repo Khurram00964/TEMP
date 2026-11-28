@@ -49,12 +49,15 @@ object ContentShareLinkFactory {
 
         // 2 — every linked data-source provider page (AniList today; the
         // list shape keeps MAL/TMDb/future providers additive).
+        // ROUND 183: the providerId rides so the sheet renders the provider's
+        // REAL logo (the device report — the generic glyphs read wrong).
         content.dataSourceLinks.forEach { source ->
             links += ShareLink(
                 kind = ShareTargetKind.DATA_SOURCE,
                 url = source.url,
                 label = source.providerName,
                 description = "Opens this content's ${source.providerName} page",
+                providerId = source.providerId,
             )
         }
 

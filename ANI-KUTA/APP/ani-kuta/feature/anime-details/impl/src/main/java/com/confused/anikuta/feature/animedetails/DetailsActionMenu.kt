@@ -271,7 +271,9 @@ fun DetailsActionMenu(
                             onClick = { onDismissRequest(); if (linkStateOf("anilist")) onUnlinkAniList() else onLinkAniList() },
                         )
                         MenuDiscRowWithLogo(
-                            label = "MyAnimeList",
+                            // ROUND 183 (the device report): the SHORT form —
+                            // the title takes one line; the long name wrapped.
+                            label = "MAL",
                             logoRes = com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal,
                             linked = linkStateOf("mal"),
                             onClick = { onDismissRequest(); if (linkStateOf("mal")) onUnlinkMal() else onLinkMal() },
@@ -383,21 +385,42 @@ fun DetailsActionMenu(
                     )
                 } else {
                     links.forEach { link ->
-                        // The round-102 icon mapping, unchanged (the user
-                        // approved this submenu's content).
-                        val icon = when (link.kind) {
-                            ShareTargetKind.EXTENSION_URL -> Icons.Filled.Language
-                            ShareTargetKind.DATA_SOURCE -> Icons.Filled.Star
-                            ShareTargetKind.APP_DEEP_LINK -> Icons.Filled.AppShortcut
+                        // ROUND 183 (the device report — the icons): a
+                        // DATA_SOURCE row renders the PROVIDER'S REAL LOGO
+                        // (the generic Star glyph read wrong on device); the
+                        // provider-less rows keep the round-102 kind glyphs.
+                        val logoRes = when (link.providerId) {
+                            "anilist" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_anilist
+                            "mal" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_mal
+                            "simkl" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_tracker_simkl
+                            "tmdb" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tmdb
+                            "tvmaze" -> com.confused.anikuta.feature.animedetails.R.drawable.ic_source_tvmaze
+                            else -> null
                         }
-                        MenuDiscRow(
-                            icon = icon,
-                            label = link.label,
-                            onClick = {
-                                onDismissRequest()
-                                fireOsShareChooser(context, link, contentTitle)
-                            },
-                        )
+                        if (logoRes != null) {
+                            MenuDiscRowWithLogo(
+                                label = link.label,
+                                logoRes = logoRes,
+                                onClick = {
+                                    onDismissRequest()
+                                    fireOsShareChooser(context, link, contentTitle)
+                                },
+                            )
+                        } else {
+                            val icon = when (link.kind) {
+                                ShareTargetKind.EXTENSION_URL -> Icons.Filled.Language
+                                ShareTargetKind.DATA_SOURCE -> Icons.Filled.Star
+                                ShareTargetKind.APP_DEEP_LINK -> Icons.Filled.AppShortcut
+                            }
+                            MenuDiscRow(
+                                icon = icon,
+                                label = link.label,
+                                onClick = {
+                                    onDismissRequest()
+                                    fireOsShareChooser(context, link, contentTitle)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -450,11 +473,9 @@ private fun MenuDiscRowWithLogo(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (linked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                else androidx.compose.ui.graphics.Color.Transparent,
-                RoundedCornerShape(10.dp),
-            )
+            // ROUND 183 (the device report): the filled background for the
+            // linked rows READ BADLY — removed; the linked state is the
+            // trailing unlink icon alone.
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -471,25 +492,26 @@ private fun MenuDiscRowWithLogo(
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
+            // ROUND 183 (the device report): the title takes ONE LINE ONLY —
+            // the weight(1f) + the badge squeezed it into a per-character
+            // wrap ("M-A-L"). A source that would wrap rides its SHORT form
+            // at the call sites (MyAnimeList → MAL).
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        // ROUND 182 (C): the LINKED badge — the distinct state the user
-        // ordered (the filled row alone isn't enough at a glance).
+        // ROUND 183 (the device report): the LINKED state shows ONLY the
+        // unlink icon at the row's rightmost edge (the filled background +
+        // the wide badge read badly; the user's spec: "the unlink icon on
+        // the rightmost side"). The row's tap still routes to the unlink
+        // confirm via the caller.
         if (linked) {
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-            ) {
-                Text(
-                    text = "Linked — tap to unlink",
-                    fontFamily = RobotoFamily,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                    maxLines = 1,
-                )
-            }
+            Icon(
+                imageVector = Icons.Filled.LinkOff,
+                contentDescription = "Linked — tap to unlink",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }

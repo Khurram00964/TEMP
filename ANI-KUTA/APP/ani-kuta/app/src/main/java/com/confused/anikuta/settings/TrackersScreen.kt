@@ -913,11 +913,25 @@ private suspend fun populateLibraryFromSimkl(
         try {
             val mainId = "simkl:" + entry.simklId
             val ref = entry.simklId.toString()
-            // The reverse index is the dedupe authority: a row already linked
-            // to this Simkl entry (from the search flow, an earlier import —
-            // any path) is never duplicated.
-            if (contentRepository.lookupIdentityMain("simkl", ref) != null) {
-                skipped++
+            // ROUND 183 (the device report — the RE-POPULATE semantics): a
+            // row REMOVED from the library kept its identity — the old skip
+            // left it dead forever ("0 imported, 6 skipped"). The identity
+            // now means KNOWN: re-add to the category when the row is NOT in
+            // the library; skip only when it IS.
+            val existingMain = contentRepository.lookupIdentityMain("simkl", ref)
+            if (existingMain != null) {
+                if (contentRepository.isInLibrary(existingMain)) {
+                    skipped++
+                } else {
+                    val categoryId = categoryMap[entry.rawStatus]
+                    if (categoryId != null) {
+                        contentRepository.addToCategory(existingMain, categoryId)
+                        imported++
+                        statusCounts[entry.rawStatus] = (statusCounts[entry.rawStatus] ?: 0) + 1
+                    } else {
+                        skipped++
+                    }
+                }
                 continue
             }
             val now = System.currentTimeMillis()
@@ -1028,8 +1042,23 @@ private suspend fun populateLibraryFromMal(
         try {
             val mainId = "mal:" + entry.anime.id
             val ref = entry.anime.id.toString()
-            if (contentRepository.lookupIdentityMain("mal", ref) != null) {
-                skipped++
+            // ROUND 183 (the re-populate semantics — see the Simkl importer):
+            // an identity WITHOUT a library row re-adds; a fully-imported
+            // row skips.
+            val existingMain = contentRepository.lookupIdentityMain("mal", ref)
+            if (existingMain != null) {
+                if (contentRepository.isInLibrary(existingMain)) {
+                    skipped++
+                } else {
+                    val categoryId = categoryMap[entry.rawStatus]
+                    if (categoryId != null) {
+                        contentRepository.addToCategory(existingMain, categoryId)
+                        imported++
+                        statusCounts[entry.rawStatus] = (statusCounts[entry.rawStatus] ?: 0) + 1
+                    } else {
+                        skipped++
+                    }
+                }
                 continue
             }
             val now = System.currentTimeMillis()

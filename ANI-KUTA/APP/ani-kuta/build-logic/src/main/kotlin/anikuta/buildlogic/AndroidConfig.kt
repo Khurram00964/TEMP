@@ -544,8 +544,33 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10218
-    const val versionName = "1.1.118"
+    const val versionCode = 10219
+    const val versionName = "1.1.119"
+    // ROUND 183 (v1.1.119): CHUNK 1 — the v1.1.118 device-round fixes:
+    // 1. THE RE-POPULATE SEMANTICS (both importers): a row REMOVED from the
+    //    library kept its identity and was skipped forever ("0 imported, 6
+    //    skipped") — the identity now means KNOWN: re-add to the category
+    //    when the row is NOT in the library; skip only when it IS.
+    // 2. THE MAL POPULATE DIAGNOSTICS: when page 1 carries NO status key,
+    //    the raw response head logs — the next report names the exact shape
+    //    (the dual-key fix was not enough on device; "MAL is empty" again).
+    // 3. THE MORE-OPTIONS ROWS (the user's spec): the title takes ONE LINE
+    //    (the long names wrap — MyAnimeList → MAL at the call sites), the
+    //    LINKED state shows ONLY the unlink icon at the row's rightmost
+    //    edge (the filled background + the wide badge read badly — both
+    //    removed).
+    // 4. THE EXT-CHIP DEDUPE: aniyomi/cloudstream/extension are separate
+    //    identity kinds but ONE display slot — the chips MERGE into a
+    //    single Extension entry (the device report: two extension chips).
+    // 5. THE SHARE LOGOS: the DATA_SOURCE rows render the provider's REAL
+    //    logo (providerId rides ShareLink; the generic Star read wrong).
+    // 6. THE LINK-SHEET AUTO-SEARCH: the unified sheet auto-searches the
+    //    content's title on open (the MAL track flow gave a bare search).
+    // 7. THE HAPTICS DIAGNOSTIC: the fire logs — if the device stays silent
+    //    with the log present, the OEM pipeline is the suspect.
+    // 8. THE SELECTION FILL: the display_rank persist runs SYNCHRONOUSLY
+    //    (the async launch raced the restore/chips — "the selection was not
+    //    shown on TMDB/TVMaze"; "the refresh returned to some other").
     // ROUND 182 (v1.1.118): THE DEVICE-REPORT FIXES — the user's v1.1.117
     // round (the boot confirmed, the updater speaks TEMP, the Trackers live
     // under MORE → Trackers):

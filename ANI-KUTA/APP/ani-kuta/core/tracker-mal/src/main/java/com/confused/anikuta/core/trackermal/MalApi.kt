@@ -198,6 +198,15 @@ class MalApi(
         var offset = 0
         repeat(maxPages) {
             val raw = getStrict("/users/@me/animelist", "fields=$fields&limit=100&offset=$offset", accessToken)
+            // ROUND 183 (the diagnostics — the "MAL is empty" report with a
+            // populated list): when page 1 carries NO status key at all, the
+            // raw head lands in the log — the next device report names the
+            // actual shape instead of a silent empty.
+            if (offset == 0 && !raw.contains("list_status")) {
+                com.confused.anikuta.core.common.Logger.w("Anikuta:Core:Mal:Api") {
+                    "userAnimelist: page 1 carries NO status key — the raw head: ${raw.take(400)}"
+                }
+            }
             val page = try {
                 json.decodeFromString(MalListResponse.serializer(), raw)
             } catch (e: Exception) {

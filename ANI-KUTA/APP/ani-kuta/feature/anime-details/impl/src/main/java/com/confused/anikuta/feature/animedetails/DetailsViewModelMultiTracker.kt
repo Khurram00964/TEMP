@@ -565,6 +565,12 @@ fun DetailsViewModel.openUnifiedLinkSheet(source: String, fromTracking: Boolean 
     _showUnifiedLinkSheet.value = source
     _unifiedLinkResults.value = emptyList()
     _unifiedLinkError.value = null // ROUND 173 (F5): every open starts clean
+    // ROUND 183 (the device report — the MAL track flow gave a BARE search
+    // while AniList/Simkl pre-filled): the sheet AUTO-SEARCHES the content's
+    // title on open — every source starts with the best-guess results on
+    // screen; the user edits the query only when the guess missed.
+    val title = (_state.value as? DetailsState.Success)?.anime?.displayName
+    if (!title.isNullOrBlank()) searchUnifiedLink(source, title)
 }
 
 fun DetailsViewModel.dismissUnifiedLinkSheet() {

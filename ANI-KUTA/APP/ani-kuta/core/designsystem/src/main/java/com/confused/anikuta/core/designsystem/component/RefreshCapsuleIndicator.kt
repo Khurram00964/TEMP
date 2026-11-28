@@ -106,6 +106,14 @@ fun RefreshCapsuleIndicator(
                 androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress,
             )
             hapticFired = true
+            // ROUND 183 (the haptics diagnostics — "no vibration anywhere"):
+            // the log proves the code path REACHED the vibration call — if
+            // the device still stays silent with this line present, the
+            // suspect is the OEM pipeline (the system haptics/intensity
+            // settings), not the app.
+            com.confused.anikuta.core.common.Logger.i("Anikuta:UI:Haptics") {
+                "the pull threshold crossed — the haptics fired (the direct Vibrator + the composed View pipeline)"
+            }
         }
         if (dragFraction < PULL_THRESHOLD / 2f) hapticFired = false
     }

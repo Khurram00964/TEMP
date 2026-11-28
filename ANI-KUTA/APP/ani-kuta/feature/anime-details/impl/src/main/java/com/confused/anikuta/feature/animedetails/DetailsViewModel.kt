@@ -685,17 +685,20 @@ class DetailsViewModel(
         enrichIdentityPayload(kind)
         val mid = currentMainId
         if (mid != null) {
-            viewModelScope.launch {
-                // The display_rank persist: the picked kind → 0 (the driver),
-                // the others → 1+ (the stable order).
-                runCatching {
-                    val rows = contentRepository.identitiesForContent(mid).toMutableList()
-                    var rank = 1
-                    for (row in rows) {
-                        val newRank = if (row.sourceKind == kind) 0 else rank++
-                        if (newRank != row.displayRank) {
-                            contentRepository.upsertIdentity(row.copy(displayRank = newRank, updatedAt = System.currentTimeMillis()))
-                        }
+            // ROUND 183 (the device report — the selection fill raced): the
+            // rank persist ran ASYNC (a launch) — the restore and the chips
+            // could read the OLD ranks before the write landed ("the
+            // selection was not shown on TMDB/TVMaze"; "the refresh returned
+            // to some other"). The write is a tiny rank UPDATE — it runs
+            // synchronously so the state and the disk agree from this call
+            // onward.
+            runCatching {
+                val rows = contentRepository.identitiesForContent(mid).toMutableList()
+                var rank = 1
+                for (row in rows) {
+                    val newRank = if (row.sourceKind == kind) 0 else rank++
+                    if (newRank != row.displayRank) {
+                        contentRepository.upsertIdentity(row.copy(displayRank = newRank, updatedAt = System.currentTimeMillis()))
                     }
                 }
             }
@@ -1532,12 +1535,26 @@ class DetailsViewModel(
                 }
                 Triple(row.sourceKind, label, iconRes)
             }.distinctBy { it.first }
+            // ROUND 183 (the device report — the TWO extension chips): the
+            // ext kinds (aniyomi/cloudstream/extension) are SEPARATE identity
+            // kinds but ONE display slot — every ext kind routes to the ext
+            // base in remergeBases. The chips MERGE into a single Extension
+            // entry (the label = the first ext identity's source name; the
+            // kind = its kind — the display switch routes by the ext
+            // category, not the exact kind).
+            val extKindSet = setOf("aniyomi", "cloudstream", "extension")
+            val extChips = chips.filter { it.first in extKindSet }
+            val mergedChips = if (extChips.size > 1) {
+                chips.filterNot { it.first in extKindSet } + extChips.first()
+            } else {
+                chips
+            }
             // ROUND 176: the FIXED canonical order (the UI-history rebuild —
             // the approved pair never re-ordered on selection): the known
             // kinds in the user's order, the unknowns before the extension,
             // the extension LAST.
             val chipOrder = listOf("anilist", "mal", "simkl", "tmdb", "tmdb_movie", "tmdb_tv", "tvmaze")
-            val ordered = chips.sortedBy { chip ->
+            val ordered = mergedChips.sortedBy { chip ->
                 when {
                     chip.first in chipOrder -> chipOrder.indexOf(chip.first)
                     chip.first in setOf("aniyomi", "cloudstream", "extension") -> 90
