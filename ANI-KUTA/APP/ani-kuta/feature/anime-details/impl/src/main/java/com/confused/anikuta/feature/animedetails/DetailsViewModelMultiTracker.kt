@@ -569,7 +569,7 @@ fun DetailsViewModel.openUnifiedLinkSheet(source: String, fromTracking: Boolean 
     // while AniList/Simkl pre-filled): the sheet AUTO-SEARCHES the content's
     // title on open — every source starts with the best-guess results on
     // screen; the user edits the query only when the guess missed.
-    val title = (_state.value as? DetailsState.Success)?.anime?.displayName
+    val title = (state.value as? DetailsState.Success)?.anime?.displayName
     if (!title.isNullOrBlank()) searchUnifiedLink(source, title)
 }
 
