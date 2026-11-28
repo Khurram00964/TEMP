@@ -56,6 +56,10 @@ fun DataSourcePickerSheet(
     current: DataSourceKind,
     tmdbEnabled: Boolean,
     tvmazeEnabled: Boolean,
+    // ROUND 184 (CHUNK 2): the SETTINGS toggles — the disabled sources'
+    // ids (the user picks which data sources exist for them at all). The
+    // rows AND their base-enabled flags.
+    userDisabled: Set<String> = emptySet(),
     onSelect: (DataSourceKind) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -92,14 +96,17 @@ fun DataSourcePickerSheet(
                     listOf(
                         // ROUND 165 (the device order): the simplest subtitles
                         // (no GraphQL/keyless tech-speak) + the branded marks.
-                        DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_anilist),
-                        DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tmdb),
-                        DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tvmaze),
+                        // ROUND 184 (CHUNK 2): the user's SETTINGS toggles AND
+                        // into every row's enabled flag (a disabled source
+                        // never renders in the picker).
+                        DataSourceRow(DataSourceKind.ANILIST, "AniList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF02A9FF), enabled = true && DataSourceKind.ANILIST.id !in userDisabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_anilist),
+                        DataSourceRow(DataSourceKind.TMDB, "TMDB", "Movies & series", Icons.Filled.Theaters, androidx.compose.ui.graphics.Color(0xFF0D253F), enabled = tmdbEnabled && DataSourceKind.TMDB.id !in userDisabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tmdb),
+                        DataSourceRow(DataSourceKind.TVMAZE, "TVMaze", "Series & schedule", Icons.Filled.Tv, androidx.compose.ui.graphics.Color(0xFFD8B938), enabled = tvmazeEnabled && DataSourceKind.TVMAZE.id !in userDisabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tvmaze),
                         // ROUND 168 (Phase E): the tracker-backed sources —
                         // their searches are app/client-id auth (they work
                         // whether or not the user LINKED the tracker).
-                        DataSourceRow(DataSourceKind.MAL, "MyAnimeList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF2E51A2), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_mal),
-                        DataSourceRow(DataSourceKind.SIMKL, "Simkl", "Movies & TV", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF0D0D0D), enabled = true, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_simkl),
+                        DataSourceRow(DataSourceKind.MAL, "MyAnimeList", "Anime", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF2E51A2), enabled = true && DataSourceKind.MAL.id !in userDisabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_mal),
+                        DataSourceRow(DataSourceKind.SIMKL, "Simkl", "Movies & TV", Icons.Filled.Search, androidx.compose.ui.graphics.Color(0xFF0D0D0D), enabled = true && DataSourceKind.SIMKL.id !in userDisabled, logoRes = com.confused.anikuta.feature.animesearch.R.drawable.ic_source_simkl),
                     ),
                     key = { it.kind.id },
                 ) { row ->

@@ -296,6 +296,16 @@ fun SearchScreen(
     val dataSourceKind by viewModel.dataSource.collectAsState()
     val tmdbEnabled by viewModel.tmdbEnabled.collectAsState()
     val tvmazeEnabled by viewModel.tvmazeEnabled.collectAsState()
+    // ROUND 184 (CHUNK 2): the SETTINGS toggles — a disabled current source
+    // falls back to the first enabled one (the picker never shows a source
+    // the user turned off, and the page never loads one either).
+    val enabledSources by searchPrefs.enabledDataSourcesFlow.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(enabledSources) {
+        if (dataSourceKind.id !in enabledSources) {
+            val fallback = DataSourceKind.entries.firstOrNull { it.id in enabledSources }
+            if (fallback != null && fallback != dataSourceKind) viewModel.onDataSourceChange(fallback)
+        }
+    }
     val selectedDataSourceName = dataSourceKind.displayName
     var handOffResult by remember { mutableStateOf<DataSourceResult?>(null) }
     var pendingHandOffTitle by remember { mutableStateOf<String?>(null) }
@@ -789,6 +799,7 @@ fun SearchScreen(
             current = dataSourceKind,
             tmdbEnabled = tmdbEnabled,
             tvmazeEnabled = tvmazeEnabled,
+            userDisabled = com.confused.anikuta.core.preferences.SearchPreferences.ALL_DATA_SOURCES - enabledSources,
             onSelect = { kind ->
                 showDataSourcePicker = false
                 viewModel.onDataSourceChange(kind)

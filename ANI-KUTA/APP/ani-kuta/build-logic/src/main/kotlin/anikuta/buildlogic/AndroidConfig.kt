@@ -544,8 +544,23 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10219
-    const val versionName = "1.1.119"
+    const val versionCode = 10220
+    const val versionName = "1.1.120"
+    // ROUND 184 (v1.1.120): CHUNK 2 — THE DATA-SOURCE TOGGLES (the user's
+    // order: "the ability in the settings to pick which data sources to turn
+    // on and which to turn off"):
+    // - SearchPreferences gains the DISABLED-sources set (the absent =
+    //   enabled; the future sources default-on) + the reactive
+    //   enabledDataSourcesFlow + the at-least-one guard (the last enabled
+    //   source refuses OFF).
+    // - The Settings → Appearance → Search page screen gains the "Data
+    //   sources" section — the 5 real-logo toggle rows.
+    // - The picker sheet ANDs the user's toggles into every row's enabled
+    //   flag (a disabled source never renders in the picker).
+    // - The search screen falls back to the first enabled source when the
+    //   current one is disabled (the page never loads a turned-off source).
+    // The link flows (More options) stay full — the toggles govern the
+    // SEARCH discovery, not the linking.
     // ROUND 183 (v1.1.119): CHUNK 1 — the v1.1.118 device-round fixes:
     // 1. THE RE-POPULATE SEMANTICS (both importers): a row REMOVED from the
     //    library kept its identity and was skipped forever ("0 imported, 6

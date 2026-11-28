@@ -3,6 +3,7 @@ package com.confused.anikuta.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,6 +76,48 @@ fun SearchPageSettingsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // ── SECTION: Data sources (ROUND 184 / CHUNK 2 — the
+                    // user's order: "the ability in the settings to pick
+                    // which data sources to turn on and which to turn off") ──
+                    item { SettingsSectionLabel("Data sources") }
+                    item {
+                        SettingsCard {
+                            Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                                Text(
+                                    text = "Enabled sources",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.padding(2.dp))
+                                Text(
+                                    text = "The search picker offers only the enabled ones. At least one stays on.",
+                                    fontFamily = RobotoFamily,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.padding(10.dp))
+                                val enabledSet by searchPreferences.enabledDataSourcesFlow.collectAsState()
+                                SourceToggleRow("AniList", "Anime", com.confused.anikuta.R.drawable.ic_source_anilist, "anilist", enabledSet) { id, on ->
+                                    searchPreferences.updateDataSourceEnabled(id, on)
+                                }
+                                SourceToggleRow("TMDB", "Movies & series", com.confused.anikuta.R.drawable.ic_source_tmdb, "tmdb", enabledSet) { id, on ->
+                                    searchPreferences.updateDataSourceEnabled(id, on)
+                                }
+                                SourceToggleRow("TVMaze", "Series & schedule", com.confused.anikuta.R.drawable.ic_source_tvmaze, "tvmaze", enabledSet) { id, on ->
+                                    searchPreferences.updateDataSourceEnabled(id, on)
+                                }
+                                SourceToggleRow("MAL", "Anime", com.confused.anikuta.R.drawable.ic_source_mal, "mal", enabledSet) { id, on ->
+                                    searchPreferences.updateDataSourceEnabled(id, on)
+                                }
+                                SourceToggleRow("Simkl", "Movies & TV", com.confused.anikuta.R.drawable.ic_source_simkl, "simkl", enabledSet) { id, on ->
+                                    searchPreferences.updateDataSourceEnabled(id, on)
+                                }
+                            }
+                        }
+                    }
+
                     // ── SECTION: Result cards ──
                     item { SettingsSectionLabel("Result cards") }
 
@@ -257,6 +302,61 @@ fun SearchPageSettingsScreen(
 
 // ── ROUND 170: the local copies of the settings components (the
 //    per-file private pattern — the Details-background screen's anatomy) ──
+
+/**
+ * ROUND 184 (CHUNK 2): one DATA-SOURCE toggle row — the real logo tile, the
+ * one-line name + subtitle, the Switch. The at-least-one guard lives in
+ * SearchPreferences.updateDataSourceEnabled (the last source refuses OFF).
+ */
+@Composable
+private fun SourceToggleRow(
+    name: String,
+    subtitle: String,
+    logoRes: Int,
+    sourceId: String,
+    enabledSet: Set<String>,
+    onToggle: (String, Boolean) -> Unit,
+) {
+    val checked = sourceId in enabledSet
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = androidx.compose.ui.res.painterResource(logoRes),
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                fontFamily = RobotoFamily,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                fontFamily = RobotoFamily,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = { onToggle(sourceId, it) })
+    }
+}
 
 @Composable
 private fun SwitchCard(

@@ -66,13 +66,47 @@ class SearchPreferences(private val store: PreferenceStore) {
         _showRecents.value = value
     }
 
+    // ── ROUND 184 (CHUNK 2): the DATA-SOURCE toggles — the user's order:
+    // "the ability in the settings to pick which data sources to turn on and
+    // which to turn off". The picker offers only the enabled ones; at least
+    // ONE stays on. A DISABLED set (the absent = enabled) keeps the future
+    // sources default-on.
+    fun enabledDataSources(): Set<String> = ALL_DATA_SOURCES - disabledDataSources
+
+    private val _enabledDataSources = MutableStateFlow(enabledDataSources())
+    val enabledDataSourcesFlow: StateFlow<Set<String>> = _enabledDataSources.asStateFlow()
+
+    fun updateDataSourceEnabled(id: String, enabled: Boolean) {
+        val current = disabledDataSources.toMutableSet()
+        if (enabled) {
+            current.remove(id)
+        } else {
+            // The at-least-one guard: turning off the LAST enabled source is
+            // refused (the picker needs one to stand on).
+            val after = ALL_DATA_SOURCES - current - id
+            if (after.isEmpty()) return
+            current.add(id)
+        }
+        disabledDataSources = current
+        _enabledDataSources.value = enabledDataSources()
+    }
+
     companion object {
         private const val KEY_TITLE_STYLE = "search_result_title_style"
         private const val KEY_SHOW_RATING = "search_show_rating"
         private const val KEY_SHOW_DETAILS = "search_show_details"
         private const val KEY_GRID_COLUMNS = "search_grid_columns"
         private const val KEY_SHOW_RECENTS = "search_show_recents"
+        private const val KEY_DISABLED_SOURCES = "search_disabled_sources"
+
+        /** The full picker vocabulary (ROUND 184 — Chunk 2). */
+        val ALL_DATA_SOURCES = setOf("anilist", "tmdb", "tvmaze", "mal", "simkl")
     }
+
+    var disabledDataSources: Set<String>
+        get() = store.getString(KEY_DISABLED_SOURCES, "").split(",")
+            .filter { it.isNotBlank() }.toSet()
+        set(value) = store.putString(KEY_DISABLED_SOURCES, value.joinToString(","))
 
     var resultTitleStyle: ResultTitleStyle
         get() = ResultTitleStyle.fromId(store.getString(KEY_TITLE_STYLE, ResultTitleStyle.OVERLAY.id))
