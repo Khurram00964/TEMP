@@ -44,7 +44,24 @@ class DatabaseDriverFactory(private val context: Context) {
                     // serialize against the readers (the Library batch
                     // loads, the reactive queries). The standard modern
                     // SQLite posture; persisted per-database.
-                    db.execSQL("PRAGMA journal_mode = WAL")
+                    // ROUND 180 (THE BOOT LOOP — the device logcat's verbatim
+                    // proof): `PRAGMA journal_mode = WAL` RETURNS A RESULT
+                    // ROW (the resulting mode string), and Android's
+                    // SQLiteDatabase.execSQL THROWS on any statement that
+                    // returns rows — "Queries can be performed using
+                    // SQLiteDatabase query or rawQuery methods only" — so
+                    // EVERY database open threw inside this onOpen callback:
+                    // the uncaught exception → the crash handler → the
+                    // process self-kill → the system relaunch → the same
+                    // throw — a ~2.3-second boot loop with ZERO frames ever
+                    // drawn (the v1.1.113-116 black screen; data-independent,
+                    // which is why the fresh install hung identically). The
+                    // pragma now rides db.query (a Cursor — the row is
+                    // consumed and the cursor closed). THE LESSON: the JVM
+                    // test driver ACCEPTS a row-returning execSQL, so CI
+                    // green never proved device green — a device-only API
+                    // rule; no shipped statement may return rows via execSQL.
+                    db.query("PRAGMA journal_mode=WAL").use { it.moveToFirst() }
                     migrateSchemaIfNeeded(db)
                 }
 

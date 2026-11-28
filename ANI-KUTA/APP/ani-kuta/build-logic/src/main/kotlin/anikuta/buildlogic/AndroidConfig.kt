@@ -544,8 +544,27 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10216
-    const val versionName = "1.1.116"
+    const val versionCode = 10217
+    const val versionName = "1.1.117"
+    // ROUND 181 (v1.1.117): THE BOOT LOOP FIXED — the device logcat named it
+    // verbatim. `DatabaseDriverFactory.onOpen` ran `db.execSQL("PRAGMA
+    // journal_mode = WAL")` (the round-176 ride-along); that pragma RETURNS
+    // A RESULT ROW, and Android's SQLiteDatabase.execSQL THROWS on any
+    // row-returning statement ("Queries can be performed using SQLiteDatabase
+    // query or rawQuery methods only") — so EVERY database open threw inside
+    // the onOpen callback on every device build since v1.1.113: the uncaught
+    // exception (the Continue-Watching flow's collection) → the crash
+    // handler → ErrorActivity + the process self-SIG-9 → the system relaunch
+    // → Application.onCreate's warm-up/seeds hit the same throw → THE
+    // ~2.3-SECOND BOOT LOOP with ZERO frames ever drawn (the black screen;
+    // data-independent — the fresh install hung identically; the BootWatchdog
+    // could never reach its 12s window because the process died every 2.3s).
+    // THE FIX: the pragma rides db.query (a Cursor — the row consumed, the
+    // cursor closed). THE DURABLE LESSON: the JVM test driver ACCEPTS a
+    // row-returning execSQL, so CI green never proved device green — a
+    // device-only API rule; no shipped statement may return rows via execSQL.
+    // Round 180 (v1.1.116) stays: the PM-6 seed/tracker off-main + the
+    // BootWatchdog net (its 12s report now REACHABLE — the loop is dead).
     // ROUND 180 (v1.1.116): THE BOOT-HANG ROUND — the v1.1.115 black-screen
     // device report (the hang hit BOTH the update-over AND a cleared-data
     // install, which RULES OUT the migration/data theory — a fresh install
