@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.AppShortcut
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TrackChanges
@@ -295,7 +296,7 @@ fun DetailsActionMenu(
                         )
                     } else {
                         MenuDiscRow(
-                            icon = androidx.compose.material.icons.filled.MoreHoriz,
+                            icon = Icons.Filled.MoreHoriz,
                             label = "More options",
                             onClick = { linkToOtherExpanded = true },
                         )
