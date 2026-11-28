@@ -99,19 +99,19 @@ fun SearchPageSettingsScreen(
                                 )
                                 Spacer(Modifier.padding(10.dp))
                                 val enabledSet by searchPreferences.enabledDataSourcesFlow.collectAsState()
-                                SourceToggleRow("AniList", "Anime", com.confused.anikuta.R.drawable.ic_source_anilist, "anilist", enabledSet) { id, on ->
+                                SourceToggleRow("AniList", "Anime", com.confused.anikuta.feature.animesearch.R.drawable.ic_source_anilist, "anilist", enabledSet) { id, on ->
                                     searchPreferences.updateDataSourceEnabled(id, on)
                                 }
-                                SourceToggleRow("TMDB", "Movies & series", com.confused.anikuta.R.drawable.ic_source_tmdb, "tmdb", enabledSet) { id, on ->
+                                SourceToggleRow("TMDB", "Movies & series", com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tmdb, "tmdb", enabledSet) { id, on ->
                                     searchPreferences.updateDataSourceEnabled(id, on)
                                 }
-                                SourceToggleRow("TVMaze", "Series & schedule", com.confused.anikuta.R.drawable.ic_source_tvmaze, "tvmaze", enabledSet) { id, on ->
+                                SourceToggleRow("TVMaze", "Series & schedule", com.confused.anikuta.feature.animesearch.R.drawable.ic_source_tvmaze, "tvmaze", enabledSet) { id, on ->
                                     searchPreferences.updateDataSourceEnabled(id, on)
                                 }
-                                SourceToggleRow("MAL", "Anime", com.confused.anikuta.R.drawable.ic_source_mal, "mal", enabledSet) { id, on ->
+                                SourceToggleRow("MAL", "Anime", com.confused.anikuta.feature.animesearch.R.drawable.ic_source_mal, "mal", enabledSet) { id, on ->
                                     searchPreferences.updateDataSourceEnabled(id, on)
                                 }
-                                SourceToggleRow("Simkl", "Movies & TV", com.confused.anikuta.R.drawable.ic_source_simkl, "simkl", enabledSet) { id, on ->
+                                SourceToggleRow("Simkl", "Movies & TV", com.confused.anikuta.feature.animesearch.R.drawable.ic_source_simkl, "simkl", enabledSet) { id, on ->
                                     searchPreferences.updateDataSourceEnabled(id, on)
                                 }
                             }
