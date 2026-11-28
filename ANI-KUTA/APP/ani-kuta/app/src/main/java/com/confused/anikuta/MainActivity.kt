@@ -192,6 +192,8 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
     @androidx.compose.material3.ExperimentalMaterial3Api
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // ROUND 180 (the boot watchdog): the activity stage joins the timeline.
+        com.confused.anikuta.error.BootWatchdog.mark("activity-create:enter")
         // CloudStream V2: publish the live Activity to the CloudStream compat
         // layer — the plugin loader awaits it (activity-gated first load) and
         // passes it to Plugin.load(context); the WebView challenge solver reads
@@ -243,6 +245,14 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity() {
         // read first (the intake leaves it untouched — see PendingNavigation).
         PendingNavigation.offerFromIntent(intent)
         setContent {
+            // ROUND 180 (the boot watchdog): the FIRST-FRAME disarmer — the
+            // effect applies with the first composition; any hang BEFORE it
+            // (the Application onCreate, the Koin graph, the DB open, this
+            // setContent) fires the watchdog's ErrorActivity report with the
+            // main thread's stack + the boot timeline.
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                com.confused.anikuta.error.BootWatchdog.firstFrameRendered()
+            }
             val prefs = koinInject<ThemePreferences>()
             val themeMode = prefs.themeMode.value
             val amoled = prefs.amoled.value

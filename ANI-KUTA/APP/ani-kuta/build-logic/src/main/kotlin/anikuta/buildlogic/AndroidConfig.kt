@@ -544,8 +544,27 @@ object AndroidConfig {
     // duplicate; the DB row is repaired if it was missing the file).
     // Also: SubtitleEngine.guessExtension gained .ttml (MPV detects external
     // sub formats by extension).
-    const val versionCode = 10215
-    const val versionName = "1.1.115"
+    const val versionCode = 10216
+    const val versionName = "1.1.116"
+    // ROUND 180 (v1.1.116): THE BOOT-HANG ROUND — the v1.1.115 black-screen
+    // device report (the hang hit BOTH the update-over AND a cleared-data
+    // install, which RULES OUT the migration/data theory — a fresh install
+    // has neither). The code review found the exact PM-6 class the round-165
+    // hardening was supposed to have eliminated:
+    //   ContentSeeder.seed() ran SYNCHRONOUSLY ON THE MAIN THREAD inside
+    //   Application.onCreate — koin.get<ContentSeeder>() OPENS THE DATABASE
+    //   there, putting the entire first-open sequence (the repair block; on
+    //   an update-over, the MIGRATIONS) on the main thread — the v1.1.103
+    //   splash-hang class (09-A.1). The APP_OPEN activity tracker wrote the
+    //   DB on main too. BOTH moved to the startup scope (the seeds are
+    //   idempotent; nothing reads them before the first frame).
+    // THE BOOT WATCHDOG (error/BootWatchdog.kt) — the diagnosis protocol's
+    //   missing net: the crash handler catches exceptions only; a boot HANG
+    //   shows no error UI. The watchdog stamps every boot stage into a
+    //   timeline, arms a 12s window, and if the FIRST FRAME never renders it
+    //   captures the MAIN THREAD'S STACK AT THE MOMENT OF THE HANG (the
+    //   other threads' heads ride along) into the crash file → ErrorActivity
+    //   opens with it, copyable — the silent black screen becomes a report.
     // ROUND 179 (v1.1.115): THE DEFERRED-LEDGER ROUND — the user ordered the
     // whole remaining ledger, understood first (three investigation agents):
     // S4 the narrow fix (NO schema bump — the season-axis migration is

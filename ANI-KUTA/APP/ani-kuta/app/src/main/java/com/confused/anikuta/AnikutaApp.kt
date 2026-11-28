@@ -85,6 +85,9 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
+        // ROUND 180 (the boot watchdog): the boot timeline starts HERE —
+        // before super.onCreate (the CloudStreamApp compat layer does work).
+        com.confused.anikuta.error.BootWatchdog.mark("app-create:enter")
         super.onCreate()
 
         // ── Global crash handler (installed FIRST, before anything else) ──
@@ -93,6 +96,13 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
         Thread.setDefaultUncaughtExceptionHandler(
             com.confused.anikuta.error.AnikutaCrashHandler(this)
         )
+        // ROUND 180 (the boot watchdog — the v1.1.115 black-screen report):
+        // the crash net above catches EXCEPTIONS only; a boot HANG (the main
+        // thread stuck in a DB open or the composition never starting) shows
+        // NO error UI — the user's black screen. Armed here, the watchdog
+        // converts any hang into the ErrorActivity report with the main
+        // thread's stack + the boot timeline (error/BootWatchdog.kt).
+        com.confused.anikuta.error.BootWatchdog.arm(this)
 
         // Task 49 (round 9) → Task 64 (round 24): the console capture
         // (Logger.setAppender(RingLogBuffer) + the com.lagradost.api.Log
@@ -346,21 +356,39 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
 
         // Seed lookup tables + Default library category (idempotent — INSERT OR IGNORE).
         // Must run AFTER Koin is started so ContentRepository is available.
-        try {
-            org.koin.core.context.GlobalContext.get().get<ContentSeeder>().seed()
-            Logger.i("AnikutaApp") { "Content defaults seeded" }
-        } catch (e: Exception) {
-            Logger.e("AnikutaApp", e) { "Failed to seed content defaults" }
+        // ROUND 180 (THE PM-6 HARDENING — the v1.1.115 boot-hang report): this
+        // ran SYNCHRONOUSLY ON THE MAIN THREAD — koin.get<ContentSeeder>()
+        // OPENS THE DATABASE inside Application.onCreate, putting the ENTIRE
+        // first-open sequence (the repair block; on an update-over, the
+        // MIGRATIONS) on the main thread — the exact v1.1.103 splash-hang
+        // class (09-A.1). The seeds are idempotent and nothing needs them
+        // before the first frame; they ride the startup scope like the
+        // maintenance pass.
+        appScope.launch {
+            try {
+                com.confused.anikuta.error.BootWatchdog.mark("seeds:start")
+                org.koin.core.context.GlobalContext.get().get<ContentSeeder>().seed()
+                Logger.i("AnikutaApp") { "Content defaults seeded" }
+                com.confused.anikuta.error.BootWatchdog.mark("seeds:done")
+            } catch (e: Exception) {
+                Logger.e("AnikutaApp", e) { "Failed to seed content defaults" }
+            }
         }
 
         // D-192: Track APP_OPEN event (internal activity tracker).
-        try {
-            org.koin.core.context.GlobalContext.get().get<com.confused.anikuta.core.activitytracker.ActivityTracker>().track(
-                eventType = com.confused.anikuta.core.activitytracker.ActivityEventType.APP_OPEN,
-                route = "app",
-            )
-        } catch (e: Exception) {
-            Logger.w("AnikutaApp") { "Failed to track APP_OPEN: ${e.message}" }
+        // ROUND 180 (the PM-6 hardening): track() WRITES the activity_event
+        // table — a DB write (and possibly the DB OPEN itself) on the main
+        // thread; it rides the startup scope with the seeds.
+        appScope.launch {
+            try {
+                org.koin.core.context.GlobalContext.get()
+                    .get<com.confused.anikuta.core.activitytracker.ActivityTracker>().track(
+                    eventType = com.confused.anikuta.core.activitytracker.ActivityEventType.APP_OPEN,
+                    route = "app",
+                )
+            } catch (e: Exception) {
+                Logger.w("AnikutaApp") { "Failed to track APP_OPEN: ${e.message}" }
+            }
         }
 
         // D.4: Set the Coil ImageLoader as the singleton (AFTER Koin starts).
@@ -478,6 +506,7 @@ class AnikutaApp : com.lagradost.cloudstream3.CloudStreamApp(),
             Logger.w("AnikutaApp") { "Failed to start playback cache: ${e.message}" }
         }
 
+        com.confused.anikuta.error.BootWatchdog.mark("app-create:exit")
     }
 
     // Phase UP: Configuration.Provider for WorkManager (disables default initializer).
